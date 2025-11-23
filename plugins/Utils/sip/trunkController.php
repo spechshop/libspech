@@ -163,7 +163,6 @@ class trunkController
     public int $currentCodec = 8;
     public bcg729Channel $channel;
 
-    public rtpChannels $rtpChan;
     public array $listeners = [];
     public bool $enableAudioRecording = false;
     public string $recordAudioBuffer = '';
@@ -180,18 +179,18 @@ class trunkController
     public array $ptsRegistered = [];
     public array $ptsDtmfRegistered = [];
     public array $mapLearn = [];
+    public $codecName;
+    public $frequencyCall;
+    public Closure $onBuildAudio;
+    public rtpChannel $rtpChannel;
     private array $alawTable = [];
     private array $ulawTable = [];
     private bool $proxyMediaActive = false;
     private ?string $currentProxyId = null;
     private $userAgent;
-    public $codecName;
-    public $frequencyCall;
     private string|int|null $ptTelephoneEvent;
     private string|int|null $ptUse;
     private array $sdp;
-    public Closure $onBuildAudio;
-    public rtpChannel $rtpChannel;
 
     public function __construct(mixed $username, mixed $password, mixed $host, mixed $port = 5060, mixed $domain = false)
     {
@@ -280,75 +279,6 @@ class trunkController
         ];
     }
 
-    public function mountLineCodecSDP(string $codec = 'PCMA/8000'): array
-    {
-        $codecRtpMap = [];
-        $defaultRate = 8000;
-        $defaultChannels = 1;
-
-        $pt = null;
-        $fmtp = [];
-        $ptStrict = ['PCMU' => 0, 'PCMA' => 8, 'G729' => 18, 'telephone-event' => 101];
-        $parts = explode('/', $codec);
-        $name = $parts[0];
-        if (!empty($parts[1])) {
-            $defaultRate = $parts[1];
-        }
-
-
-        if (array_key_exists($name, $ptStrict)) {
-            $pt = $ptStrict[$name];
-        } else {
-            if (strtoupper($name) === 'OPUS') $name = 'opus';
-        }
-
-        if ($pt === null) {
-            $start = 97;
-            for ($i = $start; $i < 128; $i++) {
-                if (!array_key_exists($i, $this->ptsRegistered)) {
-
-                    $this->ptsRegistered[$i] = $i;
-                    $pt = $i;
-                    break;
-
-                }
-            }
-        }
-        $lineString = "rtpmap:$pt $name/$defaultRate";
-
-
-        if (!empty($parts[2])) {
-            if (intval($parts[2]) > 1) $lineString .= "/$parts[2]";
-        }
-        $this->ptsRegistered[$pt] = $lineString;
-        $start = 101;
-        $ptDtmf = $start;
-        for ($i = $start; $i < 128; $i++) {
-
-            if (!array_key_exists($defaultRate, $this->ptsDtmfRegistered)) {
-                if (!array_key_exists($i, $this->mapLearn)) {
-                    $this->ptsDtmfRegistered[$defaultRate] = $i;
-                    $ptDtmf = $i;
-                    break;
-                }
-
-            }
-        }
-        $fmtp[] = "rtpmap:$ptDtmf telephone-event/" . $defaultRate;
-        $fmtp[] = "fmtp:$ptDtmf 0-15";
-        if ($pt == 18) {
-            $fmtp[] = "fmtp:$pt annexb=no";
-        }
-        $this->mapLearn[$pt] = [$lineString];
-        if (!array_key_exists($ptDtmf, $this->mapLearn)) $this->mapLearn[$ptDtmf] = $fmtp;
-
-
-        return [
-            $pt => [$lineString],
-            $ptDtmf => $fmtp,
-        ];
-    }
-
     public static function extractVia(string $line): array
     {
         $result = [];
@@ -368,124 +298,6 @@ class trunkController
             }
         }
 
-        return $result;
-    }
-
-    public static function getSDPModelCodecs(array $sdpAttributes): array
-    {
-        $codecMediaLine = "";
-        $codecRtpMap = [];
-        $preferredCodec = null;
-        $dtmfCodec = null;
-        $lineArg = [];
-        $rate = 8000;
-
-        // Primeiro, encontrar o codec principal (não telephone-event)
-        foreach ($sdpAttributes as $row) {
-            if (str_starts_with($row, "rtpmap:")) {
-                $pt = value($row, "rtpmap:", " ");
-                $rate = explode('/', $row)[1];
-                $name = value($row, ' ', '/');
-                $codecMediaLine .= "{$pt} ";
-                $codecRtpMap[] = $row;
-
-                if ($name !== 'telephone-event') {
-                    $preferredCodec = [
-                        'pt' => $pt,
-                        'rate' => $rate,
-                        'sdp' => $row,
-                        'name' => $name
-                    ];
-                    break; // Encerrar quando encontrar o codec preferencial
-                }
-            }
-        }
-
-        // Adicionar fmtp após o codec principal encontrado
-        foreach ($sdpAttributes as $row) {
-            if (str_starts_with($row, "fmtp:")) {
-                $fmtpPt = value($row, "fmtp:", " ");
-                if ($preferredCodec && $fmtpPt === $preferredCodec['pt']) {
-                    $codecRtpMap[] = $row; // Inclui o fmtp correspondente
-                    $lineArg = self::parseArgumentRtpMap($row);
-                }
-            }
-        }
-
-        // Depois, encontrar o codec `telephone-event` com o mesmo rate
-        foreach ($sdpAttributes as $row) {
-            if (str_starts_with($row, "rtpmap:") && str_contains($row, 'telephone-event')) {
-                $dtmfPt = value($row, "rtpmap:", " ");
-                $dtmfRate = explode('/', $row)[1];
-
-                // Verifica se o rate do DTMF é o mesmo do codec preferencial
-                if ($dtmfRate == $rate) {
-                    $codecMediaLine .= "{$dtmfPt} ";
-                    $codecRtpMap[] = $row;
-                    $dtmfCodec = [
-                        'pt' => $dtmfPt,
-                        'rate' => $dtmfRate,
-                        'sdp' => $row,
-                        'name' => 'telephone-event'
-                    ];
-                    break; // Encerrar no primeiro DTMF correspondente
-                }
-            }
-        }
-        if (!$dtmfCodec) {
-            // confere pela ultima vez entao se realmente nao tem
-            foreach ($sdpAttributes as $row) {
-                if (str_starts_with($row, "rtpmap:") && str_contains($row, 'telephone-event')) {
-                    $dtmfPt = value($row, "rtpmap:", " ");
-                    $dtmfRate = explode('/', $row)[1];
-                    $codecMediaLine .= "{$dtmfPt} ";
-                    $codecRtpMap[] = $row;
-                    $dtmfCodec = [
-                        'pt' => $dtmfPt,
-                        'rate' => $dtmfRate,
-                        'sdp' => $row,
-                        'name' => 'telephone-event'
-                    ];
-                    break; // Encerrar no primeiro DTMF correspondente
-                }
-            }
-        }
-
-
-        // Adicionar fmtp após o codec DTMF encontrado
-        foreach ($sdpAttributes as $row) {
-            if (str_starts_with($row, "fmtp:")) {
-                $fmtpPt = value($row, "fmtp:", " ");
-
-
-                if ($dtmfCodec && $fmtpPt === $dtmfCodec['pt']) {
-                    $codecRtpMap[] = $row; // Inclui o fmtp correspondente
-                }
-            }
-        }
-
-
-        return [
-            "codecMediaLine" => trim($codecMediaLine),
-            "codecRtpMap" => $codecRtpMap,
-            "preferredCodec" => $preferredCodec,
-            "dtmfCodec" => $dtmfCodec,
-            "config" => [
-                (int)$preferredCodec['pt'] => $lineArg
-            ]
-        ];
-    }
-
-    public static function parseArgumentRtpMap(string $line): array
-    {
-        if (!str_contains($line, 'fmtp')) return [];
-        $result = [];
-        $parts = explode(' ', $line)[1];
-        $matches = []; //maxplaybackrate=24000;sprop-maxcapturerate=24000;maxaveragebitrate=64000;useinbandfec=1
-        preg_match_all('/(\w+)=(\d+)/', $parts, $matches);
-        foreach ($matches[1] as $key => $value) {
-            $result[$value] = $matches[2][$key];
-        }
         return $result;
     }
 
@@ -555,6 +367,75 @@ class trunkController
 
             return true;
         });
+    }
+
+    public function mountLineCodecSDP(string $codec = 'PCMA/8000'): array
+    {
+        $codecRtpMap = [];
+        $defaultRate = 8000;
+        $defaultChannels = 1;
+
+        $pt = null;
+        $fmtp = [];
+        $ptStrict = ['PCMU' => 0, 'PCMA' => 8, 'G729' => 18, 'telephone-event' => 101];
+        $parts = explode('/', $codec);
+        $name = $parts[0];
+        if (!empty($parts[1])) {
+            $defaultRate = $parts[1];
+        }
+
+
+        if (array_key_exists($name, $ptStrict)) {
+            $pt = $ptStrict[$name];
+        } else {
+            if (strtoupper($name) === 'OPUS') $name = 'opus';
+        }
+
+        if ($pt === null) {
+            $start = 97;
+            for ($i = $start; $i < 128; $i++) {
+                if (!array_key_exists($i, $this->ptsRegistered)) {
+
+                    $this->ptsRegistered[$i] = $i;
+                    $pt = $i;
+                    break;
+
+                }
+            }
+        }
+        $lineString = "rtpmap:$pt $name/$defaultRate";
+
+
+        if (!empty($parts[2])) {
+            if (intval($parts[2]) > 1) $lineString .= "/$parts[2]";
+        }
+        $this->ptsRegistered[$pt] = $lineString;
+        $start = 101;
+        $ptDtmf = $start;
+        for ($i = $start; $i < 128; $i++) {
+
+            if (!array_key_exists($defaultRate, $this->ptsDtmfRegistered)) {
+                if (!array_key_exists($i, $this->mapLearn)) {
+                    $this->ptsDtmfRegistered[$defaultRate] = $i;
+                    $ptDtmf = $i;
+                    break;
+                }
+
+            }
+        }
+        $fmtp[] = "rtpmap:$ptDtmf telephone-event/" . $defaultRate;
+        $fmtp[] = "fmtp:$ptDtmf 0-15";
+        if ($pt == 18) {
+            $fmtp[] = "fmtp:$pt annexb=no";
+        }
+        $this->mapLearn[$pt] = [$lineString];
+        if (!array_key_exists($ptDtmf, $this->mapLearn)) $this->mapLearn[$ptDtmf] = $fmtp;
+
+
+        return [
+            $pt => [$lineString],
+            $ptDtmf => $fmtp,
+        ];
     }
 
     public function defineCodecs(array $codecs = [8, 101]): void
@@ -653,13 +534,6 @@ class trunkController
     {
         $callId = $this->callId;
         cli::pcl("CALL ID {$callId} foi criado");
-    }
-
-    public function addMember(string $username): void
-    {
-        if (!in_array($username, $this->members)) {
-            $this->members[] = $username;
-        }
     }
 
     public function removeMember(string $username): void
@@ -848,104 +722,6 @@ class trunkController
         $this->onRingingCallback = $param;
     }
 
-    public function sendSilence(string $remoteIp, int $remotePort, string $codec = 'alaw'): bool
-    {
-        return Coroutine::create(function () use ($remoteIp, $remotePort, $codec) {
-            $rtpSocket = new Swoole\Coroutine\Socket(AF_INET, SOCK_DGRAM, SOL_UDP);
-            $this->socketsList[] = $rtpSocket;
-            $this->rtpSocket = $rtpSocket;
-            $this->remoteIp = $remoteIp;
-            $this->remotePort = $remotePort;
-            if (!$rtpSocket->bind(network::getLocalIp(), $this->audioReceivePort)) {
-                print cli::cl("bold_red", "Erro ao iniciar proxy de áudio na porta {$this->audioReceivePort}");
-                return false;
-            }
-
-            print cli::cl("bold_green", "Proxy de áudio iniciado na porta {$this->audioReceivePort}");
-            $this->lastSpeakTime = microtime(true);
-            $this->speakWaitSequence = [];
-            $speaking = false;
-            $codec = strtolower($codec);
-            $payloadType = $codec === 'alaw' ? 8 : 0;
-            $silByte = $codec === 'alaw' ? "\xd5" : "\xff";
-            $silPayload20ms = str_repeat($silByte, 160);
-            while (!$this->error && $this->callActive && !$this->receiveBye) {
-                $packet = $rtpSocket->recvfrom($peer, 0.2);
-                $rtpc = new rtpc($packet);
-                if ($packet) {
-                    $this->processRtpPacket($packet);
-                }
-                if ($packet && $this->speakWait) {
-                    $timestamp = $this->lastSpeakTime;
-                    $now = microtime(true);
-                    if ($now - $timestamp >= 0.5) {
-                        $this->lastSpeakTime = $now;
-                        $average = $this->volumeAverage(decodePcmaToPcm($rtpc->payloadRaw));
-                        $this->speakWaitSequence[] = $average;
-                        if (count($this->speakWaitSequence) > $this->totalSequence) {
-                            array_shift($this->speakWaitSequence);
-                        }
-                        if ($average > 2.69) {
-                            $speaking = true;
-                            $this->speakWaitSequence = [$average];
-                            if (!$this->startSpeak) {
-                                $this->startSpeak = true;
-                                print cli::cl("yellow", "Começou a falar... " . date("H:i:s"));
-                            }
-                        } else if ($speaking && count($this->speakWaitSequence) === $this->totalSequence && $this->speakWaitSequence[0] <= 2.69 && $this->speakWaitSequence[1] <= 2.69) {
-                            print cli::cl("bold_green", "Já falou");
-                            $this->speakWait = false;
-                            $this->blockSpeak = false;
-                            $speaking = false;
-                        }
-                    }
-                }
-                if (!empty($this->dtmfList)) {
-                    $digit = array_shift($this->dtmfList);
-                    $this->send2833($digit);
-                    continue;
-                }
-                $rtpHeader = pack('CCnNN', 0x80, $payloadType, $this->sequenceNumber++, $this->timestamp, $this->ssrc);
-                $rtpSocket->sendto($remoteIp, $remotePort, $rtpHeader . $silPayload20ms);
-                $this->timestamp += 160;
-                Coroutine::sleep(0.02);
-            }
-            return true;
-        });
-    }
-
-    public function processRtpPacket(string $packet): void
-    {
-        $rtpHeader = substr($packet, 0, 12);
-        $payloadType = ord($rtpHeader[1]) & 0x7f;
-        $sequenceNumber = unpack('n', substr($rtpHeader, 2, 2))[1];
-        if ($this->enableAudioRecording) {
-            $this->recordAudioBuffer .= substr($packet, 12);
-        }
-        if ($payloadType === 101) {
-            $this->extractDtmfEvent(substr($packet, 12));
-        }
-    }
-
-    public function extractDtmfEvent(string $payload): void
-    {
-        $event = ord($payload[0]);
-        $volume = ord($payload[1]);
-        $duration = unpack('n', substr($payload, 2, 2))[1];
-        if (array_key_exists($event, $this->dtmfClicks) && $this->dtmfClicks[$event] > microtime(true) - 0.5) {
-            return;
-        }
-        $this->dtmfClicks[$event] = microtime(true);
-        if ($duration < 400) {
-            if (isset($this->dtmfCallbacks[$event])) {
-                if (is_callable($this->dtmfCallbacks[$event])) {
-                    $this->dtmfCallbacks[$event]($this, $event);
-                }
-            }
-        } else {
-        }
-    }
-
     public function volumeAverage(string $pcm): float
     {
         $minLength = 160;
@@ -996,10 +772,9 @@ class trunkController
             if ($this->error) {
                 return false;
             }
-            $packet = $this->socket->recvfrom($peer, 1);
-            if (!$packet) {
-                continue;
-            }
+            /** @var ? $peer */
+            $packet = $this->socket->recvfrom($peer, 2);
+            if ($packet === false || $packet === "") continue;
             $receive = sip::parse($packet);
             $this->currentMethod = $receive["method"];
             if ($receive["method"] == "OPTIONS") {
@@ -1310,6 +1085,124 @@ class trunkController
         return $settings;
     }
 
+    public static function getSDPModelCodecs(array $sdpAttributes): array
+    {
+        $codecMediaLine = "";
+        $codecRtpMap = [];
+        $preferredCodec = null;
+        $dtmfCodec = null;
+        $lineArg = [];
+        $rate = 8000;
+
+        // Primeiro, encontrar o codec principal (não telephone-event)
+        foreach ($sdpAttributes as $row) {
+            if (str_starts_with($row, "rtpmap:")) {
+                $pt = value($row, "rtpmap:", " ");
+                $rate = explode('/', $row)[1];
+                $name = value($row, ' ', '/');
+                $codecMediaLine .= "{$pt} ";
+                $codecRtpMap[] = $row;
+
+                if ($name !== 'telephone-event') {
+                    $preferredCodec = [
+                        'pt' => $pt,
+                        'rate' => $rate,
+                        'sdp' => $row,
+                        'name' => $name
+                    ];
+                    break; // Encerrar quando encontrar o codec preferencial
+                }
+            }
+        }
+
+        // Adicionar fmtp após o codec principal encontrado
+        foreach ($sdpAttributes as $row) {
+            if (str_starts_with($row, "fmtp:")) {
+                $fmtpPt = value($row, "fmtp:", " ");
+                if ($preferredCodec && $fmtpPt === $preferredCodec['pt']) {
+                    $codecRtpMap[] = $row; // Inclui o fmtp correspondente
+                    $lineArg = self::parseArgumentRtpMap($row);
+                }
+            }
+        }
+
+        // Depois, encontrar o codec `telephone-event` com o mesmo rate
+        foreach ($sdpAttributes as $row) {
+            if (str_starts_with($row, "rtpmap:") && str_contains($row, 'telephone-event')) {
+                $dtmfPt = value($row, "rtpmap:", " ");
+                $dtmfRate = explode('/', $row)[1];
+
+                // Verifica se o rate do DTMF é o mesmo do codec preferencial
+                if ($dtmfRate == $rate) {
+                    $codecMediaLine .= "{$dtmfPt} ";
+                    $codecRtpMap[] = $row;
+                    $dtmfCodec = [
+                        'pt' => $dtmfPt,
+                        'rate' => $dtmfRate,
+                        'sdp' => $row,
+                        'name' => 'telephone-event'
+                    ];
+                    break; // Encerrar no primeiro DTMF correspondente
+                }
+            }
+        }
+        if (!$dtmfCodec) {
+            // confere pela ultima vez entao se realmente nao tem
+            foreach ($sdpAttributes as $row) {
+                if (str_starts_with($row, "rtpmap:") && str_contains($row, 'telephone-event')) {
+                    $dtmfPt = value($row, "rtpmap:", " ");
+                    $dtmfRate = explode('/', $row)[1];
+                    $codecMediaLine .= "{$dtmfPt} ";
+                    $codecRtpMap[] = $row;
+                    $dtmfCodec = [
+                        'pt' => $dtmfPt,
+                        'rate' => $dtmfRate,
+                        'sdp' => $row,
+                        'name' => 'telephone-event'
+                    ];
+                    break; // Encerrar no primeiro DTMF correspondente
+                }
+            }
+        }
+
+
+        // Adicionar fmtp após o codec DTMF encontrado
+        foreach ($sdpAttributes as $row) {
+            if (str_starts_with($row, "fmtp:")) {
+                $fmtpPt = value($row, "fmtp:", " ");
+
+
+                if ($dtmfCodec && $fmtpPt === $dtmfCodec['pt']) {
+                    $codecRtpMap[] = $row; // Inclui o fmtp correspondente
+                }
+            }
+        }
+
+
+        return [
+            "codecMediaLine" => trim($codecMediaLine),
+            "codecRtpMap" => $codecRtpMap,
+            "preferredCodec" => $preferredCodec,
+            "dtmfCodec" => $dtmfCodec,
+            "config" => [
+                (int)$preferredCodec['pt'] => $lineArg
+            ]
+        ];
+    }
+
+    public static function parseArgumentRtpMap(string $line): array
+    {
+        if (!str_contains($line, 'fmtp')) return [];
+        $result = [];
+        $parts = explode(' ', $line)[1];
+        $matches = []; //maxplaybackrate=24000;sprop-maxcapturerate=24000;maxaveragebitrate=64000;useinbandfec=1
+        preg_match_all('/(\w+)=(\d+)/', $parts, $matches);
+        foreach ($matches[1] as $key => $value) {
+            $result[$value] = $matches[2][$key];
+        }
+        return $result;
+    }
+
     /**
      * @throws RandomException
      */
@@ -1340,109 +1233,6 @@ class trunkController
         }
         return $uri;
     }
-
-
-    public function receiveMedia(): void
-    {
-
-        Coroutine::create(function () {
-            if ($this->socketInUse !== false) return false;
-
-
-            $this->socketInUse = 'yes';
-
-
-            $this->remoteIp = $this->audioRemoteIp;
-            $this->remotePort = $this->audioRemotePort;
-
-
-            $rtpSocket = $this->rtpSocket;
-            $rtpSocket->bind($this->localIp, $this->audioReceivePort);
-            $rtpSocket->connect($this->remoteIp, $this->remotePort);
-            cli::pcl("Proxy de áudio iniciado na porta " . $this->localIp . ":" . $rtpSocket->getsockname()['port']);
-            $this->lastSpeakTime = microtime(true);
-            $this->speakWaitSequence = [];
-            $this->waitingEnd = 0;
-            $this->startSpeak = false;
-            $silPayload20ms = str_repeat("\x00\x00", 160);
-
-
-            $audioFile = null;
-            $audioData = null;
-            $audioPosition = 0;
-            $audioFinished = false;
-
-            $this->error = false;
-            $this->callActive = true;
-            $this->receiveBye = false;
-            $audioFile = $this->audioFilePath;
-
-
-            $media = new MediaChannel($rtpSocket, $this->callId);
-
-            $media->portList = $this->audioReceivePort;
-
-            $media->codecMapper = [
-                $this->ptUse => strtoupper(implode('/', [
-                    $this->codecName,
-                    $this->frequencyCall,
-                ])),
-            ];
-            $media->registerPtCodecs($media->codecMapper);
-
-
-            $media->addMember([
-                'address' => $this->audioRemoteIp,
-                'port' => $this->audioRemotePort,
-                'codec' => $this->codecName,
-                'pt' => $this->ptUse,
-                'timestamp' => time(),
-                'config' => [],
-                'ssrc' => $this->ssrc,
-                'frequency' => $this->frequencyCall,
-            ]);
-
-
-            $rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $this->ssrc);
-            $this->rtpChannel = $rtpChannel;
-            $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
-            $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
-
-
-            $media->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $silPayload20ms) {
-
-
-                $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
-                $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
-                $targetId = $peer['address'] . ':' . $peer['port'];
-                $ssrc = $rtpc->ssrc;
-                $codec = $this->codecName;
-
-                $pcmData = match (strtoupper($codec)) {
-                    'G729' => $channel->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
-                    'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
-                    'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
-                    'OPUS' => $channel->members[$targetId]['opus']->decode($rtpc->payloadRaw),
-                    'L16' => pcmLeToBe($rtpc->payloadRaw),
-                    default => $rtpc->payloadRaw,
-                };
-                go($this->onReceiveAudioCallback, $pcmData, $peer, $this);
-            });
-
-            $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
-            $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
-            $media->start();
-            $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
-            $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
-            $media->block();
-        });
-    }
-
-    public function onBeforeAudioBuild(Closure $closure): void
-    {
-        $this->onBuildAudio = $closure;
-    }
-
 
     public function checkAuthHeaders(array $headers)
     {
@@ -1541,6 +1331,114 @@ class trunkController
     public function unblockCoroutine(): bool
     {
         return $this->receiveBye = false;
+    }
+
+    public function receiveMedia(): void
+    {
+
+        Coroutine::create(function () {
+            if ($this->socketInUse !== false) return false;
+
+
+            $this->socketInUse = 'yes';
+
+
+            $this->remoteIp = $this->audioRemoteIp;
+            $this->remotePort = $this->audioRemotePort;
+
+
+            $rtpSocket = $this->rtpSocket;
+            $rtpSocket->bind($this->localIp, $this->audioReceivePort);
+            $rtpSocket->connect($this->remoteIp, $this->remotePort);
+            cli::pcl("Proxy de áudio iniciado na porta " . $this->localIp . ":" . $rtpSocket->getsockname()['port']);
+            $this->lastSpeakTime = microtime(true);
+            $this->speakWaitSequence = [];
+            $this->waitingEnd = 0;
+            $this->startSpeak = false;
+            $silPayload20ms = str_repeat("\x00\x00", 160);
+
+
+            $audioFile = null;
+            $audioData = null;
+            $audioPosition = 0;
+            $audioFinished = false;
+
+            $this->error = false;
+            $this->callActive = true;
+            $this->receiveBye = false;
+            $audioFile = $this->audioFilePath;
+
+
+            $media = new MediaChannel($rtpSocket, $this->callId);
+
+            $media->portList = $this->audioReceivePort;
+
+            $media->codecMapper = [
+                $this->ptUse => strtoupper(implode('/', [
+                    $this->codecName,
+                    $this->frequencyCall,
+                ])),
+            ];
+            $media->registerPtCodecs($media->codecMapper);
+
+
+            $media->addMember([
+                'address' => $this->audioRemoteIp,
+                'port' => $this->audioRemotePort,
+                'codec' => $this->codecName,
+                'pt' => $this->ptUse,
+                'timestamp' => time(),
+                'config' => [],
+                'ssrc' => $this->ssrc,
+                'frequency' => $this->frequencyCall,
+            ]);
+
+
+            $rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $this->ssrc);
+            $this->rtpChannel = $rtpChannel;
+            $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
+            $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
+
+
+            $media->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $silPayload20ms) {
+
+
+                $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
+                $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
+                $targetId = $peer['address'] . ':' . $peer['port'];
+                $ssrc = $rtpc->ssrc;
+                $codec = $this->codecName;
+
+                $pcmData = match (strtoupper($codec)) {
+                    'G729' => $channel->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
+                    'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
+                    'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
+                    'OPUS' => $channel->members[$targetId]['opus']->decode($rtpc->payloadRaw),
+                    'L16' => pcmLeToBe($rtpc->payloadRaw),
+                    default => $rtpc->payloadRaw,
+                };
+                go($this->onReceiveAudioCallback, $pcmData, $peer, $this);
+            });
+
+            $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
+            $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
+            $media->start();
+            $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
+            $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
+            $media->block();
+        });
+    }
+
+    public function addMember(string $username): void
+    {
+        if (!in_array($username, $this->members)) {
+            $this->members[] = $username;
+        }
+    }
+
+    public function onBeforeAudioBuild(Closure $closure): void
+    {
+        $this->onBuildAudio = $closure;
     }
 
     public function getModelCancel($called = false): array
@@ -1748,6 +1646,9 @@ class trunkController
                 print cli::cl("red", "line 753 timeout");
                 return false;
             }
+
+
+            /** @var ? $peer */
             $res = $this->socket->recvfrom($peer, 1);
             if ($res !== false) {
                 break;
