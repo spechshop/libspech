@@ -62,22 +62,6 @@ class trunkController
         202,
         204,
     ];
-    public array $noProgressFailCodes = [
-        404,
-        503,
-        484,
-        603,
-        600,
-        408,
-        410,
-        500,
-        501,
-        502,
-        504,
-        505,
-        513,
-        580,
-    ];
     public array $failureCodes = [
         403,
         484,
@@ -100,14 +84,13 @@ class trunkController
         604,
         606,
     ];
-    public int $progressLevel = 0;
-    public int $redials = 0;
+
     public string $bufferAudio = "";
     public mixed $sequenceNumber = 0;
     public array $dtmfList = [];
     public int $lastTime = 0;
     public bool $receiveBye = false;
-    public int $codecReceiveType = 0;
+
     public $headers200;
     public string $calledNumber;
     public int $audioRemotePort = 0;
@@ -129,8 +112,7 @@ class trunkController
     public int $totalSequence = 3;
     public array $socketsList = [];
     public bool $inTransfer = false;
-    public $lastRvAddress = "";
-    public $lastRvPort = 0;
+
     public mixed $currentMethod = null;
     public mixed $globalInfo = [];
     public array $dtmfCallbacks = [];
