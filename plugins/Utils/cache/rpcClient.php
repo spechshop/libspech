@@ -1,5 +1,9 @@
 <?php
-use Plugin\Utils\cli;
+
+namespace libspech\Cache;
+
+use libspech\Cli\cli;
+
 class rpcClient
 {
     protected string $host;

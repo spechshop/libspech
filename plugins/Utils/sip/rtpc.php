@@ -1,7 +1,8 @@
 <?php
 
+namespace libspech\Rtp;
 
-use Plugin\Utils\cli;
+use libspech\Cli\cli;
 
 class rtpc
 {

@@ -1,9 +1,8 @@
 <?php
 
-namespace plugins\Utils;
+namespace libspech\Cache;
 
-use Plugin\Utils\cli;
-use ServerSocket;
+use libspech\Cli\cli;
 use Swoole\Timer;
 
 class cache

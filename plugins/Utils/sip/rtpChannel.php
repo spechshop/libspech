@@ -1,6 +1,11 @@
 <?php
 
-use Swoole\Coroutine;
+namespace libspech\Rtp;
+
+use bcg729Channel;
+use Closure;
+use InvalidArgumentException;
+use RuntimeException;
 
 class rtpChannel
 {
@@ -168,7 +173,7 @@ class rtpChannel
         return pack(self::RTP_HEADER_FORMAT, $firstByte, $secondByte, $this->sequenceNumber & 0xffff, $timestamp, $this->ssrc);
     }
 
-    public function buildDtmfPacket(DtmfEvent $event, bool $isFirstPacket = false): string
+    private function buildDtmfPacket(DtmfEvent $event, bool $isFirstPacket = false): string
     {
         if ($isFirstPacket || $this->dtmfStartTimestamp === null) {
             $this->dtmfStartTimestamp = $this->timestamp;
@@ -326,7 +331,8 @@ class rtpChannel
 
         // Conversão correta: mantém a proporção do sample rate
         $durationIn8kHz = intval($delta *   $this->sampleRate);
-        return max(160, $durationIn8kHz); // Mínimo de 160 amostras (20ms em 8kHz)
+        // return max(160, $durationIn8kHz); // Mínimo de 160 amostras (20ms em 8kHz)
+        return 320;
     }
 
     public function sendSingleDtmf(string $digit, callable $packetSender, int $eventDurationMs = 80, int $volume = 10): void

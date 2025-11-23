@@ -4,385 +4,201 @@
 [![Swoole](https://img.shields.io/badge/Swoole-6.0+-green.svg)](https://www.swoole.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Biblioteca PHP completa para comunicação VoIP em tempo real via SIP/RTP**
+Real-time SIP/RTP VoIP library for PHP, built on Swoole coroutines. Make and receive real phone calls from PHP, stream
+RTP audio, handle DTMF, and record audio.
 
-Uma implementação robusta e performática do protocolo SIP com suporte total a streaming de áudio RTP/RTCP, construída
-com corrotinas Swoole. Realize chamadas VoIP reais com transmissão e recepção de áudio bidirecional diretamente do PHP.
+## Overview
 
-## Características Principais
+libspech provides:
 
-- **Chamadas VoIP bidirecionais** - Transmissão e recepção simultânea de áudio em tempo real
-- **Streaming RTP/RTCP** - Protocolo de transporte de mídia com controle de qualidade
-- **Múltiplos codecs** - PCMU, PCMA, G.729, Opus, L16 com conversão automática
-- **Registro SIP** - Autenticação MD5 Digest completa
-- **Eventos assíncronos** - Callbacks para ringing, answer, hangup, receive audio
-- **Alta performance** - Assíncrono e não-bloqueante com Swoole
-- **DTMF (RFC 2833)** - Envio de tons de teclado telefônico
-- **Gravação de áudio** - Captura em formato WAV
+- SIP user-agent features: registration, call setup/teardown (INVITE/200/ACK/BYE), digest auth
+- RTP/RTCP media channels: receive and send audio frames
+- Event-driven API with callbacks for ringing, answer, hangup, and incoming audio
+- DTMF (RFC 2833) sending
+- WAV recording helpers for captured PCM
+- High performance async I/O via Swoole
 
-## Índice
+This README reflects the repository as of 2025-11-23.
 
-- [Instalação](#instalação)
-- [Início Rápido](#início-rápido)
-- [Casos de Uso](#casos-de-uso)
-- [Codecs Suportados](#codecs-suportados)
-- [Estrutura do Projeto](#estrutura-do-projeto)
-- [API e Eventos](#api-e-eventos)
-- [Exemplos Avançados](#exemplos-avançados)
-- [Limitações](#limitações)
-- [Contribuindo](#contribuindo)
-- [Licença](#licença)
+## Stack
 
-## Instalação
+- Language: PHP (no Composer in this repo)
+- Framework/runtime: Swoole coroutines (PECL extension)
+- Protocols: SIP, RTP/RTCP, SDP, DTMF (RFC 2833)
+- Optional native extensions: `bcg729`, `opus`, `psampler` (see below)
 
-### Requisitos
+## Requirements
 
-| Componente   | Versão | Descrição                          |
-|--------------|--------|------------------------------------|
-| **PHP**      | 8.4+   | Linguagem principal                |
-| **Swoole**   | 6.0+   | Framework assíncrono (obrigatório) |
-| **bcg729**   | 1.0+   | Codec G.729 (opcional)             |
-| **opus**     | 1.0+   | Codec Opus (opcional)              |
-| **psampler** | 1.0+   | Resampling de áudio (opcional)     |
+- PHP 8.4+ (CLI)
+- PECL Swoole 6.0+ enabled: `php -m | grep swoole`
+- Linux/macOS recommended
+- Optional codec extensions for additional payloads (see Codecs section)
 
-### Instalação Rápida
+Quick install (Swoole):
 
 ```bash
-# 1. Clonar repositório
-git clone https://github.com/berzersks/libspech.git
-cd libspech
-
-# 2. Instalar Swoole (obrigatório)
 pecl install swoole
-
-# 3. Verificar instalação
 php -m | grep swoole
 ```
 
-### Extensões Opcionais
-
-<details>
-<summary><b>bcg729</b> - Codec G.729</summary>
+Optional extensions (install only if you need them):
 
 ```bash
-git clone https://github.com/berzersks/bcg729.git
-cd bcg729
+# G.729 (optional)
+git clone https://github.com/berzersks/bcg729.git && cd bcg729
 phpize && ./configure && make && sudo make install
-echo "extension=bcg729.so" >> /etc/php/8.4/cli/php.ini
+echo "extension=bcg729.so" | sudo tee -a "$(php -r 'echo php_ini_loaded_file();')"
+
+# Opus (optional)
+git clone https://github.com/berzersks/opus.git && cd opus
+phpize && ./configure && make && sudo make install
+echo "extension=opus.so" | sudo tee -a "$(php -r 'echo php_ini_loaded_file();')"
+
+# psampler (optional)
+git clone https://github.com/berzersks/psampler.git && cd psampler
+phpize && ./configure && make && sudo make install
+echo "extension=psampler.so" | sudo tee -a "$(php -r 'echo php_ini_loaded_file();')"
 ```
 
-</details>
+## Getting started
 
-<details>
-<summary><b>opus</b> - Codec Opus</summary>
+The repository includes a runnable example at `example.php`.
 
-```bash
-git clone https://github.com/berzersks/opus.git
-cd opus
-phpize && ./configure && make && sudo make install
-echo "extension=opus.so" >> /etc/php/8.4/cli/php.ini
-```
-
-</details>
-
-<details>
-<summary><b>psampler</b> - Audio Resampling</summary>
-
-```bash
-git clone https://github.com/berzersks/psampler.git
-cd psampler
-phpize && ./configure && make && sudo make install
-echo "extension=psampler.so" >> /etc/php/8.4/cli/php.ini
-```
-
-</details>
-
-## Início Rápido
-
-### Exemplo Básico
+Minimal example:
 
 ```php
 <?php
+use libspech\Sip\trunkController;
+
 include 'plugins/autoloader.php';
 
 \Swoole\Coroutine\run(function () {
-    // Configurar credenciais SIP
-    $phone = new trunkController(
-        'your_username',
-        'your_password',
-        'sip.example.com',
-        5060
-    );
+    $username = 'your_username';
+    $password = 'your_password';
+    $domain   = 'sip.example.com';
+    $host     = gethostbyname($domain);
 
-    // Registrar no servidor SIP
+    $phone = new trunkController($username, $password, $host, 5060);
+
     if (!$phone->register(2)) {
-        throw new \Exception("Falha no registro");
+        throw new \Exception('Failed to register');
     }
 
-    // Configurar eventos
-    $phone->onRinging(fn() => echo "Chamando...\n");
+    // Offer a linear PCM line in SDP (optional)
+    $phone->mountLineCodecSDP('L16/8000');
+
+    $phone->onRinging(function () {
+        echo "Ringing...\n";
+    });
 
     $phone->onAnswer(function (trunkController $phone) {
-        echo "Atendido!\n";
+        echo "Answered. Receiving media...\n";
         $phone->receiveMedia();
-
-        // Encerrar após 10 segundos
         \Swoole\Coroutine::sleep(10);
-        $phone->socket->sendto($phone->host, $phone->port, sip::renderSolution(
-            \handlers\renderMessages::generateBye($phone->headers200['headers'])
-        ));
+        // Hang up after a while (BYE)
+        // See example.php for a full BYE send using sip/renderMessages
+    });
+
+    $phone->onReceiveAudio(function ($pcmData, $peer, trunkController $phone) {
+        $phone->bufferAudio .= $pcmData; // capture raw PCM
     });
 
     $phone->onHangup(function (trunkController $phone) {
-        echo "Chamada encerrada\n";
-        $phone->saveBufferToWavFile('gravacao.wav', $phone->bufferAudio);
+        $phone->saveBufferToWavFile('audio.wav', $phone->bufferAudio);
+        echo "Saved audio.wav\n";
     });
 
-    $phone->onReceiveAudio(function ($pcm, $peer, trunkController $phone) {
-        $phone->bufferAudio .= $pcm;
-    });
-
-    // Realizar chamada
     $phone->call('5511999999999');
 });
 ```
 
-### Executar
+Run:
 
 ```bash
-# Edite example.php com suas credenciais
 php example.php
 ```
 
-## Casos de Uso
+## Scripts
 
-- **Bots de voz automatizados** - IVR (URA), assistentes virtuais
-- **Softphones em PHP** - Aplicações de telefonia integradas
-- **Gravação de chamadas** - Captura e processamento de áudio em tempo real
-- **Análise de voz** - Processamento para transcrição ou análise
-- **Integração VoIP** - Conectar aplicações PHP a infraestrutura VoIP existente
-- **Testes automatizados** - Simulação de chamadas e validação de sistemas
+- There is no package manager or script runner in this repository. Use the PHP CLI directly.
+- Entry point for the demo is `example.php`.
 
-## Estrutura do Projeto
+## Environment variables
+
+- No fixed environment variables are required by the library as committed.
+- TODO: document any runtime configuration that should be externalized (e.g., SIP credentials, proxies, NAT/public IP).
+
+## Project structure
 
 ```
 libspech/
+├── example.php
 ├── plugins/
-│   ├── Utils/sip/              # Core SIP/RTP
-│   │   ├── trunkController.php # Controlador principal
-│   │   ├── phone.php           # Gerenciamento de estados
-│   │   ├── sip.php             # Parser SIP
-│   │   ├── rtpChannels.php     # Transmissão RTP
-│   │   └── rtpc.php            # Recepção RTP
-│   ├── Packet/controller/      # Mensagens SIP/SDP
-│   └── Utils/{cache,cli,network}/
-├── stubs/                      # Stubs para IDE
-└── example.php                 # Exemplo funcional
+│   ├── autoloader.php                 # Simple autoloader driven by configInterface.json
+│   ├── configInterface.json           # Lists autoload directories
+│   ├── Packet/
+│   │   └── controller/
+│   │       └── renderMessages.php     # SIP/SDP message rendering helpers
+│   └── Utils/
+│       ├── cache/
+│       │   ├── cache.php
+│       │   └── rpcClient.php
+│       ├── cli/cli.php                # CLI helper utilities
+│       ├── libspech/trunkController.php  # Main call controller (namespace libspech\\Sip)
+│       ├── network/network.php
+│       └── sip/
+│           ├── AdaptiveBuffer.php
+│           ├── DtmfEvent.php
+│           ├── mediaChannel.php
+│           ├── rtpChannel.php
+│           ├── rtpc.php
+│           ├── sip.php
+│           └── trunkController.php    # Legacy/alt controller (kept for compatibility)
+├── stubs/                             # IDE stubs for optional extensions
+│   ├── bcg729Channel.php
+│   ├── opusChannel.php
+│   └── psampler.php
+├── LICENSE
+├── README.md
+└── SECURITY.md
 ```
 
-### Componentes Principais
+Note on namespaces: the class defined at `plugins/Utils/libspech/trunkController.php` uses the namespace `libspech\Sip`.
+Use statements in code should target `libspech\Sip\trunkController` as shown in the example.
 
-| Arquivo               | Responsabilidade                               |
-|-----------------------|------------------------------------------------|
-| `trunkController.php` | Registro SIP e gerenciamento de chamadas       |
-| `phone.php`           | Estados de chamada (ringing, answered, hangup) |
-| `sip.php`             | Parser/render de mensagens SIP e SDP           |
-| `rtpChannels.php`     | Criação e envio de pacotes RTP                 |
-| `rtpc.php`            | Recepção e decodificação de pacotes RTP        |
+## Codecs
 
-## Codecs Suportados
+Supported/available payloads in the codebase:
 
-| Codec                  | PT  | Taxa  | Status   | Extensão                                          |
-|------------------------|-----|-------|----------|---------------------------------------------------|
-| **PCMU (G.711 μ-law)** | 0   | 8kHz  | Completo | Nativa                                            |
-| **PCMA (G.711 A-law)** | 8   | 8kHz  | Completo | Nativa                                            |
-| **G.729**              | 18  | 8kHz  | Completo | [bcg729](https://github.com/berzersks/bcg729)     |
-| **Opus**               | 111 | 48kHz | Beta     | [opus](https://github.com/berzersks/opus)         |
-| **L16**                | 96  | 8kHz  | Completo | [psampler](https://github.com/berzersks/psampler) |
-| **telephone-event**    | 101 | 8kHz  | DTMF     | Nativa                                            |
+| Codec                  | Payload Type | Sample Rate | Status   | Notes/Extension                       |
+|------------------------|--------------|-------------|----------|---------------------------------------|
+| PCMU (G.711 µ-law)     | 0            | 8 kHz       | Built-in | No extra extension required           |
+| PCMA (G.711 A-law)     | 8            | 8 kHz       | Built-in | No extra extension required           |
+| G.729                  | 18           | 8 kHz       | Optional | `bcg729` PHP extension                |
+| Opus                   | 111          | 48 kHz      | Optional | `opus` PHP extension                  |
+| L16 (Linear PCM)       | 96           | 8 kHz       | Built-in | `psampler` recommended for resampling |
+| telephone-event (DTMF) | 101          | 8 kHz       | Built-in | RFC 2833 for DTMF signaling           |
 
-### Suporte a Múltiplos Codecs
+Notes:
 
-O sistema de media channel (`rtpChannels.php`) suporta múltiplos codecs simultaneamente:
+- Multiple codecs can be offered via SDP. Use `mountLineCodecSDP()` to adjust preferences.
+- Some payload type values may vary depending on negotiation; verify with your provider.
 
-- **Negociação automática** - Múltiplos codecs podem ser oferecidos via SDP, o endpoint remoto seleciona um
-- **Detecção automática** - Identifica codecs pelos RTP payload types quando necessário
-- **Configuração runtime** - Use `mountLineCodecSDP()` para especificar codecs preferidos
-- **Fallback inteligente** - Padrão PCMU/PCMA se nenhum codec for especificado
-- **Troca entre chamadas** - Codecs diferentes podem ser usados em cada chamada
-- **Extensível** - Novos codecs podem ser adicionados facilmente ao sistema
+## Usage notes
 
-### Configurar Codec
+- Networking/NAT: ensure the local IP and ports the library binds to are reachable by the SIP peer. STUN/NAT traversal
+  is not included. TODO: document any helper utilities or best practices for NAT environments.
+- Security: this library focuses on basic SIP over UDP. TLS/SRTP are not documented here. TODO: clarify TLS/SRTP support
+  status.
 
-```php
-// Configurar codec específico
-$phone->mountLineCodecSDP('opus/48000');  // Opus
-$phone->mountLineCodecSDP('L16/8000');    // PCM linear
-$phone->mountLineCodecSDP('G729/8000');   // G.729
+## Tests
 
-// Padrão: PCMU/PCMA (automático)
-```
+- There are no automated tests in the repository at this time.
+- TODO: add unit/integration tests for SIP message parsing, RTP timing, DTMF, and example call flows.
 
-## API e Eventos
+## License
 
-### Métodos Principais
+This project is licensed under the MIT License. See `LICENSE` for details.
 
-```php
-// Registro e chamadas
-$phone->register(int $expires): bool
-$phone->call(string $number): void
-
-// Eventos
-$phone->onRinging(callable $callback): void
-$phone->onAnswer(callable $callback): void
-$phone->onHangup(callable $callback): void
-$phone->onReceiveAudio(callable $callback): void
-
-// Mídia
-$phone->receiveMedia(): void
-$phone->send2833(string $digit): void
-$phone->saveBufferToWavFile(string $filename, string $pcmData): void
-```
-
-### Fluxo de Chamada
-
-```
-1. REGISTRO
-   PHP → [REGISTER] → SIP Server → [200 OK] → PHP
-
-2. CHAMADA
-   PHP → [INVITE+SDP] → SIP Server → [180 Ringing] → PHP (onRinging)
-       ← [200 OK+SDP] ←            → [ACK] →
-
-3. MÍDIA RTP (Bidirecional)
-   PHP ⇄ [RTP Packets] ⇄ Destino (onReceiveAudio)
-
-4. ENCERRAMENTO
-   PHP → [BYE] → Destino → [200 OK] → PHP (onHangup)
-```
-
-## Exemplos Avançados
-
-<details>
-<summary><b>Exemplo 1: Usar Opus para Chamadas</b></summary>
-
-```php
-<?php
-include 'plugins/autoloader.php';
-
-\Swoole\Coroutine\run(function () {
-    $phone = new trunkController('user', 'pass', 'sip.example.com', 5060);
-    $phone->register(2);
-
-    // Criar codec Opus
-    $opus = new opusChannel(48000, 1);
-    $opus->setBitrate(24000);
-    $opus->setVBR(true);
-    $opus->setDTX(true);
-
-    $phone->mountLineCodecSDP('opus/48000');
-
-    $phone->onReceiveAudio(function ($pcm, $peer, $phone) use ($opus) {
-        // Melhorar clareza da voz
-        $enhanced = $opus->enhanceVoiceClarity($pcm, 0.7);
-        $phone->bufferAudio .= $enhanced;
-    });
-
-    $phone->call('5511999999999');
-});
-```
-
-</details>
-
-<details>
-<summary><b>Exemplo 2: Transcodificar Áudio</b></summary>
-
-```php
-<?php
-// PCMU → PCM → Opus
-$pcmuData = file_get_contents('audio.pcmu');
-$pcm = decodePcmuToPcm($pcmuData);
-$pcm48k = resampler($pcm, 8000, 48000);
-
-$opus = new opusChannel(48000, 1);
-$opusData = $opus->encode($pcm48k);
-file_put_contents('audio.opus', $opusData);
-```
-
-</details>
-
-<details>
-<summary><b>Exemplo 3: G.729 Alta Compressão</b></summary>
-
-```php
-<?php
-$g729 = new bcg729Channel();
-$pcm = file_get_contents('audio.pcm');
-$g729Data = $g729->encode($pcm);
-
-echo "Compressão: " . round((1 - strlen($g729Data)/strlen($pcm)) * 100) . "%\n";
-```
-
-</details>
-
-## Limitações
-
-| Item                     | Status                                       |
-|--------------------------|----------------------------------------------|
-| IPv6                     | Não suportado                                |
-| SRTP/TLS                 | Sem criptografia                             |
-| Chamadas de entrada      | Apenas saída (servidor SIP não implementado) |
-| Codec switching mid-call | Não suportado (requer re-INVITE)             |
-
-## Contribuindo
-
-Contribuições são bem-vindas!
-
-1. Fork o repositório
-2. Crie uma branch (`git checkout -b feature/minha-feature`)
-3. Commit suas mudanças (`git commit -m 'Add: nova funcionalidade'`)
-4. Push para a branch (`git push origin feature/minha-feature`)
-5. Abra um Pull Request
-
-## Licença
-
-Este projeto está licenciado sob a **MIT License** - veja o arquivo [LICENSE](LICENSE) para detalhes.
-
-### Dependências de Terceiros
-
-| Projeto    | Licença    | Link                                               |
-|------------|------------|----------------------------------------------------|
-| **Swoole** | Apache 2.0 | https://github.com/swoole/swoole-src               |
-| **bcg729** | GPL-3.0    | https://github.com/BelledonneCommunications/bcg729 |
-| **Opus**   | BSD        | https://opus-codec.org/                            |
-
-⚠️ **Nota**: As extensões PHP (bcg729, opus, psampler) mantêm suas próprias licenças. Consulte os repositórios
-individuais.
-
-## Roadmap
-
-- [ ] Chamadas de entrada (servidor SIP)
-- [ ] SRTP/TLS para segurança
-- [ ] Suporte IPv6
-- [ ] Framework de testes (PHPUnit)
-- [ ] Suporte G.722 wideband
-- [ ] Documentação API completa
-
-## Suporte
-
-- **Issues**: [GitHub Issues](https://github.com/berzersks/libspech/issues)
-- **Discussões**: [GitHub Discussions](https://github.com/berzersks/libspech/discussions)
-
----
-
-## Créditos
-
-**Desenvolvido por**: [berzersks](https://github.com/berzersks)
-
-**Agradecimentos**: Swoole Team, Belledonne Communications, Xiph.Org Foundation, IETF, Comunidade PHP VoIP
-
-**Tecnologias**: PHP 8.4+ | Swoole 6.0+ | SIP (RFC 3261) | RTP/RTCP (RFC 3550) | SDP (RFC 4566)
-
----
-
-**Desenvolvido para a comunidade PHP VoIP**
+Third-party components may be under different licenses (Swoole, codec extensions). Review their LICENSE files before use
+in production.

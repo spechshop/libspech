@@ -1,10 +1,14 @@
 <?php
 
-use Plugin\Utils\cli;
-use sip\AudioQualityDetector;
+namespace libspech\Rtp;
+
+use bcg729Channel;
+use Closure;
+use libspech\Cli\cli;
+use libspech\Sip\AudioQualityDetector;
+use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
-use Swoole\StringObject;
 
 class MediaChannel
 {
@@ -384,6 +388,7 @@ class MediaChannel
                     $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->ptCodecsFrequency[$codec] ?? 8000, 20, $ssrc);
                     $this->rtpChans[$ssrc]->sequenceNumber = $rtpc->sequence++;
                     $this->rtpChans[$ssrc]->timestamp = $rtpc->timestamp;
+                    $this->rtpChans[$ssrc]->bcg729Channel = new bcg729Channel();
                 }
 
                 if (!$this->isMember($idFrom)) {
@@ -396,6 +401,7 @@ class MediaChannel
                         'timestamp' => $rtpc->timestamp,
                         'config' => $this->options['config'] ?? [],
                         'opus' => $this->members[$idFrom]['opus'] ?? null,
+
                         'frequency' => $this->resolveFrequencyFromPt($rtpc->getCodec()) ?? 8000,
                     ]);
                 }

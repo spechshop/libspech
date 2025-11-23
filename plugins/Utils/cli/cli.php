@@ -1,8 +1,7 @@
 <?php
 
-namespace Plugin\Utils;
+namespace libspech\Cli;
 
-use plugins\Utils\cache;
 use Swoole\Coroutine;
 
 class cli

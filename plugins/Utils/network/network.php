@@ -1,8 +1,9 @@
 <?php
 
-namespace plugin\Utils;
+namespace libspech\Network;
 
-use plugins\Utils\cache;
+use libspech\Cache\cache;
+use libspech\Cli\cli;
 use Swoole\Coroutine\Socket;
 
 class network

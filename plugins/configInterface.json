@@ -3,6 +3,7 @@
     "Utils/cache",
     "Utils/cli",
     "Utils/sip",
+    "Utils/libspech",
     "Utils/network",
     "Packet/controller"
   ],

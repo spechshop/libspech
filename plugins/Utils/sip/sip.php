@@ -1,11 +1,10 @@
 <?php
 
+namespace libspech\Sip;
 
-use Plugin\Utils\cli;
-use plugins\Utils\cache;
-use Swoole\Coroutine;
-use Swoole\Coroutine\Socket;
-
+use libspech\Cache\cache;
+use libspech\Cli\cli;
+use libspech\Network\network;
 
 #[AllowDynamicProperties]
 class sip
@@ -544,7 +543,7 @@ class sip
             $solution['headers']['Date'] = [date('D, d M Y H:i:s T')];
 
         if (!array_key_exists('X-Originating-IP', $solution['headers'])) $solution['headers']['X-Originating-IP'] = [];
-        $solution['headers']['X-Originating-IP'][] = \plugin\Utils\network::getLocalIp();
+        $solution['headers']['X-Originating-IP'][] = network::getLocalIp();
         if (!array_key_exists('method', $solution)) {
             var_dump($solution);
 

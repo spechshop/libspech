@@ -1,5 +1,9 @@
 <?php
 
+namespace libspech\Rtp;
+
+use InvalidArgumentException;
+
 class DtmfEvent
 {
     // Dígitos 0-9

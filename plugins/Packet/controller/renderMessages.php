@@ -1,10 +1,10 @@
 <?php
 
-namespace handlers;
+namespace libspech\Packet;
 
-use plugin\Utils\network;
-use plugins\Utils\cache;
-use sip;
+use libspech\Cache\cache;
+use libspech\Network\network;
+use libspech\Sip\sip;
 
 class renderMessages
 {
@@ -16,14 +16,14 @@ class renderMessages
                 'host' => network::getLocalIp()
             ]
         ];
-        $headers200['Contact'][0] = \sip::renderURI($contactUri);
+        $headers200['Contact'][0] = sip::renderURI($contactUri);
         $headers200['CSeq'][0] = intval($headers200['CSeq'][0]) + 1 . " BYE";
         $headers200['Content-Length'][0] = "0";
         if (!empty($headers200['Authorization'])) unset($headers200['Authorization']);
         if (!empty($headers200['Proxy-Authorization'])) unset($headers200['Proxy-Authorization']);
         return [
             "method" => "BYE",
-            "methodForParser" => "BYE sip:" . \sip::extractUri($headers200['From'][0])['user'] . "@" . network::getLocalIp() . " SIP/2.0",
+            "methodForParser" => "BYE sip:" . sip::extractUri($headers200['From'][0])['user'] . "@" . network::getLocalIp() . " SIP/2.0",
             "headers" => $headers200
         ];
     }
@@ -60,7 +60,7 @@ class renderMessages
             "headers" => array_merge($baseHeaders, $additionalHeaders)
         ];
 
-        return \sip::renderSolution($response);
+        return sip::renderSolution($response);
     }
 
     public static function respondForbidden(array $headers, string $message = "Forbidden"): string
@@ -77,7 +77,7 @@ class renderMessages
                 'port' => cache::global()['interface']['server']['port']
             ]
         ];
-        $headers['Contact'][0] = \sip::renderURI($contactUri);
+        $headers['Contact'][0] = sip::renderURI($contactUri);
 
         $additionalHeaders = [
             "Contact" => [$headers['Contact'][0]],
@@ -103,9 +103,9 @@ class renderMessages
 
     public static function respondAckModel(array $headers): string
     {
-        return \sip::renderSolution([
+        return sip::renderSolution([
             "method" => "ACK",
-            "methodForParser" => "ACK sip:" . \sip::extractUri($headers['From'][0])['user'] . "@" . network::getLocalIp() . " SIP/2.0",
+            "methodForParser" => "ACK sip:" . sip::extractUri($headers['From'][0])['user'] . "@" . network::getLocalIp() . " SIP/2.0",
             "headers" => [
                 "Via" => $headers['Via'],
                 "From" => $headers['From'],
@@ -135,7 +135,7 @@ class renderMessages
                 "headers" => array_merge($headers, $additionalHeaders),
                 "body" => $body
             ];
-            return \sip::renderSolution($response);
+            return sip::renderSolution($response);
         }
 
         return self::baseResponse($headers, "200", "OK");
@@ -183,8 +183,8 @@ class renderMessages
 
     public static function modelMessage(array $headers, $message = "")
     {
-        $uriFromBackup = \sip::extractUri($headers['From'][0]);
-        $uriToBackup = \sip::extractUri($headers['To'][0]);
+        $uriFromBackup = sip::extractUri($headers['From'][0]);
+        $uriToBackup = sip::extractUri($headers['To'][0]);
         $info = ['address' => $uriFromBackup['peer']['host'], 'port' => $uriFromBackup['peer']['port']];
 
         $model = [
@@ -235,7 +235,7 @@ class renderMessages
             ]
         ])];
 
-        $uriContact = \sip::extractUri($headers['Contact'][0]);
+        $uriContact = sip::extractUri($headers['Contact'][0]);
         $uriContact['peer']['host'] = network::getLocalIp();
         $uriContact['peer']['port'] = $respondPort;
         $Ce = str_replace(['<', '>'], '', $headers['Contact'][0]);
