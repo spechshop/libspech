@@ -2,13 +2,16 @@
 
 **Biblioteca PHP completa para comunicação de voz real via SIP/RTP**
 
-Uma implementação robusta do protocolo SIP (Session Initiation Protocol) com suporte total a streaming de áudio RTP/RTCP em tempo real, construída com corrotinas Swoole para alto desempenho. Esta biblioteca permite que aplicações PHP realizem chamadas VoIP reais com transmissão e recepção de áudio bidirecional.
+Uma implementação robusta do protocolo SIP (Session Initiation Protocol) com suporte total a streaming de áudio RTP/RTCP
+em tempo real, construída com corrotinas Swoole para alto desempenho. Esta biblioteca permite que aplicações PHP
+realizem chamadas VoIP reais com transmissão e recepção de áudio bidirecional.
 
 ## Visão Geral
 
 **libspech** é uma biblioteca SIP funcional e completa que fornece:
 
 ### Comunicação de Voz Real
+
 - **Chamadas VoIP bidirecionais completas** - Transmissão e recepção simultânea de áudio
 - **Streaming RTP em tempo real** - Envio e recebimento de pacotes de áudio via protocolo RTP
 - **Suporte a múltiplos codecs** - PCMU (G.711 μ-law), PCMA (G.711 A-law), G.729
@@ -16,12 +19,14 @@ Uma implementação robusta do protocolo SIP (Session Initiation Protocol) com s
 - **Conversão de codecs** - Encoding/decoding entre PCM, PCMA e PCMU
 
 ### Funcionalidades SIP
+
 - **Registro SIP com autenticação** - Suporte completo a MD5 Digest Authentication
 - **Gerenciamento de chamadas** - INVITE, ACK, BYE, CANCEL
 - **Negociação SDP** - Session Description Protocol para configuração de mídia
 - **Arquitetura orientada a eventos** - Callbacks assíncronos para todos os estados de chamada
 
 ### Características Técnicas
+
 - **Assíncrono e não-bloqueante** - Baseado em corrotinas Swoole
 - **Alta performance** - Processamento eficiente de pacotes UDP
 - **Baixa latência** - Streaming direto de áudio sem buffers desnecessários
@@ -47,7 +52,8 @@ cd libspech
 
 ### Instalar Dependências
 
-O projeto usa um **autoloader personalizado** configurado em `plugins/configInterface.json`. Não há dependências via Composer.
+O projeto usa um **autoloader personalizado** configurado em `plugins/configInterface.json`. Não há dependências via
+Composer.
 
 Certifique-se de que a extensão Swoole esteja instalada:
 
@@ -67,6 +73,7 @@ php -m | grep swoole
 Para suporte a codecs adicionais:
 
 **bcg729** (Codec G.729):
+
 ```bash
 git clone https://github.com/berzersks/bcg729.git
 cd bcg729
@@ -77,6 +84,7 @@ sudo make install
 ```
 
 **opus** (Codec Opus):
+
 ```bash
 git clone https://github.com/berzersks/opus.git
 cd opus
@@ -87,6 +95,7 @@ sudo make install
 ```
 
 **psampler** (Audio sampling utilities):
+
 ```bash
 git clone https://github.com/berzersks/psampler.git
 cd psampler
@@ -97,10 +106,11 @@ sudo make install
 ```
 
 Adicione as extensões ao seu `php.ini`:
+
 ```ini
-extension=bcg729.so
-extension=opus.so
-extension=psampler.so
+extension = bcg729.so
+extension = opus.so
+extension = psampler.so
 ```
 
 ## Uso
@@ -217,16 +227,16 @@ libspech/
 
 ### Componentes Principais
 
-| Componente | Responsabilidade | Função na Comunicação de Voz |
-|------------|------------------|------------------------------|
+| Componente              | Responsabilidade          | Função na Comunicação de Voz                                |
+|-------------------------|---------------------------|-------------------------------------------------------------|
 | **trunkController.php** | Controlador SIP principal | Registro no servidor SIP, criação/gerenciamento de chamadas |
-| **phone.php** | Gerenciamento de chamadas | Controle de estados (ringing, answered, hangup) |
-| **sip.php** | Protocolo SIP | Parser/render de mensagens SIP e SDP |
-| **rtpChannels.php** | Transmissão de áudio | Criação e envio de pacotes RTP com áudio codificado |
-| **rtpc.php** | Recepção de áudio | Parsing de pacotes RTP recebidos e extração de áudio |
-| **renderMessages.php** | Mensagens SIP | Renderização de respostas SIP (200 OK, ACK, etc.) |
-| **network.php** | Rede | Resolução de IPs e gerenciamento de portas UDP |
-| **cache.php** | Estado global | Cache de sessões e dados temporários |
+| **phone.php**           | Gerenciamento de chamadas | Controle de estados (ringing, answered, hangup)             |
+| **sip.php**             | Protocolo SIP             | Parser/render de mensagens SIP e SDP                        |
+| **rtpChannels.php**     | Transmissão de áudio      | Criação e envio de pacotes RTP com áudio codificado         |
+| **rtpc.php**            | Recepção de áudio         | Parsing de pacotes RTP recebidos e extração de áudio        |
+| **renderMessages.php**  | Mensagens SIP             | Renderização de respostas SIP (200 OK, ACK, etc.)           |
+| **network.php**         | Rede                      | Resolução de IPs e gerenciamento de portas UDP              |
+| **cache.php**           | Estado global             | Cache de sessões e dados temporários                        |
 
 ## Scripts
 
@@ -238,6 +248,7 @@ php example.php
 ```
 
 **Importante**: Edite `example.php` e configure suas credenciais SIP reais antes de executar:
+
 - `$username`: Seu nome de usuário SIP
 - `$password`: Sua senha SIP
 - `$domain`: Domínio do servidor SIP
@@ -264,7 +275,8 @@ O autoloader é configurado via `plugins/configInterface.json`:
 
 ### Variáveis de Ambiente
 
-Atualmente, nenhuma variável de ambiente é necessária. Toda a configuração é feita programaticamente através do construtor da classe `trunkController`:
+Atualmente, nenhuma variável de ambiente é necessária. Toda a configuração é feita programaticamente através do
+construtor da classe `trunkController`:
 
 ```php
 $phone = new trunkController(
@@ -276,6 +288,7 @@ $phone = new trunkController(
 ```
 
 **Configurações adicionais**:
+
 - `$phone->prefix`: Prefixo de discagem (opcional)
 - `$phone->mountLineCodecSDP()`: Configurar codec preferido
 - `$phone->connectTimeout`: Timeout de conexão em segundos (padrão: 30)
@@ -284,26 +297,28 @@ $phone = new trunkController(
 
 A biblioteca oferece suporte completo aos seguintes codecs com **conversão automática**:
 
-| Codec | Payload Type | Taxa de Amostragem | Descrição | Status | Extensão |
-|-------|--------------|-------------------|-----------|---------|----------|
-| **PCMU (G.711 μ-law)** | 0 | 8000 Hz | Codec padrão para América do Norte e Japão | Completo | Nativa |
-| **PCMA (G.711 A-law)** | 8 | 8000 Hz | Codec padrão para Europa e resto do mundo | Completo | Nativa |
-| **G.729** | 18 | 8000 Hz | Codec comprimido de alta qualidade | Completo | [bcg729](https://github.com/berzersks/bcg729) |
-| **Opus** | 111 | 48000 Hz | Codec de alta qualidade e baixa latência | Em desenvolvimento | [opus](https://github.com/berzersks/opus) |
-| **L16** | 96 | 8000 Hz | PCM linear 16-bit | Completo | [psampler](https://github.com/berzersks/psampler) |
-| **telephone-event** | 101 | 8000 Hz | Eventos DTMF (tons de teclado) | Suportado | Nativa |
+| Codec                  | Payload Type | Taxa de Amostragem | Descrição                                  | Status             | Extensão                                          |
+|------------------------|--------------|--------------------|--------------------------------------------|--------------------|---------------------------------------------------|
+| **PCMU (G.711 μ-law)** | 0            | 8000 Hz            | Codec padrão para América do Norte e Japão | Completo           | Nativa                                            |
+| **PCMA (G.711 A-law)** | 8            | 8000 Hz            | Codec padrão para Europa e resto do mundo  | Completo           | Nativa                                            |
+| **G.729**              | 18           | 8000 Hz            | Codec comprimido de alta qualidade         | Completo           | [bcg729](https://github.com/berzersks/bcg729)     |
+| **Opus**               | 111          | 48000 Hz           | Codec de alta qualidade e baixa latência   | Em desenvolvimento | [opus](https://github.com/berzersks/opus)         |
+| **L16**                | 96           | 8000 Hz            | PCM linear 16-bit                          | Completo           | [psampler](https://github.com/berzersks/psampler) |
+| **telephone-event**    | 101          | 8000 Hz            | Eventos DTMF (tons de teclado)             | Suportado          | Nativa                                            |
 
 ### Conversão de Codecs
 
 A biblioteca inclui funções nativas e extensões para conversão de áudio:
 
 **Funções Nativas** (built-in):
+
 - `encodePcmToPcma()` / `decodePcmaToPcm()` - PCM ↔ A-law
 - `encodePcmToPcmu()` / `decodePcmuToPcm()` - PCM ↔ μ-law
 - `linear2alaw()` / `alaw2linear()` - Conversão linear para A-law
 - `linear2ulaw()` / `ulaw2linear()` - Conversão linear para μ-law
 
 **Extensão bcg729**:
+
 - `decodePcmaToPcm(string $input): string` - PCMA para PCM
 - `decodePcmuToPcm(string $input): string` - PCMU para PCM
 - `pcmLeToBe(string $input): string` - Little-endian para Big-endian
@@ -351,6 +366,7 @@ Esta biblioteca é ideal para:
 ## Funcionalidades
 
 ### Protocolo SIP
+
 - Registro SIP com autenticação MD5 Digest
 - Suporte a métodos: REGISTER, INVITE, ACK, BYE, CANCEL
 - Parsing completo de mensagens SIP
@@ -358,6 +374,7 @@ Esta biblioteca é ideal para:
 - Gerenciamento de Call-ID, tags, branches
 
 ### Mídia RTP/RTCP
+
 - **Transmissão RTP** - Envio de pacotes de áudio em tempo real
 - **Recepção RTP** - Parsing e decodificação de áudio recebido
 - **RTCP** - Relatórios de qualidade e sincronização
@@ -365,12 +382,14 @@ Esta biblioteca é ideal para:
 - **Conversão de codecs** - Encoding/decoding automático
 
 ### Eventos e Callbacks
+
 - `onRinging()` - Chamada tocando no destino
 - `onAnswer(trunkController $phone)` - Chamada atendida
 - `onHangup(trunkController $phone)` - Chamada encerrada
 - `onReceiveAudio($pcmData, $peer, trunkController $phone)` - Áudio recebido em tempo real
 
 ### Funcionalidades Adicionais
+
 - `send2833($digit)` - Envio de tons DTMF (RFC 2833)
 - `saveBufferToWavFile($filename, $pcmData)` - Salvar áudio em arquivo WAV
 - `receiveMedia()` - Iniciar recepção de mídia RTP
@@ -400,6 +419,7 @@ php example.php
 ```
 
 ### TODO: Framework de Testes
+
 - [ ] Adicionar PHPUnit para testes unitários
 - [ ] Testes de integração com servidor SIP mock
 - [ ] Testes de codecs de áudio
@@ -429,6 +449,7 @@ Informações de licença não especificadas. Por favor, contate o autor para de
 - **Tecnologias**: PHP 8.4+, Swoole, SIP/RTP/RTCP
 
 ### Extensões PHP Relacionadas
+
 - **bcg729**: https://github.com/berzersks/bcg729 - Codec G.729 para PHP
 - **opus**: https://github.com/berzersks/opus - Codec Opus para PHP
 - **psampler**: https://github.com/berzersks/psampler - Utilitários de amostragem de áudio
@@ -437,16 +458,16 @@ Informações de licença não especificadas. Por favor, contate o autor para de
 
 ## Tecnologias Utilizadas
 
-| Tecnologia | Versão | Descrição |
-|------------|--------|-----------|
-| **PHP** | 8.4.13+ | Linguagem principal |
-| **Swoole** | 6.0+ | Framework assíncrono e corrotinas |
-| **SIP** | RFC 3261 | Session Initiation Protocol |
-| **RTP/RTCP** | RFC 3550 | Real-time Transport Protocol |
-| **SDP** | RFC 4566 | Session Description Protocol |
-| **bcg729** | 1.0 (Opcional) | Codec G.729 |
-| **opus** | 1.0 (Opcional) | Codec Opus com recursos avançados |
-| **psampler** | 1.0 (Opcional) | Resampling de áudio |
+| Tecnologia   | Versão         | Descrição                         |
+|--------------|----------------|-----------------------------------|
+| **PHP**      | 8.4.13+        | Linguagem principal               |
+| **Swoole**   | 6.0+           | Framework assíncrono e corrotinas |
+| **SIP**      | RFC 3261       | Session Initiation Protocol       |
+| **RTP/RTCP** | RFC 3550       | Real-time Transport Protocol      |
+| **SDP**      | RFC 4566       | Session Description Protocol      |
+| **bcg729**   | 1.0 (Opcional) | Codec G.729                       |
+| **opus**     | 1.0 (Opcional) | Codec Opus com recursos avançados |
+| **psampler** | 1.0 (Opcional) | Resampling de áudio               |
 
 ---
 
@@ -472,6 +493,7 @@ $g729->close();
 ```
 
 **Funções auxiliares**:
+
 ```php
 // Converter PCMA para PCM
 $pcm = decodePcmaToPcm($pcmaData);
@@ -521,10 +543,12 @@ $opus->destroy();
 ```
 
 **Parâmetros do construtor**:
+
 - `$sample_rate`: Taxa de amostragem (8000, 12000, 16000, 24000, 48000 Hz)
 - `$channels`: Número de canais (1=mono, 2=stereo)
 
 **Novos métodos adicionados**:
+
 - `resample()` - Reamostrar PCM entre diferentes taxas
 - `enhanceVoiceClarity()` - Redução de ruído e melhoria de voz
 - `spatialStereoEnhance()` - Efeito espacial para áudio estéreo
@@ -543,6 +567,7 @@ $pcmBE = resampler($pcmLE, 8000, 16000, true);
 ```
 
 **Parâmetros**:
+
 - `$input`: Dados PCM de entrada (string)
 - `$src_rate`: Taxa de amostragem de origem (Hz)
 - `$dst_rate`: Taxa de amostragem de destino (Hz)
@@ -687,6 +712,7 @@ Esta biblioteca implementa **comunicação de voz bidirecional completa**:
 ### Diferencial
 
 Ao contrário de muitas bibliotecas SIP em PHP que apenas gerenciam sinalização, **libspech** é uma solução completa que:
+
 - Registra e autentica com servidores SIP
 - Negocia parâmetros de mídia via SDP
 - **Transmite e recebe áudio real via RTP**
@@ -700,6 +726,7 @@ Ao contrário de muitas bibliotecas SIP em PHP que apenas gerenciam sinalizaçã
 **Status**: Funcional e em desenvolvimento ativo
 
 ### Características Atuais
+
 - Registro SIP com autenticação
 - Chamadas VoIP bidirecionais
 - Transmissão e recepção RTP
@@ -708,6 +735,7 @@ Ao contrário de muitas bibliotecas SIP em PHP que apenas gerenciam sinalizaçã
 - DTMF (RFC 2833)
 
 ### Roadmap
+
 - [ ] Suporte a chamadas de entrada (servidor SIP)
 - [ ] Implementar SRTP/TLS para segurança
 - [ ] Suporte a IPv6
@@ -722,6 +750,7 @@ Ao contrário de muitas bibliotecas SIP em PHP que apenas gerenciam sinalizaçã
 ## Suporte
 
 Para dúvidas, sugestões ou reportar problemas:
+
 - **Issues**: [GitHub Issues](https://github.com/berzersks/libspech/issues)
 - **Discussões**: [GitHub Discussions](https://github.com/berzersks/libspech/discussions)
 
