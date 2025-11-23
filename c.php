@@ -239,5 +239,6 @@ function generateClassStubs(array $allowFilters)
 
 
 // 🔧 Filtrar classes permitidas
-generateClassStubs(['bcg729']);
+include 'plugins/autoloader.php';
+generateClassStubs(['bcg729', 'trunkController']);
 echo "✅ Stubs gerados com namespaces e estrutura de pasta: ./stubs\n";
