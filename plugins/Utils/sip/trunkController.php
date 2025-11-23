@@ -493,27 +493,6 @@ class trunkController
         return $result;
     }
 
-    public static function getModelCodecs(array $codecs = [
-        8,
-        101,
-    ]): array
-    {
-        $codecMediaLine = "";
-        $codecRtpMap = [];
-        foreach ($codecs as $codec) {
-            if (array_key_exists($codec, self::$supportedCodecStatic)) {
-                $codecMediaLine .= "{$codec} ";
-                foreach (self::$supportedCodecStatic[$codec] as $line) {
-                    $codecRtpMap[] = $line;
-                }
-            }
-        }
-        return [
-            "codecMediaLine" => trim($codecMediaLine),
-            "codecRtpMap" => $codecRtpMap,
-        ];
-    }
-
     public static function getWavDuration($file): string
     {
         if (!file_exists($file)) {
