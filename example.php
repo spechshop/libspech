@@ -1,12 +1,9 @@
 <?php
 
-ini_set('memory_limit', '1024M');
 
 use libspech\Cli\cli;
 use libspech\Sip\trunkController;
 
-
-\Swoole\Runtime::setHookFlags(SWOOLE_HOOK_SLEEP | SWOOLE_HOOK_ALL);
 
 
 include 'plugins/autoloader.php';
@@ -43,7 +40,7 @@ include 'plugins/autoloader.php';
 
         \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
 
-        $phone->send2833(42017165204, 160);
+        $phone->send2833('123*', 160);
 
         \libspech\Sip\interruptibleSleep(30, $phone->receiveBye);
 
@@ -54,16 +51,8 @@ include 'plugins/autoloader.php';
         cli::pcl("Digitando: " . $event, "yellow");
     });
     $phone->prefix = 4479;
-    $phone->call('5569999037733');
-        //$phone->call('551140040104');
-
-        // Aguardar um pouco para garantir que tudo finalizou
-        // \Swoole\Coroutine::sleep(0.5);
-
-        cli::pcl("Script finalizado", "green");
-
-
-        //\Swoole\Coroutine::sleep(5);
+    $phone->call('5511992377163');
+       
         cli::pcl("Processo cancelado", "red");
 
         $phone->close();
