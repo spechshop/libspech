@@ -1,6 +1,9 @@
 # libspech
 
+[![PHP Version](https://img.shields.io/badge/PHP-8.4+-blue.svg)](https://www.php.net/)
+[![Swoole](https://img.shields.io/badge/Swoole-6.0+-green.svg)](https://www.swoole.com/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 
 Real-time SIP/RTP VoIP library for PHP using Swoole coroutines. Place and receive calls from PHP, stream RTP audio,
 handle DTMF, and record audio.
@@ -66,13 +69,17 @@ Edit the credentials and destination inside `example.php` and run:
 php example.php
 ```
 
-Minimal usage sketch:
+## Examples
+
+### 1) Outbound call, receive media, send DTMF, and record audio
 
 ```php
 <?php
 use libspech\Sip\trunkController;
 
 include 'plugins/autoloader.php';
+
+\Swoole\Runtime::setHookFlags(SWOOLE_HOOK_SLEEP | SWOOLE_HOOK_ALL);
 
 \Swoole\Coroutine\run(function () {
     $username = 'your_username';
@@ -82,12 +89,20 @@ include 'plugins/autoloader.php';
 
     $phone = new trunkController($username, $password, $host, 5060);
 
+    // Optional: set maximum call timeout (seconds)
+    $phone->defineTimeout(20);
+
     if (!$phone->register(2)) {
         throw new \Exception('Failed to register');
     }
 
-    // Offer a linear PCM line in SDP (optional)
-    $phone->mountLineCodecSDP('L16/8000');
+    // Choose an SDP codec line to advertise (examples: 'G729/8000', 'PCMA/8000', 'PCMU/8000', 'L16/8000')
+    $phone->mountLineCodecSDP('G729/8000');
+
+    // Capture received PCM in-memory
+    $phone->onReceiveAudio(function ($pcmData, $peer, trunkController $phone) {
+        $phone->bufferAudio .= $pcmData;
+    });
 
     $phone->onRinging(function () {
         echo "Ringing...\n";
@@ -95,22 +110,102 @@ include 'plugins/autoloader.php';
 
     $phone->onAnswer(function (trunkController $phone) {
         echo "Answered. Receiving media...\n";
+        // Start media receive loop
         $phone->receiveMedia();
-        \Swoole\Coroutine::sleep(10);
-    });
 
-    $phone->onReceiveAudio(function ($pcmData, $peer, trunkController $phone) {
-        $phone->bufferAudio .= $pcmData; // capture raw PCM
+        // Wait up to 10s or until peer hangs up (interruptible)
+        \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
+
+        // Send RFC2833 DTMF (digits, durationMs)
+        $phone->send2833('123#', 160);
+
+        // Keep call alive for more media
+        \libspech\Sip\interruptibleSleep(30, $phone->receiveBye);
     });
 
     $phone->onHangup(function (trunkController $phone) {
+        // Persist captured audio as mono 16-bit PCM WAV @8kHz
         $phone->saveBufferToWavFile('audio.wav', $phone->bufferAudio);
+        echo "Saved audio.wav\n";
+    });
+
+    // Optional: react to peer DTMF
+    $phone->onKeyPress(function ($event, $peer) use ($phone) {
+        echo "Peer pressed: {$event}\n";
+    });
+
+    // Dial
+    $phone->call('15555551234');
+});
+```
+
+### 2) Play an audio file to the peer during the call
+
+```php
+<?php
+use libspech\Sip\trunkController;
+
+include 'plugins/autoloader.php';
+
+\Swoole\Coroutine\run(function () {
+    $phone = new trunkController('user', 'pass', gethostbyname('sip.example.com'), 5060);
+    if (!$phone->register(2)) {
+        throw new \Exception('Failed to register');
+    }
+
+    // Select a codec compatible with your media file/peer
+    $phone->mountLineCodecSDP('PCMA/8000');
+
+    // Point to a WAV/PCM source you want to send (repo includes music.wav)
+    $phone->defineAudioFile(__DIR__ . '/music.wav');
+
+    $phone->onAnswer(function (trunkController $phone) {
+        // Start RTP media; the library will read and transmit frames from the file
+        $phone->receiveMedia();
+    });
+
+    $phone->call('15555551234');
+});
+```
+
+### 3) Record only: save the remote audio to a WAV file
+
+```php
+<?php
+use libspech\Sip\trunkController;
+
+include 'plugins/autoloader.php';
+
+\Swoole\Coroutine\run(function () {
+    $phone = new trunkController('user', 'pass', gethostbyname('sip.example.com'), 5060);
+    $phone->mountLineCodecSDP('PCMU/8000');
+    if (!$phone->register(2)) {
+        throw new \Exception('Failed to register');
+    }
+
+    $phone->onReceiveAudio(function ($pcmData, $peer, trunkController $phone) {
+        $phone->bufferAudio .= $pcmData;
+    });
+
+    $phone->onAnswer(function (trunkController $phone) {
+        $phone->receiveMedia();
+        \Swoole\Coroutine::sleep(15);
+    });
+
+    $phone->onHangup(function (trunkController $phone) {
+        $phone->saveBufferToWavFile(__DIR__ . '/audio.wav', $phone->bufferAudio);
         echo "Saved audio.wav\n";
     });
 
     $phone->call('15555551234');
 });
 ```
+
+Tips:
+
+- Make sure your SIP peer accepts the codec line you advertise with `mountLineCodecSDP()`.
+- Use `defineTimeout()` to cap how long a call can ring or remain active without media.
+- Use `interruptibleSleep(seconds, $phone->receiveBye)` to wait while still being able to abort on hangup.
 
 ## Scripts and entry points
 
