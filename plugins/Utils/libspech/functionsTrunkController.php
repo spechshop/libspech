@@ -3,6 +3,7 @@
 namespace libspech\Sip;
 
 use Exception;
+use Swoole\Coroutine;
 
 function secureAudioVoip(string $filename, bool $forceMono = true): bool
 {
@@ -198,7 +199,6 @@ function wavChunks(string $file)
         die("Não é WAV válido.\n");
     }
 
-    echo "OK: Arquivo RIFF/WAVE\n\n";
 
     $len = strlen($raw);
 
@@ -216,15 +216,9 @@ function wavChunks(string $file)
         $dataStart = $pos + 8;
         $dataEnd = $dataStart + $size;
 
-        echo "--------------------------------------\n";
-        echo "Chunk:        $id\n";
-        echo "Offset:       $start\n";
-        echo "Size:         $size\n";
-        echo "Data begins:  $dataStart\n";
-        echo "Data ends:    $dataEnd\n";
 
         if ($dataEnd > $len) {
-            echo "⚠️  AVISO: chunk ultrapassa tamanho do arquivo!\n";
+
         }
 
         $chunks[] = [
@@ -241,18 +235,15 @@ function wavChunks(string $file)
         // alinhamento para byte par
         if ($pos % 2 === 1) {
             $pos++;
-            echo "(padding aplicado)\n";
+
         }
 
         if ($pos >= $len) break;
     }
 
-    echo "\n\nResumo dos chunks encontrados:\n";
+
     foreach ($chunks as $c) {
-        echo sprintf(
-            "- %-4s | start=%d | size=%d | end=%d\n",
-            $c['id'], $c['start'], $c['size'], $c['end']
-        );
+
     }
 
     return $chunks;
@@ -404,3 +395,34 @@ function encodePcmToPcmu(string $data): string
     }
     return $encoded;
 }
+
+
+/**
+ * Sleep interrompível que verifica condições a cada 100ms
+ * Permite que operações longas sejam interrompidas rapidamente
+ *
+ * @param int $ms Milissegundos para dormir
+ * @param trunkController|null $phone Instância do telefone para verificar closing/error
+ * @return bool Retorna true se completou, false se foi interrompido
+ */
+function interruptibleSleep(int $sec, &$abort): bool
+{
+    $totalWait = $sec / 1000; // Converter para segundos
+    $elapsed = 0;
+    $step = $totalWait;
+
+
+    $start = microtime(true);
+    while ($elapsed <= $sec) {
+        if ($abort) {
+            return false;
+        }
+        $elapsed += $step;
+        Coroutine::sleep($step);
+    }
+    $end = microtime(true);
+
+
+    return true; // Completou normalmente
+}
+

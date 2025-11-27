@@ -13,6 +13,7 @@ use libspech\Rtp\rtpChannel;
 use Random\RandomException;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
+use Swoole\Timer;
 
 class trunkController
 {
@@ -165,6 +166,11 @@ class trunkController
     private string|int|null $ptTelephoneEvent;
     private string|int|null $ptUse;
     private array $sdp;
+    public $bcgChannel;
+    private bool $closing = false;
+    private int $cid;
+    private array $idTimers = [];
+
 
     public function __construct(mixed $username, mixed $password, mixed $host, mixed $port = 5060, mixed $domain = false)
     {
@@ -179,6 +185,7 @@ class trunkController
         $this->onFailedCallback = null;
         $this->onAnswerCallback = null;
         $this->onRingingCallback = null;
+        $this->cid = Coroutine::getCid();
 
         if (str_contains($host, "http")) {
             $caseUrl = parse_url($host);
@@ -231,6 +238,7 @@ class trunkController
 
         /** @var ? $peer */
         print $this->socket->recvfrom($peer, 1);
+        $this->mediaChannel = false;
 
 
     }
@@ -481,34 +489,6 @@ class trunkController
         return in_array($username, $this->members);
     }
 
-    public function speakWait(int $int)
-    {
-        $this->speakWait = true;
-        $this->speakWaitTime = $int;
-        $this->speakTimeStart = microtime(true);
-        $this->lastSpeakTime = microtime(true);
-        $this->blockSpeak = true;
-        $this->startSpeak = false;
-        $this->speakWaitSequence = [];
-        while ($this->blockSpeak) {
-            if ($this->error) {
-                return false;
-            }
-            if (!$this->callActive) {
-                return false;
-            }
-            if ($this->receiveBye) {
-                return false;
-            }
-            if (microtime(true) - $this->speakTimeStart >= $int) {
-                return false;
-            }
-            Coroutine::sleep(0.1);
-        }
-        print cli::cl("bold_green", "Fim do tempo de espera para falar");
-        return true;
-    }
-
     public function saveGlobalInfo(string $key, $value): void
     {
         $this->globalInfo[$key] = $value;
@@ -625,20 +605,6 @@ class trunkController
         $this->fileRecord = $file;
     }
 
-    public function blockCoroutine(): bool
-    {
-        while (true) {
-            if ($this->error) {
-                break;
-            }
-            if ($this->receiveBye) {
-                break;
-            }
-            Coroutine::sleep(0.1);
-        }
-        return true;
-    }
-
     public function onFailed(Closure $callback): void
     {
         $this->onFailedCallback = $callback;
@@ -681,8 +647,20 @@ class trunkController
         if ($durationMs < 100) {
             $durationMs = 100;
         }
+        if (!is_a($this->rtpSocket, Socket::class)) {
+            return;
+        }
+        if ($this->closing || $this->error) {
+            return;
+        }
+
+
         foreach (str_split($digits, 1) as $digit) {
-            $sequences = $this->rtpChannel->generateDtmfSequence($digit, $durationMs);
+            try {
+                $sequences = $this->rtpChannel->generateDtmfSequence($digit, $durationMs);
+            } catch (\Throwable $e) {
+                return;
+            }
             foreach ($sequences as $sequence) {
                 $this->rtpSocket->sendto($this->remoteIp, $this->remotePort, $sequence);
             }
@@ -701,6 +679,9 @@ class trunkController
         $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelInvite));
         $timeRing = time();
         for (; ;) {
+            if ($this->closing || $this->socket->isClosed()) {
+                return false;
+            }
             if (time() - $timeRing > $maxRings) {
                 $this->error = true;
                 if (is_callable($this->onFailedCallback)) {
@@ -714,7 +695,12 @@ class trunkController
             $packet = $this->socket->recvfrom($peer, 2);
 
 
-            if ($packet === false || $packet === "") continue;
+            if ($packet === false || $packet === "") {
+                if ($this->socket->isClosed()) {
+                    return false;
+                }
+                continue;
+            }
             $receive = sip::parse($packet);
             $this->currentMethod = $receive["method"];
             if ($receive["method"] == "OPTIONS") {
@@ -845,6 +831,9 @@ class trunkController
             go($this->onAnswerCallback, $this);
         }
         for (; ;) {
+            if ($this->closing || $this->receiveBye) {
+                return false;
+            }
             if ($this->error) {
                 if (is_callable($this->onHangupCallback)) {
                     go($this->onHangupCallback, $this);
@@ -858,18 +847,35 @@ class trunkController
                 return false;
             }
 
+            // Verificar se o socket foi fechado
+            if ($this->socket->isClosed()) {
+                return false;
+            }
 
             $res = $this->socket->recvfrom($peer, 1);
             if (!$res) {
+                if ($this->socket->isClosed()) {
+                    return false;
+                }
                 continue;
             } else {
                 $receive = sip::parse($res);
-                cli::pcl($res, 'bold_green');
+
                 if ($receive["method"] == "NOTIFY") {
                     $this->callActive = false;
                     $this->receiveBye = true;
                     $this->unblockCoroutine();
                     return false;
+                }
+                if ($receive["method"] == "BYE") {
+                    $this->receiveBye = true;
+                    $this->callActive = false;
+                    $this->unblockCoroutine();
+                    if (is_callable($this->onHangupCallback)) {
+                        cli::pcl(sip::renderSolution($receive));
+                        cli::pcl("onHangupCallback invoked!");
+                        return go($this->onHangupCallback, $this, $receive, $peer);
+                    }
                 }
             }
             if (!array_key_exists("Call-ID", $receive["headers"])) {
@@ -902,7 +908,7 @@ class trunkController
             } else {
                 print $receive["methodForParser"] . " - " . $receive["headers"]["Call-ID"][0] . PHP_EOL;
                 var_dump($this->socket->isClosed());
-                Coroutine::sleep(1);
+                sleep(1);
                 if ($receive['method'] == 'NOTIFY') {
                     $this->receiveBye = true;
                     if (is_callable($this->onHangupCallback)) {
@@ -1273,7 +1279,7 @@ class trunkController
         return $this->receiveBye = false;
     }
 
-    public MediaChannel $mediaChannel;
+    public bool|MediaChannel $mediaChannel;
 
     public function receiveMedia(): void
     {
@@ -1361,14 +1367,21 @@ class trunkController
                     'L16' => pcmLeToBe($rtpc->payloadRaw),
                     default => $rtpc->payloadRaw,
                 };
-                go($this->onReceiveAudioCallback, $pcmData, $peer, $this);
+                try {
+                    go($this->onReceiveAudioCallback, $pcmData, $peer, $this);
+                } catch (\Throwable $e) {
+                    cli::pcl($e->getMessage());
+                }
             });
             $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
             $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
             $this->mediaChannel->start();
             $fp = $rtpChannel->buildAudioPacket($silPayload20ms);
             $rtpSocket->sendto($this->audioRemoteIp, $this->audioRemotePort, $fp);
-            $this->mediaChannel->block();
+
+
+            // Garantir que o mediaChannel seja desbloqueado e fechado
+            $this->mediaChannel?->unblock();
         });
     }
 
@@ -1418,19 +1431,116 @@ class trunkController
         ];
     }
 
-    public function __destruct()
+    public function close(): void
     {
-        foreach ($this->socketsList as $socket) {
+
+        // Evitar múltiplas chamadas
+        if ($this->closing) {
+            return;
+        }
+        foreach ($this->idTimers as $id => $timer) {
+            Timer::clear($id);
+        }
+
+
+        cli::pcl("Iniciando fechamento Call-ID: {$this->callId}", 'yellow');
+
+        // Marca que está fechando ANTES de tudo para interromper loops
+        $this->closing = true;
+        $this->error = true;
+        $this->receiveBye = true;
+        $this->callActive = false;
+        $this->blockSpeak = false;
+
+
+        // Envia BYE se houver chamada ativa (fazer antes de fechar sockets)
+
+
+        // Para o mediaChannel se existir
+        if ($this->mediaChannel) {
             try {
-                if ($socket instanceof Socket) {
-                    $socket->close();
-                }
-            } catch (Exception $e) {
-                continue;
+                $this->mediaChannel->active = false;
+                $this->mediaChannel->unblock();
+                $this->mediaChannel->close();
+            } catch (\Throwable $e) {
+                // Ignora erros
             }
         }
-        $this->socket->close();
-        $this->rtpSocket->close();
+
+        // Para o proxy media se estiver ativo
+        if ($this->proxyMediaActive) {
+            try {
+                $this->stopProxyMedia();
+            } catch (\Throwable $e) {
+            }
+        }
+
+        // Fecha todos os sockets
+        foreach ($this->socketsList as $socket) {
+            try {
+                if ($socket instanceof Socket && !$socket->isClosed()) {
+                    $socket->close();
+                }
+            } catch (\Throwable $e) {
+            }
+        }
+
+        // Fecha sockets principais
+        try {
+            if (!$this->socket->isClosed()) {
+                $this->socket->close();
+            }
+        } catch (\Throwable $e) {
+        }
+
+        try {
+            if (!$this->rtpSocket->isClosed()) {
+                $this->rtpSocket->close();
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // Limpa callbacks
+        $this->onFailedCallback = null;
+        $this->onAnswerCallback = null;
+        $this->onRingingCallback = null;
+        $this->onHangupCallback = null;
+        $this->onReceiveAudioCallback = null;
+        $this->onDtmfCallable = null;
+        $this->dtmfCallbacks = [];
+
+        // Limpa canais de codec
+        try {
+            if (isset($this->bcgChannel)) {
+                unset($this->bcgChannel);
+            }
+            if (isset($this->rtpChannel)) {
+
+                unset($this->rtpChannel);
+            }
+        } catch (\Throwable $e) {
+        }
+
+        // Limpa outras propriedades grandes
+        $this->bufferAudio = "";
+        $this->bufferWriteSound = [];
+        $this->box = [];
+        $this->members = [];
+
+
+        $this->__destruct();
+    }
+
+    public function __destruct()
+    {
+
+
+        foreach ($this as $key => $value) {
+            try {
+                $this->{$key} = null;
+            } catch (\Throwable $e) {
+            }
+        }
     }
 
     public function decodePcmaToPcm(string $input): string
@@ -1455,6 +1565,17 @@ class trunkController
         $this->onHangupCallback = $callback;
     }
 
+    public function bye(): void
+    {
+        try {
+            if ($this->headers200 && isset($this->headers200['headers']) && !$this->socket->isClosed()) {
+                $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
+            }
+        } catch (\Throwable $e) {
+            // Ignora erros
+        }
+    }
+
     public function addListener(mixed $receiveIp, string $receivePort): void
     {
         $this->listeners[] = [
@@ -1466,32 +1587,12 @@ class trunkController
     public function defineTimeout(int $time): void
     {
         $this->closeCallInTime = $this->timeoutCall + $time;
-        Coroutine::create(function () use ($time) {
-            while (true) {
-                if ($this->callActive and !$this->receiveBye) break;
-                Coroutine::sleep(0.1);
+
+        $this->idTimers[] = Timer::after($time * 1000, function () {
+            if ($this->closing || $this->error) {
+                return;
             }
-            while (true) {
-                Coroutine::sleep(0.1);
-                if ($this->receiveBye) {
-                    cli::pcl("BYE RECEIVED BEFORE TIMEOUT", 'bold_red');
-                    break;
-                }
-
-                if (time() > $this->closeCallInTime) {
-                    $this->callActive = false;
-
-
-                    $this->receiveBye = true;
-                    $this->socket->close();
-                    $this->rtpSocket->close();
-
-                    print cli::color('red', 'timeout reached....') . PHP_EOL;
-
-                    $this->rtpSocket->close();
-                    break;
-                }
-            }
+            $this->close();
         });
     }
 
@@ -1592,6 +1693,9 @@ class trunkController
         $startTimer = time();
         $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelRegister));
         for ($n = $this->connectTimeout; $n--;) {
+            if ($this->closing) {
+                return false;
+            }
             if (time() - $startTimer > $maxWait) {
                 print cli::cl("red", "line 753 timeout");
                 return false;
@@ -1634,6 +1738,9 @@ class trunkController
         $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelRegister));
         $startTimer = time();
         for (; ;) {
+            if ($this->closing) {
+                return false;
+            }
             if (time() - $startTimer > $maxWait) {
                 print cli::cl("red", "line 753 timeout");
                 return false;
@@ -1837,6 +1944,7 @@ class trunkController
         return $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelRefer));
     }
 
+
     public function onReceiveAudio(Closure $param)
     {
         $this->onReceiveAudioCallback = $param;
@@ -1845,6 +1953,69 @@ class trunkController
     public function setAudioFile(string $audioFile)
     {
         $this->audioFilePath = $audioFile;
+    }
+
+    public function defineAudioFile(string $audioFile): void
+    {
+        \libspech\Sip\secureAudioVoip($audioFile);
+        $infoFile = \libspech\Sip\getInfoAudio($audioFile);
+        $tags = \libspech\Sip\wavChunks($audioFile);
+        $idDataTag = array_find_key($tags, fn($tag) => $tag['id'] === 'data');
+        $chunkSize = \libspech\Sip\calculateChunkSize($infoFile['rate'], $infoFile['numChannels'], $infoFile['bitDepth']);
+        $dataOffset = $tags[$idDataTag]['data'];
+        $currentPosition = 0;
+        $audioHandle = fopen($audioFile, 'rb');
+
+        $callable = function ($pcmData, $peer, trunkController $phone) use (&$currentPosition, $audioHandle, $dataOffset, $chunkSize, $infoFile) {
+            $idFrom = $peer['address'] . ':' . $peer['port'];
+            fseek($audioHandle, $dataOffset + $currentPosition);
+            $pcmData = fread($audioHandle, $chunkSize);
+            $currentPosition += $chunkSize;
+
+            $frequencyMember = $phone->frequencyCall;
+            $ssrc = $phone->mediaChannel->members[$idFrom]['ssrc'];
+            $frequencyPacket = $infoFile['rate'];
+
+            switch (strtoupper($phone->codecName)) {
+                case 'PCMU':
+                    if ($frequencyPacket !== 8000) {
+                        $pcmData = resampler($pcmData, $frequencyPacket, 8000);
+                    }
+                    $encode = \libspech\Sip\encodePcmToPcmu($pcmData);
+                    break;
+                case 'PCMA':
+                    if ($frequencyPacket !== 8000) {
+                        $pcmData = resampler($pcmData, $frequencyPacket, 8000);
+                    }
+                    $encode = \libspech\Sip\encodePcmToPcma($pcmData);
+                    break;
+                case 'G729':
+                    if ($frequencyPacket !== 8000) {
+                        $pcmData = resampler($pcmData, $frequencyPacket, 8000);
+                    }
+                    $encode = $phone->mediaChannel->rtpChans[$ssrc]->bcg729Channel->encode($pcmData);
+                    break;
+                case 'OPUS':
+                    if ($frequencyPacket !== 48000) {
+                        $pcm48_mono = resampler($pcmData, $frequencyPacket, 48000);
+                    } else {
+                        $pcm48_mono = $pcmData;
+                    }
+                    $encode = $phone->mediaChannel->members[$idFrom]['opus']->encode($pcm48_mono);
+                    break;
+                case 'L16':
+                    $encode = resampler($pcmData, $frequencyPacket, $frequencyMember, true);
+                    break;
+                default:
+                    $encode = '';
+                    break;
+            }
+
+            $packet = $phone->rtpChannel->buildAudioPacket($encode);
+            $phone->rtpSocket->sendto($peer['address'], $peer['port'], $packet);
+        };
+
+        $this->onReceiveAudio($callable(...));
     }
 
     /**
@@ -1897,6 +2068,11 @@ class trunkController
         ];
     }
 
+    public function getCid()
+    {
+        return $this->cid;
+    }
+
     private function generateEmptyWavFile(string $path, int $durationSec): void
     {
         $fakeData = str_repeat(chr(0), $durationSec * 8000);
@@ -1912,7 +2088,7 @@ class trunkController
         foreach ($model as $packet) {
             $binary = $this->generateDtmfPacket($packet["digit"], $packet["end"], $packet["volume"], $packet["duration"]);
             $rtpSocket->sendto($remoteIp, $remotePort, $binary);
-            Coroutine::sleep(0.02);
+            sleep(0.02);
         }
     }
 
