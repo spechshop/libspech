@@ -672,7 +672,7 @@ class MediaChannel
             try {
                 if (is_a($channel, rtpChannel::class)) {
                     if (property_exists($channel, 'bcg729Channel')) {
-                        unset($channel->bcg729Channel);
+                        $channel->bcg729Channel->close();
                     }
                 }
             } catch (\Throwable $e) {
