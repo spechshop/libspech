@@ -2,10 +2,15 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.4+-blue.svg)](https://www.php.net/)
 [![Swoole](https://img.shields.io/badge/Swoole-6.0+-green.svg)](https://www.swoole.com/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/Website-spechshop.com-orange.svg)](https://spechshop.com)
 
 Real-time SIP/RTP VoIP library for PHP, built on Swoole coroutines. Make and receive real phone calls from PHP, stream
 RTP audio, handle DTMF, and record audio.
+
+> **⚠️ PROPRIETARY SOFTWARE** - Copyright © 2025 Lotus / berzersks
+> All rights reserved. Unauthorized use is prohibited.
+> **Please respect the creator and visit [spechshop.com](https://spechshop.com)**
 
 ## Overview
 
@@ -198,7 +203,27 @@ Notes:
 
 ## License
 
-This project is licensed under the MIT License. See `LICENSE` for details.
+This project is proprietary software. All rights reserved.
 
-Third-party components may be under different licenses (Swoole, codec extensions). Review their LICENSE files before use
-in production.
+**Copyright © 2025 Lotus / berzersks**
+**Website: [https://spechshop.com](https://spechshop.com)**
+
+### Important Notice
+
+By using this software, you agree to:
+- ✅ Respect the creator's intellectual property rights
+- ✅ Maintain all copyright notices and attributions
+- ✅ Reference the original author (Lotus / berzersks) and [spechshop.com](https://spechshop.com)
+- ❌ NOT remove or alter any copyright notices
+- ❌ NOT claim this work as your own
+- ❌ NOT use, copy, modify, or distribute without written permission
+
+Unauthorized copying, modification, distribution, or use of this software is **strictly
+prohibited** and may result in legal action.
+
+See `LICENSE` for complete terms and conditions.
+
+### Third-Party Components
+
+Third-party dependencies (Swoole, codec extensions) may be under different licenses.
+Review their respective LICENSE files before use in production.

@@ -1,5 +1,14 @@
 <?php
-
+/**
+ * libspech - Example Usage
+ *
+ * Copyright (c) 2025 Lotus / berzersks
+ * Website: https://spechshop.com
+ * All Rights Reserved.
+ *
+ * PROPRIETARY SOFTWARE - Unauthorized use is prohibited.
+ * Please respect the creator. See LICENSE for terms.
+ */
 
 use libspech\Cli\cli;
 use libspech\Packet\renderMessages;
@@ -10,9 +19,9 @@ include 'plugins/autoloader.php';
 
 
 \Swoole\Coroutine\run(function () {
-    $username = 'lotus';
-    $password = '';
-    $domain = 'spechshop.com';
+    $username = getenv('SIP_USERNAME') ?: 'your_username';
+    $password = getenv('SIP_PASSWORD') ?: 'your_password';
+    $domain = getenv('SIP_DOMAIN') ?: 'sip.example.com';
     $host = gethostbyname($domain);
     $phone = new trunkController(
         $username,
