@@ -2,15 +2,15 @@
 
 [![PHP Version](https://img.shields.io/badge/PHP-8.4+-blue.svg)](https://www.php.net/)
 [![Swoole](https://img.shields.io/badge/Swoole-6.0+-green.svg)](https://www.swoole.com/)
-[![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE.txt)
 [![Website](https://img.shields.io/badge/Website-spechshop.com-orange.svg)](https://spechshop.com)
 
 Biblioteca VoIP SIP/RTP em tempo real para PHP, construída com corrotinas Swoole. Faça e receba chamadas telefônicas de PHP, transmita
 audio RTP, manipule DTMF e grave áudio.
 
-> **⚠️ PROPRIETARY SOFTWARE** - Copyright © 2025 Lotus / berzersks
-> All rights reserved. Unauthorized use is prohibited.
-> **Please respect the creator and visit [spechshop.com](https://spechshop.com)**
+> **📖 OPEN SOURCE** - Copyright © 2025 Lotus / berzersks
+> Licensed under Apache 2.0. Free to use, modify, and distribute.
+> **Please respect the creator and contribute at the [official repository](https://github.com/spechshop/libspech)**
 
 ## Visão Geral
 
@@ -141,7 +141,7 @@ libspech/
 │   ├── bcg729Channel.php
 │   ├── opusChannel.php
 │   └── psampler.php
-├── LICENSE
+├── LICENSE.txt
 ├── README.md
 └── SECURITY.md
 ```
@@ -180,22 +180,32 @@ Notas:
 
 ## Licença
 
-This project is proprietary software. All rights reserved.
+This project is licensed under the **Apache License 2.0**.
 
 **Copyright © 2025 Lotus / berzersks**
 **Website: [https://spechshop.com](https://spechshop.com)**
+**Official Repository: [https://github.com/spechshop/libspech](https://github.com/spechshop/libspech)**
 
-### Important Notice
+### Important Notice to the Community
 
-By using this software, you agree to:
-- ✅ Respect the creator's intellectual property rights
-- ✅ Maintain all copyright notices and attributions
-- ✅ Reference the original author (Lotus / berzersks) and [spechshop.com](https://spechshop.com)
-- ❌ NOT remove or alter any copyright notices
-- ❌ NOT claim this work as your own
-- ❌ NOT use, copy, modify, or distribute without written permission
+This is **open source software**. You are free to use, modify, and distribute it under the Apache 2.0 license. However, we kindly ask that you:
 
-Unauthorized copying, modification, distribution, or use of this software is **strictly
-prohibited** and may result in legal action.
+- ✅ **Respect the creator**: Maintain attribution to Lotus (berzersks) in all derivative works
+- ✅ **Keep copyright notices**: Do not remove or alter copyright notices and attributions
+- ✅ **Unite the community**: Consider contributing improvements to the official repository rather than creating fragmented forks
+- ✅ **Submit pull requests**: Help make this project better for everyone by contributing at [github.com/spechshop/libspech](https://github.com/spechshop/libspech)
+- ✅ **Reference the creator**: Credit the original author when discussing or referencing this software
 
-Third-party components may be under different licenses (Swoole, codec extensions). Review their LICENSE files before use in production.
+A unified community is stronger and advances faster together. Thank you for helping build a respectful and collaborative open source project!
+
+See [LICENSE.txt](LICENSE.txt) for full license terms.
+
+### Third-Party Dependencies
+
+Third-party components are under their respective licenses:
+- Swoole: Apache License 2.0
+- bcg729: GNU GPL v3.0
+- Opus: BSD License
+- psampler: See repository for details
+
+Review their license files before use in production.
