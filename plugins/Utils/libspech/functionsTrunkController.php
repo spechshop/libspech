@@ -367,35 +367,6 @@ function secure_random_bytes(int $length): string
 }
 
 
-function encodePcmToPcma(string $data): string
-{
-    if (strlen($data) % 2 !== 0) {
-        $data .= "\x00";
-    }
-
-    $samples = unpack('s*', $data);
-    $encoded = '';
-
-    foreach ($samples as $sample) {
-        $encoded .= chr(linear2alaw($sample));
-    }
-
-    return $encoded;
-}
-
-function encodePcmToPcmu(string $data): string
-{
-    $encoded = '';
-    for ($i = 0; $i < strlen($data); $i += 2) {
-        $sample = unpack('v', substr($data, $i, 2))[1];
-        if ($sample > 32767) {
-            $sample -= 65536;
-        }
-        $encoded .= chr(linear2ulaw($sample));
-    }
-    return $encoded;
-}
-
 
 /**
  * Sleep interrompível que verifica condições a cada 100ms
@@ -405,24 +376,45 @@ function encodePcmToPcmu(string $data): string
  * @param trunkController|null $phone Instância do telefone para verificar closing/error
  * @return bool Retorna true se completou, false se foi interrompido
  */
-function interruptibleSleep(int $sec, &$abort): bool
+function interruptibleSleep(float $seconds, &$abort): bool
 {
-    $totalWait = $sec / 1000; // Converter para segundos
-    $elapsed = 0;
-    $step = $totalWait;
+    // Converter para ms apenas para controle interno
+    $totalMs = $seconds * 1000;
 
+    // Step de verificação: mínimo absoluto 10ms (0.01s)
+    $stepMs = 50; // default: 50ms
+    if ($stepMs < 10) {
+        $stepMs = 10;
+    }
+
+    // Se o total for menor que o step, reduz, mas nunca abaixo de 10ms
+    if ($totalMs < $stepMs) {
+        $stepMs = max(10, $totalMs);
+    }
 
     $start = microtime(true);
-    while ($elapsed <= $sec) {
+
+    while (true) {
+
         if ($abort) {
-            return false;
+            return false; // abortou
         }
-        $elapsed += $step;
-        Coroutine::sleep($step);
+
+        // Tempo passado em ms
+        $elapsedMs = (microtime(true) - $start) * 1000;
+
+        if ($elapsedMs >= $totalMs) {
+            return true; // finalizou normal
+        }
+
+        // Quanto falta
+        $remainingMs = $totalMs - $elapsedMs;
+
+        // Próximo sleep, respeitando mínimo 10ms sempre
+        $nextMs = max(10, min($stepMs, $remainingMs));
+
+        Coroutine::sleep($nextMs / 1000);
     }
-    $end = microtime(true);
-
-
-    return true; // Completou normalmente
 }
+
 
