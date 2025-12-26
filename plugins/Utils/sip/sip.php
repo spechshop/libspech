@@ -865,7 +865,7 @@ function extractRTPPayload(string $packet): ?string
     return substr($packet, 8);
 }
 
-function waveHead3(int $dataLength, int $sampleRate, int $channels, int $audioFormat): string
+function waveHead3(int $dataLength, int $sampleRate, int $channels, int $audioFormat = 0): string
 {
     $bitsPerSample = 16;
     $byteRate = $sampleRate * $channels * ($bitsPerSample / 8);
@@ -1237,49 +1237,35 @@ function gerarDTMF_PCM(string $digito, float $duracao = 0.2, int $sampleRate = 8
     return $pcmData;
 }
 
-/**
- * Decodifica dados L16 Big Endian para PCM Little Endian
- *
- * @param string $l16Data Dados L16 em formato big endian
- * @return string Dados PCM em formato little endian
- */
-function l16BigEndianToPcm(string $l16Data): string
+
+// Função para criar arquivo WAV a partir de PCM
+function createWavFile($pcm_data, $sample_rate, $output_file): int
 {
-    if (empty($l16Data)) {
-        return '';
-    }
-    $dataLength = strlen($l16Data);
-    if ($dataLength % 2 !== 0) {
-        $l16Data = substr($l16Data, 0, $dataLength - 1);
-        $dataLength--;
-    }
-    $pcmData = '';
-    for ($i = 0; $i < $dataLength; $i += 2) {
-        $bigEndianSample = unpack('n', substr($l16Data, $i, 2))[1];
-        if ($bigEndianSample > 32767) {
-            $signedSample = $bigEndianSample - 65536;
-        } else {
-            $signedSample = $bigEndianSample;
-        }
-        $pcmData .= pack('s', $signedSample);
-    }
-    return $pcmData;
+    $num_samples = strlen($pcm_data) / 2;
+    $num_channels = 1; // Mono
+    $bits_per_sample = 16;
+    $byte_rate = $sample_rate * $num_channels * ($bits_per_sample / 8);
+    $block_align = $num_channels * ($bits_per_sample / 8);
+    $data_size = strlen($pcm_data);
+
+    // Header WAV
+    $wav = '';
+    $wav .= 'RIFF';
+    $wav .= pack('V', $data_size + 36); // Tamanho do arquivo - 8
+    $wav .= 'WAVE';
+    $wav .= 'fmt ';
+    $wav .= pack('V', 16); // Tamanho do chunk fmt
+    $wav .= pack('v', 1);  // Formato PCM
+    $wav .= pack('v', $num_channels);
+    $wav .= pack('V', $sample_rate);
+    $wav .= pack('V', $byte_rate);
+    $wav .= pack('v', $block_align);
+    $wav .= pack('v', $bits_per_sample);
+    $wav .= 'data';
+    $wav .= pack('V', $data_size);
+    $wav .= $pcm_data;
+
+    file_put_contents($output_file, $wav);
+    return strlen($wav);
 }
 
-function resampleDemoForFastDebug($pcm, $src, $dst, $ptime, $channels = 1): string
-{
-    $samplesIn = $src * $ptime / 1000;
-    $samplesOut = $dst * $ptime / 1000;
-    $chunk = substr($pcm, 0, $samplesIn * $channels * 2);
-    if (strlen($chunk) < $samplesIn * $channels * 2) {
-        $chunk = str_pad($chunk, $samplesIn * $channels * 2, "\x00");
-    }
-    $pcmIn = unpack("s*", $chunk);
-    $pcmOut = [];
-    foreach ($pcmIn as $sample) {
-        for ($i = 0; $i < $samplesOut / $samplesIn; $i++) {
-            $pcmOut[] = $sample;
-        }
-    }
-    return pack("s*", ...$pcmOut);
-}

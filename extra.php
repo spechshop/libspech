@@ -1,1 +1,3 @@
 <?php
+
+$namebase = 'music.wav';

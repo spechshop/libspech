@@ -1,0 +1,6 @@
+# Generated demo outputs
+out/
+
+# Allow WAV assets under this folder (overrides root `*.wav`)
+!assets/
+!assets/*.wav

@@ -306,12 +306,8 @@ class MediaChannel
             while (true) {
 
 
-
                 $currentTime = microtime(true);
                 $packet = $this->socket->recvfrom($peer, 1);
-
-
-
 
 
                 if (!$packet) {
@@ -327,7 +323,7 @@ class MediaChannel
                         if (is_callable($this->packetOnTimeoutCallable)) {
                             go($this->packetOnTimeoutCallable, $this->callId);
                         }
-                        cli::pcl("TIMEOUT: no packets received for $calculate seconds, exceed: " . $this->connectTimeout, 'bold_red');
+                        //     cli::pcl("TIMEOUT: no packets received for $calculate seconds, exceed: " . $this->connectTimeout, 'bold_red');
                         return;
 
                     }
@@ -336,7 +332,7 @@ class MediaChannel
                     $expectedMember = false;
                     $expectedMember = array_key_first($this->members) ?? false;
                     if (!$expectedMember) {
-                        cli::pcl("TIMEOUT: no members to send silence to", 'bold_red');
+                        // cli::pcl("TIMEOUT: no members to send silence to", 'bold_red');
                         continue;
                     }
 
@@ -349,7 +345,7 @@ class MediaChannel
                     }
                     $buffer = $this->members[$expectedMember]['rtpChannel']->buildAudioPacket(str_repeat("\x00", 160));
                     $this->socket->sendto($this->members[$expectedMember]['address'], $this->members[$expectedMember]['port'], $buffer);
-                    cli::pcl("[".date('H:i:s')."] TIMEOUT: sending silence to {$expectedMember} diff: {$calculate}ms", 'bold_red');
+
                     continue;
                 } else {
                     $lastPacketTime = microtime(true);
@@ -429,7 +425,11 @@ class MediaChannel
                 }
 
                 foreach ($this->members as $targetId => $info) {
-                    if ($targetId === $idFrom) continue;
+
+
+                        if ($targetId === $idFrom) continue;
+
+
 
                     // Inicializar canal do destino se não existir
                     if (!isset($destinationChannels[$targetId])) {
@@ -466,8 +466,15 @@ class MediaChannel
                         'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
                         'OPUS' => $this->members[$targetId]['opus']->decode($rtpc->payloadRaw),
                         'L16' => pcmLeToBe($rtpc->payloadRaw),
-                        default => $rtpc->payloadRaw,
+                        default => false,
                     };
+                    cli::pcl('pcm receive');
+
+
+                    if (!$pcmData) exit;
+                 //   else var_dump($rtpc);
+
+
                     //  }
 
                     $encode = null;

@@ -147,7 +147,7 @@ class trunkController
     public $onRingingCallback;
     public $socketInUse;
     public $waitingEnd = 0;
-    private Closure $audioFileHandle;
+    private $audioFileHandle;
     public int $speakStartThreshold = 2;
     public int $speakEndThreshold = 3;
     public $prefix = '';
@@ -186,6 +186,7 @@ class trunkController
         $this->onFailedCallback = null;
         $this->onAnswerCallback = null;
         $this->onRingingCallback = null;
+        $this->audioFileHandle = null;
         $this->cid = Coroutine::getCid();
 
         if (str_contains($host, "http")) {
@@ -210,7 +211,7 @@ class trunkController
         $this->ssrc = random_int(0, 0xffffffff);
         $this->callId = bin2hex(secure_random_bytes(8));
         $this->socket = new Socket(AF_INET, SOCK_DGRAM, SOL_UDP);
-        $this->rtpSocket = new Socket(AF_INET, SOCK_DGRAM, 0);
+        $this->rtpSocket = new Socket(AF_INET, SOCK_DGRAM, SOL_UDP);
 
 
         $this->audioReceivePort = network::getFreePort('udp');
@@ -248,9 +249,6 @@ class trunkController
         /** @var ? $peer */
         print $this->socket->recvfrom($peer, 10);
         $this->mediaChannel = false;
-        $this->registerAudioEvent(function () {
-            // Evento de áudio registrado
-        });
 
 
     }
@@ -1368,8 +1366,8 @@ class trunkController
 
 
             $rtpSocket = $this->rtpSocket;
-            $rtpSocket->bind($this->localIp, $this->audioReceivePort);
-            $rtpSocket->connect($this->remoteIp, $this->remotePort);
+
+
             cli::pcl("Proxy de áudio iniciado na porta " . $this->localIp . ":" . $rtpSocket->getsockname()['port']);
             $this->lastSpeakTime = microtime(true);
             $this->speakWaitSequence = [];
@@ -1416,7 +1414,12 @@ class trunkController
 
 
             $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $this->ssrc);
+
+
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $silPayload20ms) {
+                //return;
+
+
                 $targetId = $peer['address'] . ':' . $peer['port'];
                 $ssrc = $rtpc->ssrc;
                 if (!array_key_exists($ssrc, $channel->rtpChans)) {
@@ -1425,25 +1428,22 @@ class trunkController
                 $codec = $this->codecName;
 
                 $pcmData = match (strtoupper($codec)) {
-                    'G729' => $channel->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
+                    'G729' => $this->bcgChannel->decode($rtpc->payloadRaw),
                     'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
                     'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
                     'OPUS' => $channel->members[$targetId]['opus']->decode($rtpc->payloadRaw),
                     'L16' => pcmLeToBe($rtpc->payloadRaw),
                     default => $rtpc->payloadRaw,
                 };
-                if (!is_callable($this->onReceivePcmCallback)) {
-                    $this->onReceivePcmCallback = function ($pcm, $peer, $context) use ($silPayload20ms) {
-                    };
-                }
-                try {
-                    go($this->onReceivePcmCallback, $pcmData, $peer, $this);
-                } catch (\Exception $e) {
-                    var_dump($e);
-                    exit;
-                }
+
+                cli::pcl($codec . ' ' . $rtpc->sequence . ' ' . strlen($rtpc->payloadRaw) . ' bytes -> ' . strlen($pcmData) . ' pcm', 'blue');
+                //$this->mediaChannel->onReceiveCallable = $this->onReceivePcmCallback;
 
 
+                if (is_callable($this->onReceivePcmCallback)) {
+                    $closePcm = ($this->onReceivePcmCallback)(...);
+                    go($closePcm, $pcmData, $peer, $this);
+                }
                 if (is_callable($this->audioFileHandle)) {
                     $closure = ($this->audioFileHandle)(...);
                     go($closure, $pcmData, $peer, $this);
@@ -1769,6 +1769,7 @@ class trunkController
     public function register(int $maxWait = 5): bool
     {
         if (strlen($this->username) < 1) {
+
             return true;
         }
         if (strlen($this->password) < 1) {
@@ -1777,6 +1778,7 @@ class trunkController
 
 
         if ($this->registerCount > 3) {
+            var_dump($this->registerCount);
             return false;
         }
         $res = false;
@@ -1844,7 +1846,46 @@ class trunkController
             }
             if ($receive["method"] == "OPTIONS") {
                 $respond = renderMessages::respondOptions($receive["headers"]);
-                $this->socket->sendto($this->host, $this->port, $respond);
+                $respond = sip::parse($respond);
+                $hasVia = false;
+                $parseVia = false;
+                try {
+                    $parseVia = sip::extractVia($receive["headers"]['Via'][0]);
+                    $hasVia = true;
+                } catch (\Exception $e) {
+                    $hasVia = false;
+                }
+
+                $viaApplied = false;
+                if ($hasVia) {
+                    if (array_key_exists('received', $parseVia)) {
+                        $viaApplied = true;
+                        $respond['headers']['Contact'][0] = sip::renderURI([
+                            'user' => 'spechshop',
+                            'peer' => [
+                                'host' => $parseVia['received'],
+                                'port' => $parseVia['rport']
+                            ]
+                        ]);
+                    } else {
+                        $viaApplied = false;
+                    }
+                } else {
+                    $viaApplied = false;
+                }
+
+                if (!$viaApplied){
+                    $respond['headers']['Contact'][0] = sip::renderURI([
+                        'user' => 'spechshop',
+                        'peer' => [
+                            'host' => network::getLocalIp(),
+                            'port' => $this->socketPortListen
+                        ]
+                    ]);
+                }
+
+
+                $this->socket->sendto($this->host, $this->port, sip::renderSolution($respond));
             } else if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
                 continue;
             } else {
@@ -1866,7 +1907,7 @@ class trunkController
         }
     }
 
-/**
+    /**
      * Construir array REGISTER para registrar no servidor SIP
      *
      * Estrutura:
@@ -2310,7 +2351,7 @@ class trunkController
             if (!$encode) return;
 
             $packet = $phone->rtpChannel->buildAudioPacket($encode);
-            $this->rtpSocket->sendto($peer['address'], $peer['port'], $packet);
+            $this->mediaChannel->socket->sendto($peer['address'], $peer['port'], $packet);
         });
     }
 

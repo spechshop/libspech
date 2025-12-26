@@ -51,7 +51,9 @@ class renderMessages
             "Call-ID" => $headers['Call-ID'] ?? ['' . md5(time())],
             "CSeq" => $headers['CSeq'] ?? ['1 ' . $statusCode],
             "Content-Length" => ["0"],
-            "Server" => [cache::global()['interface']['server']['serverName']]
+
+
+            "Server" => ["SPECHSHOP LIB"]
         ];
 
         $response = [
@@ -74,7 +76,6 @@ class renderMessages
             'user' => 's',
             'peer' => [
                 'host' => network::getLocalIp(),
-                'port' => cache::global()['interface']['server']['port']
             ]
         ];
         $headers['Contact'][0] = sip::renderURI($contactUri);
@@ -113,7 +114,7 @@ class renderMessages
                 "Call-ID" => $headers['Call-ID'],
                 "CSeq" => [(intval($headers['CSeq'][0]) ) . " ACK"],
                 "Content-Length" => ["0"],
-                "Server" => [cache::global()['interface']['server']['serverName']],
+                "Server" => ["SPECHSHOP LIB"],
                 "Allow" => ["INVITE, ACK, BYE, CANCEL, OPTIONS, MESSAGE, INFO, REGISTER"],
                 "Supported" => ["replaces, timer"]
             ]
@@ -153,8 +154,10 @@ class renderMessages
                 "Call-ID" => [$callId],
                 "CSeq" => [((int)$csq) + 1 . " BYE"],
                 "Max-Forwards" => ["70"],
+
                 "User-Agent" => [cache::global()['interface']['server']['serverName']],
                 "Allow" => ["INVITE, ACK, BYE, CANCEL, OPTIONS, MESSAGE, INFO, REGISTER"],
+                "Server" => ["SPECHSHOP"],
                 "Authorization" => [$authorization],
                 "Content-Length" => ["0"],
             ],
@@ -217,7 +220,7 @@ class renderMessages
                 ],
                 "Call-ID" => $headers['Call-ID'],
                 "CSeq" => intval($headers['CSeq'][0]) . " MESSAGE",
-                "User-Agent" => [cache::global()['interface']['server']['serverName'] ?? "spechshop by lotus"],
+                "User-Agent" => [cache::global()['interface']['server']['serverName'] ?? "SPECHSHOP LIB"],
                 "Content-Type" => ["text/plain; charset=UTF-8"]
             ],
             "body" => $message,
@@ -263,8 +266,8 @@ class renderMessages
                 "Max-Forwards" => ["70"],
                 "Call-ID" => [$headers['Call-ID'][0] . '@' . network::getLocalIp()],
                 "CSeq" => ["102 OPTIONS"],
-                "User-Agent" => [cache::global()['interface']['server']['serverName']],
-                "Allow" => ["INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE"],
+                "Server" => ["SPECHSHOP LIB"],
+                 "Allow" => ["INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE"],
                 "Content-Length" => ["0"],
                 "Contact" => [
                     sip::renderURI([
