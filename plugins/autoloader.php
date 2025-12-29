@@ -17,11 +17,6 @@ if (file_exists($envFile)) {
         }
     }
 }
-
-
-
-
-
 $interface = json_decode(file_get_contents(__DIR__ . '/configInterface.json'), true);
 $paths = $interface['autoload'];
 $allowObservable = $interface['reloadCaseFileModify'];
