@@ -1791,6 +1791,9 @@ class trunkController
         if (!array_key_exists("headers", $receive)) {
             return false;
         }
+        if ($receive["method"] == "200") {
+            return true;
+        }
         if (!array_key_exists("WWW-Authenticate", $receive["headers"])) {
             return false;
         }
