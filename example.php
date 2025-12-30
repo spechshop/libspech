@@ -22,7 +22,7 @@ include 'plugins/autoloader.php';
         $username = getenv('SIP_USERNAME') ?: '';
         $password = getenv('SIP_PASSWORD') ?: '';
         $domain = getenv('SIP_HOST') ?: 'spechshop.com';
-         if (!filter_var($domain, FILTER_VALIDATE_IP)) {
+        if (!filter_var($domain, FILTER_VALIDATE_IP)) {
             $host = gethostbyname($domain);
         } else {
             $host = $domain;
@@ -34,64 +34,46 @@ include 'plugins/autoloader.php';
         }
 
 
-        $phone->defineTimeout(120);
         $audioBuffer = '';
         $phone->onRinging(function ($phone) {
             cli::pcl("Chamada recebida", "yellow");
         });
         $phone->onHangup(function (trunkController $phone) use (&$audioBuffer) {
-            cli::pcl("Chamada finalizada", "red");
-            $opus = new opusChannel(48000, 1);
-            $opus->setBitrate(8000);
-            $opus->setComplexity(8);
-            $opus->setVBR(true);
-            $spacial = '';
-            foreach (str_split($audioBuffer, $phone->frequencyCall / 25) as $chunk) {
-
-
-
-                $chunk = resampler($chunk, $phone->frequencyCall, 48000);
-                $spacial .= $opus->spatialStereoEnhance($chunk, 1.0, 0.5);
-                //$spacial .= $opus->decode($sp, 48000);
-            }
-
-
-            $head = \libspech\Sip\waveHead3(
-                strlen($spacial),
-                48000,
-                2
-            );
-            $opus->destroy();
-
-            file_put_contents('rec.wav', $head . $spacial);
-            $phone->close();
+            $phone->saveBufferToWavFile('rec.wav', $audioBuffer);
+            $phone->unblockCoroutine();
+            cli::pcl("Bye recebido", "red");
         });
         $phone->mountLineCodecSDP('PCMU/8000');
         $phone->onReceivePcm(function ($pcmData, $peer, trunkController $phone) use (&$audioBuffer) {
-  
-            
+
 
             // optional
-//            $audioBuffer .= $pcmData;
+            $audioBuffer .= $pcmData;
         });
         $phone->onAnswer(function (trunkController $phone) {
             $phone->receiveMedia();
-            $phone->defineAudioFile('music.wav');
+            //$phone->defineAudioFile('music.wav');
             cli::pcl("Chamada aceita", "green");
-            \libspech\Sip\interruptibleSleep(100, $phone->receiveBye);
+            \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
+
             $phone->send2833('*', 160);
             $phone->send2833(999999999, 160);
-            \libspech\Sip\interruptibleSleep(30, $phone->receiveBye);
+            \libspech\Sip\interruptibleSleep(5, $phone->receiveBye);
+            $phone->bye();
+            $phone->receiveBye = true;
+            $phone->callActive = false;
+
         });
         $phone->onKeyPress(function ($event, $peer) use ($phone) {
             cli::pcl("Digitando: " . $event, "yellow");
         });
-        $phone->call('551140040104');
+        $phone->call('5569984477329');
+        $phone->saveBufferToWavFile('rec.wav', $audioBuffer);
 
 
         cli::pcl("Script finalizado", "green");
-        cli::pcl("Processo cancelado", "red");
         $phone->close();
+        cli::pcl("Processo cancelado", "red");
     });
 });
 cli::pcl("Processo encerrado com sucesso", "green");

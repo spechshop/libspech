@@ -282,21 +282,9 @@ class trunkController
      */
     public function modelOptions(): array
     {
-        return [
-            "method" => "OPTIONS",
-            "methodForParser" => "OPTIONS sip:{$this->host} SIP/2.0",
-            "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4)) . ';rport'],
-                "From" => ["<sip:{$this->username}@{$this->host}>"],
-                "To" => ["<sip:{$this->host}>"],
-                "Max-Forwards" => ["70"],
-                "Call-ID" => [$this->callId],
-                "CSeq" => [$this->csq . " OPTIONS"],
-                "User-Agent" => [$this->userAgent],
-                "Allow" => ["INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE"],
-                "Content-Length" => ["0"],
-            ]
-        ];
+        $modelRegister = $this->modelRegister()['headers'];
+        return renderMessages::generateModelOptions($modelRegister, $this->socketPortListen);
+
     }
 
     public static function extractVia(string $line): array
@@ -1624,6 +1612,9 @@ class trunkController
         $this->bufferWriteSound = [];
         $this->box = [];
         $this->members = [];
+        $this->callActive = false;
+
+
 
 
     }
