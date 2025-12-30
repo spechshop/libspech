@@ -1414,12 +1414,13 @@ class trunkController
                     $channel->rtpChans[$ssrc] = $this->rtpChannel;
                 }
                 $codec = $this->codecName;
+                $frequency = $channel->getFrequencyFromPtCodec($rtpc->payloadType);
 
                 $pcmData = match (strtoupper($codec)) {
                     'G729' => $this->bcgChannel->decode($rtpc->payloadRaw),
                     'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
                     'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
-                    'OPUS' => $channel->members[$targetId]['opus']->decode($rtpc->payloadRaw),
+                    'OPUS' => $channel->members[$targetId]['opus']->decode($rtpc->payloadRaw, 8000),
                     'L16' => pcmLeToBe($rtpc->payloadRaw),
                     default => $rtpc->payloadRaw,
                 };
@@ -1430,7 +1431,7 @@ class trunkController
 
                 if (is_callable($this->onReceivePcmCallback)) {
                     $closePcm = ($this->onReceivePcmCallback)(...);
-                    go($closePcm, $pcmData, $peer, $this);
+                    go($closePcm, $pcmData, $peer, $this, $codec, $frequency);
                 }
                 if (is_callable($this->audioFileHandle)) {
                     $closure = ($this->audioFileHandle)(...);
@@ -1619,23 +1620,6 @@ class trunkController
 
     }
 
-
-    public function decodePcmaToPcm(string $input): string
-    {
-        if ($input === "") {
-            return "";
-        }
-        if (empty($this->alawTable)) {
-            $this->initLawTables();
-        }
-        $pcm = "";
-        $len = strlen($input);
-        for ($i = 0; $i < $len; $i++) {
-            $val = $this->alawTable[ord($input[$i])];
-            $pcm .= pack("v", $val);
-        }
-        return $pcm;
-    }
 
     public function onHangup(callable $callback): void
     {

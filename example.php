@@ -43,13 +43,15 @@ include 'plugins/autoloader.php';
             $phone->unblockCoroutine();
             cli::pcl("Bye recebido", "red");
         });
-        $phone->mountLineCodecSDP('PCMU/8000');
-        $phone->onReceivePcm(function ($pcmData, $peer, trunkController $phone) use (&$audioBuffer) {
+        $phone->mountLineCodecSDP('OPUS/48000');
+        $phone->onReceivePcm(function ($pcmData, $peer, trunkController $phone, $codec, $frequency) use (&$audioBuffer) {
 
 
             // optional
             $audioBuffer .= $pcmData;
         });
+
+
         $phone->onAnswer(function (trunkController $phone) {
             $phone->receiveMedia();
             //$phone->defineAudioFile('music.wav');
@@ -67,7 +69,7 @@ include 'plugins/autoloader.php';
         $phone->onKeyPress(function ($event, $peer) use ($phone) {
             cli::pcl("Digitando: " . $event, "yellow");
         });
-        $phone->call('5569984477329');
+        $phone->call('551140040104');
         $phone->saveBufferToWavFile('rec.wav', $audioBuffer);
 
 
