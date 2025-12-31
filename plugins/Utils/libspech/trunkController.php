@@ -2254,6 +2254,11 @@ class trunkController
             $idFrom = $peer['address'] . ':' . $peer['port'];
             $frequencyPacket = $infoFile['rate'];
             $frequencyMember = $phone->frequencyCall;
+            if (!$this->mediaChannel->isMember($idFrom)) {
+                cli::pcl("Member {$idFrom} not found in media channel, stopping audio playback.");
+                return;
+            }
+
 
             $ssrc = $this->mediaChannel->members[$idFrom]['ssrc'];
 
