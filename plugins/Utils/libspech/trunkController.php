@@ -2254,7 +2254,8 @@ class trunkController
             $idFrom = $peer['address'] . ':' . $peer['port'];
             $frequencyPacket = $infoFile['rate'];
             $frequencyMember = $phone->frequencyCall;
-            $ssrc = $phone->mediaChannel->members[$idFrom]['ssrc'];
+
+            $ssrc = $this->mediaChannel->members[$idFrom]['ssrc'];
 
             // --- LOOP INFINITO LIMPO ---
             if ($currentPosition + $chunkSize > $audioLen) {
