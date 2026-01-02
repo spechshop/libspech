@@ -173,6 +173,9 @@ class trunkController
     private array $idTimers = [];
 
 
+    /**
+     * @throws RandomException
+     */
     public function __construct(mixed $username, mixed $password, mixed $host, mixed $port = 5060, mixed $domain = false)
     {
         $this->onBuildAudio = fn($data) => $data;
@@ -195,7 +198,7 @@ class trunkController
             $caseUrl = parse_url("http://{$host}");
         }
         $this->host = gethostbyname($caseUrl["host"]);
-        if (empty($this->host) || $this->host === false) {
+        if (empty($this->host)) {
             throw new \Exception("Não foi possível resolver o host fornecido: {$host}");
         }
         $this->port = $port;
@@ -307,31 +310,6 @@ class trunkController
         }
 
         return $result;
-    }
-
-    public static function getWavDuration($file): string
-    {
-        if (!file_exists($file)) {
-            return "Arquivo não encontrado";
-        }
-        $handle = fopen($file, "rb");
-        if (!$handle) {
-            return "Erro ao abrir o arquivo";
-        }
-        $header = fread($handle, 44);
-        fclose($handle);
-        if (strlen($header) < 44 || substr($header, 0, 4) != "RIFF" || substr($header, 8, 4) != "WAVE") {
-            return "0:00:00";
-        }
-        $sampleRate = unpack("V", substr($header, 24, 4))[1];
-        $numChannels = unpack("v", substr($header, 22, 2))[1];
-        $bitDepth = unpack("v", substr($header, 34, 2))[1];
-        $fileSize = filesize($file);
-        $dataSize = $fileSize - 44;
-        $samples = $dataSize / ($numChannels * ($bitDepth / 8));
-        $durationInSeconds = $samples / $sampleRate;
-        $durationInSeconds = round($durationInSeconds);
-        return gmdate("H:i:s", $durationInSeconds);
     }
 
     public function mountLineCodecSDP(string $codec = 'PCMA/8000'): array
@@ -1915,7 +1893,7 @@ class trunkController
      * @see register() para lógica de autenticação Digest
      * @see SIGNALING_ARRAYS.md para documentação completa
      */
-    private function modelRegister(): array
+    public function modelRegister(): array
     {
         $fpp = 5060;
         if ($this->domain) {
