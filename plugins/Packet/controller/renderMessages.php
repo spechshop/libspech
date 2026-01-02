@@ -281,35 +281,5 @@ class renderMessages
             ]
         ];
 
-
-        // OPTIONS sip:mexicano3@100.66.11.152:7660;ob SIP/2.0
-        // Via: SIP/2.0/UDP 72.60.7.163:5060;branch=z9hG4bK7b0f96e2;rport
-        // Max-Forwards: 70
-        // From: "asterisk" <sip:asterisk@72.60.7.163>;tag=as29f9974c
-        // To: <sip:mexicano3@100.66.11.152:7660;ob>
-        // Contact: <sip:asterisk@72.60.7.163:5060>
-        // Call-ID: 5522dfeb4e984e6054c4b75431bf30a2@72.60.7.163:5060
-        // CSeq: 102 OPTIONS
-        // User-Agent: Asterisk PBX 13.38.3
-        // Date: Wed, 12 Nov 2025 18:55:20 GMT
-        // Allow: INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH, MESSAGE
-        // Supported: replaces, timer
-        // Content-Length: 0
-        //
-        //return [
-        //    "method" => "OPTIONS",
-        //    "methodForParser" => "OPTIONS sip:{$this->host} SIP/2.0",
-        //    "headers" => [
-        //        "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4)) . ';rport'],
-        //        "From" => ["<sip:{$this->username}@{$this->host}>"],
-        //        "To" => ["<sip:{$this->host}>"],
-        //        "Max-Forwards" => ["70"],
-        //        "Call-ID" => [$this->callId],
-        //        "CSeq" => [$this->csq . " OPTIONS"],
-        //        "User-Agent" => [cache::global()["interface"]["server"]["serverName"]],
-        //        "Allow" => ["INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE"],
-        //        "Content-Length" => ["0"],
-        //    ]
-        //];
     }
 }
