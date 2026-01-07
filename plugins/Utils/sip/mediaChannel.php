@@ -563,8 +563,8 @@ class MediaChannel
 
                 $config = $peer['config'];
                 if (!empty($config['userdtx'])) $opus->setDTX(true);
-                if (!empty($config['cbr'])) $opus->setVBR(true);
-                $opus->setComplexity(8);
+                $opus->setVBR(true);
+                $opus->setComplexity(1);
                 $opus->setSignalVoice(true);
 
 

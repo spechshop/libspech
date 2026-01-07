@@ -1236,47 +1236,49 @@ class trunkController
         ];
         foreach ($ruleNeed as $rule) {
             if (!array_key_exists($rule, $headers)) {
-                return [];
+                if (!array_key_exists($rule, $headers)) {
+                    return [];
+                }
             }
-        }
-        $contactUri = trunkController::extractURI($headers["Contact"][0]);
-        $ackInt = explode(" ", $headers["CSeq"][0])[0];
-        $this->csq = $ackInt;
-        $uriFrom = trunkController::extractURI($headers["From"][0]);
-        $uriTo = trunkController::extractURI($headers["To"][0]);
-        $base = [
-            "method" => "ACK",
-            //"methodForParser" => "ACK sip:{$uriFrom["user"]}@{$contactUri["peer"]["host"]}:{$contactUri["peer"]["port"]} SIP/2.0",
-            "methodForParser" => "ACK sip:{$contactUri["user"]}@{$contactUri["peer"]["host"]}:{$contactUri["peer"]["port"]} SIP/2.0",
+            $contactUri = trunkController::extractURI($headers["Contact"][0]);
+            $ackInt = explode(" ", $headers["CSeq"][0])[0];
+            $this->csq = $ackInt;
+            $uriFrom = trunkController::extractURI($headers["From"][0]);
+            $uriTo = trunkController::extractURI($headers["To"][0]);
+            $base = [
+                "method" => "ACK",
+                //"methodForParser" => "ACK sip:{$uriFrom["user"]}@{$contactUri["peer"]["host"]}:{$contactUri["peer"]["port"]} SIP/2.0",
+                "methodForParser" => "ACK sip:{$contactUri["user"]}@{$contactUri["peer"]["host"]}:{$contactUri["peer"]["port"]} SIP/2.0",
 
 
-            "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=" . bin2hex(secure_random_bytes(8))],
-                "Max-Forwards" => ["70"],
-                "From" => [trunkController::renderURI([
-                    "user" => $uriFrom["user"],
-                    "peer" => [
-                        "host" => $uriFrom["peer"]["host"],
-                        "port" => $uriFrom["peer"]["port"],
-                    ],
-                    "additional" => ["tag" => $uriFrom["additional"]["tag"] ?? ""],
-                ])],
-                "To" => [trunkController::renderURI([
-                    "user" => $uriTo["user"],
-                    "peer" => [
-                        "host" => $uriTo["peer"]["host"],
-                        "port" => $uriTo["peer"]["port"],
-                    ],
-                    "additional" => ["tag" => $uriTo["additional"]["tag"] ?? ""],
-                ])],
-                "Call-ID" => [$this->callId],
-                "CSeq" => [$this->csq . " ACK"],
-            ],
-        ];
-        if (array_key_exists("Record-Route", $headers)) {
-            $base["headers"]["Route"] = $headers["Record-Route"];
+                "headers" => [
+                    "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=" . bin2hex(secure_random_bytes(8))],
+                    "Max-Forwards" => ["70"],
+                    "From" => [trunkController::renderURI([
+                        "user" => $uriFrom["user"],
+                        "peer" => [
+                            "host" => $uriFrom["peer"]["host"],
+                            "port" => $uriFrom["peer"]["port"],
+                        ],
+                        "additional" => ["tag" => $uriFrom["additional"]["tag"] ?? ""],
+                    ])],
+                    "To" => [trunkController::renderURI([
+                        "user" => $uriTo["user"],
+                        "peer" => [
+                            "host" => $uriTo["peer"]["host"],
+                            "port" => $uriTo["peer"]["port"],
+                        ],
+                        "additional" => ["tag" => $uriTo["additional"]["tag"] ?? ""],
+                    ])],
+                    "Call-ID" => [$this->callId],
+                    "CSeq" => [$this->csq . " ACK"],
+                ],
+            ];
+            if (array_key_exists("Record-Route", $headers)) {
+                $base["headers"]["Route"] = $headers["Record-Route"];
+            }
+            return $base;
         }
-        return $base;
     }
 
     public static function extractURI($line): array
@@ -1382,34 +1384,51 @@ class trunkController
             $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $this->ssrc);
 
 
-            $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $silPayload20ms) {
+            $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel)
+
+
+            use ($rtpSocket) {
                 //return;
 
+                if (strlen($rtpc->payloadRaw) < 12) return;;
 
                 $targetId = $peer['address'] . ':' . $peer['port'];
+
                 $ssrc = $rtpc->ssrc;
-                if (!array_key_exists($ssrc, $channel->rtpChans)) {
-                    $channel->rtpChans[$ssrc] = $this->rtpChannel;
-                }
-                $codec = $this->codecName;
-                $frequency = $channel->getFrequencyFromPtCodec($rtpc->payloadType);
+                if (!array_key_exists($ssrc, $channel->rtpChans)) $channel->rtpChans[$ssrc] = $this->rtpChannel;
+                $frequencyPacket = $channel->getFrequencyFromPtCodec($rtpc->payloadType);
+                $packetCodecName = $channel->resolveCodecNameFromPt($rtpc->payloadType);
+                $pcmData = '';
 
-                $pcmData = match (strtoupper($codec)) {
-                    'G729' => $this->bcgChannel->decode($rtpc->payloadRaw),
-                    'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
-                    'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
-                    'OPUS' => $channel->members[$targetId]['opus']->decode($rtpc->payloadRaw, 8000),
-                    'L16' => pcmLeToBe($rtpc->payloadRaw),
-                    default => $rtpc->payloadRaw,
+
+                switch (strtoupper($packetCodecName)) {
+                    case 'PCMU':
+                        $pcmData = decodePcmuToPcm($rtpc->payloadRaw);
+                        break;
+                    case 'PCMA':
+                        $pcmData = decodePcmaToPcm($rtpc->payloadRaw);
+                        break;
+                    case 'G729':
+                        $pcmData = $channel->channelDecode->decode($rtpc->payloadRaw);
+                        break;
+                    case 'OPUS':
+
+                        if (!empty($channel->members[$targetId]['opus'])) {
+                            $pcmData = $channel->members[$targetId]['opus']->decode($rtpc->payloadRaw);
+                        }
+                        break;
+                    case 'L16':
+                        $pcmData = pcmLeToBe($rtpc->payloadRaw);
+                        break;
+                    default:
+                        $pcmData = $rtpc->payloadRaw;
+                        break;
                 };
-
-               // cli::pcl($codec . ' ' . $rtpc->sequence . ' ' . strlen($rtpc->payloadRaw) . ' bytes -> ' . strlen($pcmData) . ' pcm', 'blue');
-                //$this->mediaChannel->onReceiveCallable = $this->onReceivePcmCallback;
-
-
+                $mode = 1;
                 if (is_callable($this->onReceivePcmCallback)) {
                     $closePcm = ($this->onReceivePcmCallback)(...);
-                    go($closePcm, $pcmData, $peer, $this, $codec, $frequency);
+                    $implodeTest = resampler($pcmData, $frequencyPacket, $frequencyPacket);
+                    go($closePcm, $implodeTest, $peer, $this, $packetCodecName, $frequencyPacket);
                 }
                 if (is_callable($this->audioFileHandle)) {
                     $closure = ($this->audioFileHandle)(...);
@@ -1592,8 +1611,6 @@ class trunkController
         $this->box = [];
         $this->members = [];
         $this->callActive = false;
-
-
 
 
     }
@@ -1830,7 +1847,7 @@ class trunkController
                     $viaApplied = false;
                 }
 
-                if (!$viaApplied){
+                if (!$viaApplied) {
                     $respond['headers']['Contact'][0] = sip::renderURI([
                         'user' => 'spechshop',
                         'peer' => [
