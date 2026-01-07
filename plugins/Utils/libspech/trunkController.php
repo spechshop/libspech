@@ -1396,7 +1396,11 @@ class trunkController
 
                 $ssrc = $rtpc->ssrc;
                 if (!array_key_exists($ssrc, $channel->rtpChans)) $channel->rtpChans[$ssrc] = $this->rtpChannel;
+
+
                 $frequencyPacket = $channel->getFrequencyFromPtCodec($rtpc->payloadType);
+
+
                 $packetCodecName = $channel->resolveCodecNameFromPt($rtpc->payloadType);
                 $pcmData = '';
 
@@ -1418,17 +1422,17 @@ class trunkController
                         }
                         break;
                     case 'L16':
-                        $pcmData = pcmLeToBe($rtpc->payloadRaw);
+                        $pcmData = decodeL16ToPcm($rtpc->payloadRaw);
                         break;
                     default:
-                        $pcmData = $rtpc->payloadRaw;
+                        $pcmData = '';
                         break;
                 };
                 $mode = 1;
                 if (is_callable($this->onReceivePcmCallback)) {
                     $closePcm = ($this->onReceivePcmCallback)(...);
-                    $implodeTest = resampler($pcmData, $frequencyPacket, $frequencyPacket);
-                    go($closePcm, $implodeTest, $peer, $this, $packetCodecName, $frequencyPacket);
+
+                    go($closePcm, $pcmData, $peer, $this, $packetCodecName, $frequencyPacket);
                 }
                 if (is_callable($this->audioFileHandle)) {
                     $closure = ($this->audioFileHandle)(...);

@@ -308,6 +308,7 @@ class MediaChannel
 
                 $currentTime = microtime(true);
                 $packet = $this->socket->recvfrom($peer, 1);
+                cli::pcl("RECV: " . strlen($packet), 'yellow');
 
 
                 if (!$packet) {
@@ -479,6 +480,7 @@ class MediaChannel
 
                     $encode = null;
                     $frequencyMember = $currentFrequency;
+                    cli::pcl("Recebendo audio " . strlen($rtpc->payloadRaw) . " trunk: $rtpc->payloadType user: $info[codec]", "green");
 
                     switch (strtoupper($info['codec'])) {
                         case 'PCMU':
