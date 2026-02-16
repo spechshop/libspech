@@ -2199,6 +2199,8 @@ class trunkController
     public function clearAudioBuffer(): void
     {
         $this->bufferAudio = "";
+        $this->bufferWriteSound = [];
+
     }
 
     public function registerDtmfCallback(string $dtmf, callable $callback): void
