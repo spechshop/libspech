@@ -8,7 +8,7 @@
 Biblioteca VoIP SIP/RTP em tempo real para PHP, construída com corrotinas Swoole. Faça e receba chamadas telefônicas de PHP, transmita
 audio RTP, manipule DTMF e grave áudio.
 
-> **📖 OPEN SOURCE** - Copyright © 2025 Lotus / berzersks
+> **📖 OPEN SOURCE** - Copyright © 2026 Lotus / berzersks
 > Licensed under Apache 2.0. Free to use, modify, and distribute.
 > **Please respect the creator and contribute at the [official repository](https://github.com/spechshop/libspech)**
 
@@ -26,6 +26,29 @@ libspech fornece:
 > 📘 **Nova Documentação**: Veja **[SIGNALING_ARRAYS.md](SIGNALING_ARRAYS.md)** para entender em profundidade como os arrays de sinalização SIP são construídos e processados.
 
 Este README reflete o repositório a partir de 2025-11-24.
+
+## Índice
+
+- [Stack](#stack)
+- [Requisitos](#requisitos)
+- [Instalação](#instalação)
+- [Guia de Aprendizado Progressivo](#guia-de-aprendizado-progressivo)
+  - [Sessão 1: Configurações Iniciais](#sessão-1-configurações-iniciais)
+  - [Sessão 2: Inicialização do Ambiente de Corotina](#sessão-2-inicialização-do-ambiente-de-corotina)
+  - [Sessão 3: Configuração de Credenciais SIP](#sessão-3-configuração-de-credenciais-sip)
+  - [Sessão 4: Registro SIP](#sessão-4-registro-sip)
+  - [Sessão 5: Configuração de Callbacks de Eventos](#sessão-5-configuração-de-callbacks-de-eventos)
+  - [Sessão 6: Configuração de Codec e Recursos de Áudio](#sessão-6-configuração-de-codec-e-recursos-de-áudio)
+  - [Sessão 7: Fluxo de Interação na Chamada](#sessão-7-fluxo-de-interação-na-chamada)
+  - [Sessão 8: Inicialização da Chamada](#sessão-8-inicialização-da-chamada)
+  - [Sessão 9: Finalização e Limpeza](#sessão-9-finalização-e-limpeza)
+- [API de Callbacks](#api-de-callbacks)
+- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Documentação dos Módulos](#documentação-dos-módulos)
+- [Codecs](#codecs)
+- [Arquitetura e Fluxo de Dados](#arquitetura-e-fluxo-de-dados)
+- [Exemplos Avançados](#exemplos-avançados)
+- [Licença](#licença)
 
 ## Stack
 
@@ -45,266 +68,544 @@ Baixe a última release do [berzersks/pcg729](https://github.com/berzersks/pcg72
 
 Siga as instruções de instalação fornecidas na release para configurar o ambiente.
 
-## Começando
+## Guia de Aprendizado Progressivo
 
-O repositório inclui um exemplo executável em `example.php`.
+Este guia segue a estrutura do arquivo `example.php`, explicando cada sessão de forma progressiva. Recomendamos estudar sessão por sessão para entender o fluxo completo de uma chamada VoIP.
 
-### Configuração Inicial
+> 💡 **Dica**: Execute `php example.php` enquanto lê este guia para ver cada conceito em ação.
 
-1. Configure suas credenciais SIP no arquivo `.env`:
-   ```bash
-   cp .env.example .env
-   # Edite .env com suas credenciais
-   ```
+### Sessão 1: Configurações Iniciais
 
-2. Execute o exemplo:
-   ```bash
-   php example.php
-   ```
-
-### Exemplo Mínimo
+Antes de começar, precisamos preparar o ambiente PHP:
 
 ```php
 <?php
+// Aumenta o limite de memória para 1GB - necessário para processar áudio
+ini_set('memory_limit', '1024M');
+
+// Importa as classes necessárias do sistema
+use libspech\Cli\cli;
 use libspech\Sip\trunkController;
 
+// Habilita o suporte a corotinas do Swoole para execução assíncrona
+\Swoole\Runtime::enableCoroutine();
+
+// Carrega o autoloader para importar todas as dependências do projeto
 include 'plugins/autoloader.php';
+```
 
+**Por que aumentar a memória?**
+- Buffers de áudio podem acumular rapidamente (especialmente em chamadas longas)
+- Codecs como Opus trabalham com chunks grandes de dados
+- Previne erros de memória durante gravações
+
+**Configurando credenciais:**
+
+1. Copie o arquivo de exemplo:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edite `.env` com suas credenciais SIP:
+   ```bash
+   SIP_USERNAME=seu_username
+   SIP_PASSWORD=sua_password
+   SIP_HOST=sip.example.com
+   ```
+
+### Sessão 2: Inicialização do Ambiente de Corotina
+
+O Swoole permite executar código assíncrono sem callbacks complexos:
+
+```php
+// Cria o ambiente de execução em corotina do Swoole
 \Swoole\Coroutine\run(function () {
-    $username = getenv('SIP_USERNAME');
-    $password = getenv('SIP_PASSWORD');
-    $domain   = getenv('SIP_DOMAIN');
-    $host     = gethostbyname($domain);
+    // Cria uma nova corotina para executar o código SIP de forma assíncrona
+    \Swoole\Coroutine::create(function () {
 
-    $phone = new trunkController($username, $password, $host, 5060);
+        // Todo o código da chamada vai aqui
+        // Executa de forma não-bloqueante
 
-    if (!$phone->register(2)) {
-        throw new \Exception('Falha no registro');
-    }
-
-    // Oferecer codec Opus em SDP
-    $phone->mountLineCodecSDP('opus/48000/2');
-
-    $phone->onRinging(function ($phone) {
-        echo "Tocando...\n";
     });
-
-    $phone->onAnswer(function (trunkController $phone) {
-        echo "Atendido. Recebendo mídia...\n";
-        $phone->receiveMedia();
-        \Swoole\Coroutine::sleep(10);
-    });
-
-    $phone->onReceiveAudio(function ($pcmData, $peer, trunkController $phone) {
-        echo "Recebido: " . strlen($pcmData) . " bytes\n";
-    });
-
-    $phone->onHangup(function (trunkController $phone) {
-        echo "Chamada finalizada\n";
-        $phone->close();
-    });
-
-    $phone->call('5511999999999');
 });
 ```
 
-### Exemplo Completo (Production-Ready)
+**Vantagens das corotinas:**
+- ✅ Código sequencial (sem callback hell)
+- ✅ Milhares de chamadas simultâneas em um thread
+- ✅ I/O não-bloqueante automático
+- ✅ Zero overhead de sincronização
 
-Veja o arquivo `example.php` para um exemplo completo que inclui:
+### Sessão 3: Configuração de Credenciais SIP
+
+Carregue e valide as credenciais do servidor SIP:
+
+```php
+// Busca as credenciais SIP das variáveis de ambiente
+$username = getenv('SIP_USERNAME') ?: '';
+$password = getenv('SIP_PASSWORD') ?: '';
+$domain = getenv('SIP_HOST') ?: 'spechshop.com';
+
+// Valida se o domínio é um IP ou hostname
+// Se for hostname, resolve para IP usando DNS
+if (!filter_var($domain, FILTER_VALIDATE_IP)) {
+    $host = gethostbyname($domain);
+} else {
+    $host = $domain;
+}
+
+// Instancia o controlador do trunk SIP com as credenciais
+$phone = new trunkController($username, $password, $host);
+```
+
+**Resolução de DNS:**
+- SIP trabalha com endereços IP
+- Se você forneceu um hostname, ele é resolvido automaticamente
+- O IP é necessário para comunicação UDP direta
+
+### Sessão 4: Registro SIP
+
+Antes de fazer ou receber chamadas, é necessário registrar no servidor:
+
+```php
+// Tenta registrar no servidor SIP com timeout de 10 segundos
+// Se falhar, lança uma exceção e interrompe a execução
+if (!$phone->register(10)) {
+    throw new \Exception("Erro ao registrar");
+}
+```
+
+**O que acontece no registro:**
+1. Envia mensagem REGISTER para o servidor
+2. Servidor responde com desafio de autenticação (401 Unauthorized)
+3. Cliente recalcula credenciais usando Digest Authentication
+4. Envia novo REGISTER com credenciais
+5. Servidor confirma com 200 OK
+
+**Parâmetro de retry:**
+- `register(10)` = tenta 10 vezes antes de falhar
+- Cada tentativa aguarda resposta do servidor
+- Útil para redes instáveis
+
+### Sessão 5: Configuração de Callbacks de Eventos
+
+A API é baseada em eventos. Configure callbacks para reagir ao ciclo de vida da chamada:
+
+```php
+// Callback executado quando uma chamada está tocando (ringing)
+$phone->onRinging(function ($phone) {
+    cli::pcl("Chamada recebida", "yellow");
+});
+
+// Callback executado quando a chamada é desligada (hangup/bye)
+$phone->onHangup(function (trunkController $phone) {
+    // Salva o buffer de áudio gravado em um arquivo WAV
+    $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
+    // Desbloqueia a corotina para continuar a execução
+    $phone->unblockCoroutine();
+    cli::pcl("Bye recebido", "red");
+});
+
+// Callback executado quando a chamada é recebida/respondida
+$phone->onAnswer(function (trunkController $phone) {
+    // Inicia o recebimento de mídia (áudio RTP)
+    $phone->receiveMedia();
+    cli::pcl("Chamada aceita", "green");
+});
+
+// Callback executado quando uma tecla DTMF é pressionada remotamente
+$phone->onKeyPress(function ($event, $peer) use ($phone) {
+    cli::pcl("Digitando: " . $event, "yellow");
+});
+```
+
+**Ciclo de vida de uma chamada outbound:**
+```
+call() → onRinging() → onAnswer() → [conversa] → onHangup()
+```
+
+### Sessão 6: Configuração de Codec e Recursos de Áudio
+
+Configure qual codec usar e recursos adicionais de áudio:
+
+```php
+// Define o codec de áudio como OPUS 48kHz mono (1 canal)
+$phone->mountLineCodecSDP('OPUS/48000/1');
+
+// Habilita a gravação de áudio durante a chamada
+$phone->enableAudioRecording();
+
+// Habilita VAD (Voice Activity Detection) - detecta quando há voz ativa
+$phone->enableVAD();
+
+// Callback executado quando o VAD detecta mudança entre voz e silêncio
+$phone->onVadChange(function ($isVoiceActive, $energy, $id) {
+    cli::pcl(
+        "VAD: $id " . ($isVoiceActive ? 'voice' : 'silence') . " Energy: $energy " . date('H:i:s'),
+        ($isVoiceActive ? 'bold_green' : 'bold_red')
+    );
+});
+```
+
+**Codecs disponíveis:**
+- `OPUS/48000/1` - Alta qualidade, 48kHz mono
+- `OPUS/48000/2` - Alta qualidade, 48kHz estéreo
+- `G729/8000` - Baixa largura de banda, 8kHz
+- `PCMU/8000` - G.711 µ-law (sem compressão)
+- `PCMA/8000` - G.711 A-law (sem compressão)
+
+**VAD (Voice Activity Detection):**
+- Detecta quando há fala ativa na chamada
+- Útil para economizar processamento
+- Pode ser usado para transcrição sob demanda
+
+### Sessão 7: Fluxo de Interação na Chamada
+
+Depois que a chamada é atendida, você pode interagir com ela:
+
+```php
+$phone->onAnswer(function (trunkController $phone) {
+    $phone->receiveMedia();
+
+    // Aguarda 10 segundos de forma interruptível (pode ser cancelado se receber BYE)
+    \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
+
+    // Envia DTMF (tom de teclado) - caractere '*' com duração de 160ms
+    $phone->send2833('*', 160);
+
+    // Aguarda mais 10 segundos de forma interruptível
+    \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
+
+    // Envia DTMF com o valor 999999999 e duração de 960ms
+    $phone->send2833(999999999, 960);
+
+    // Aguarda mais 10 segundos antes de encerrar
+    \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
+
+    // Envia BYE para encerrar a chamada
+    $phone->bye();
+
+    // Define flags indicando que a chamada foi encerrada
+    $phone->receiveBye = true;
+    $phone->callActive = false;
+});
+```
+
+**interruptibleSleep:**
+- Sleep que pode ser interrompido se receber BYE
+- Evita aguardar desnecessariamente se a chamada for desligada
+- Sempre use em vez de `sleep()` ou `Coroutine::sleep()`
+
+**Envio de DTMF:**
+- `send2833()` envia tons DTMF (RFC 2833)
+- Primeiro parâmetro: dígito(s) a enviar
+- Segundo parâmetro: duração em milissegundos
+- Útil para navegar em URAs (IVR)
+
+### Sessão 8: Inicialização da Chamada
+
+Depois de tudo configurado, inicie a chamada:
+
+```php
+// Realiza uma chamada de saída para o número especificado
+$phone->call('5511999887766');
+```
+
+**O que acontece internamente:**
+1. Gera Call-ID único
+2. Monta mensagem INVITE com SDP (codecs oferecidos)
+3. Envia para o servidor SIP
+4. Aguarda 180 Ringing → dispara onRinging()
+5. Aguarda 200 OK → dispara onAnswer()
+6. Envia ACK para confirmar
+7. Chamada estabelecida → mídia RTP flui
+
+### Sessão 9: Finalização e Limpeza
+
+Sempre libere recursos ao final:
+
+```php
+cli::pcl("Script finalizado", "green");
+
+// Fecha a conexão SIP e libera recursos
+$phone->close();
+
+cli::pcl("Processo cancelado", "red");
+```
+
+**Por que fechar explicitamente?**
+- Libera sockets UDP
+- Encerra threads de recepção de mídia
+- Evita vazamento de memória
+- Envia UNREGISTER ao servidor
+
+### Exemplo Completo Comentado
+
+O arquivo `example.php` contém todas as 9 sessões integradas. Execute-o para ver o fluxo completo:
+
+```bash
+php example.php
+```
+
+**Você verá:**
+- ✅ Registro SIP confirmado
+- ✅ Chamada sendo realizada
+- ✅ Status de ringing
+- ✅ Chamada atendida
+- ✅ VAD detectando voz/silêncio
+- ✅ DTMF sendo enviado
+- ✅ Áudio sendo gravado em `rec.wav`
+- ✅ Chamada finalizada
+
+## Início Rápido - Exemplo Mínimo
+
+Para começar rapidamente, aqui está um exemplo mínimo funcional:
 
 ```php
 <?php
-ini_set('memory_limit', '1024M');
-
-use libspech\Cli\cli;
 use libspech\Sip\trunkController;
 
 \Swoole\Runtime::enableCoroutine();
 include 'plugins/autoloader.php';
 
 \Swoole\Coroutine\run(function () {
-    \Swoole\Coroutine::create(function () {
-        // Carregar credenciais do .env
-        $username = getenv('SIP_USERNAME') ?: '';
-        $password = getenv('SIP_PASSWORD') ?: '';
-        $domain = getenv('SIP_DOMAIN') ?: 'spechshop.com';
-        $host = gethostbyname($domain);
+    $phone = new trunkController(
+        getenv('SIP_USERNAME'),
+        getenv('SIP_PASSWORD'),
+        getenv('SIP_HOST')
+    );
 
-        // Inicializar controlador de tronco SIP
-        $phone = new trunkController($username, $password, $host, 5060);
+    if (!$phone->register(2)) {
+        throw new \Exception('Falha no registro');
+    }
 
-        // Registrar no servidor SIP com 2 tentativas
-        if (!$phone->register(2)) {
-            throw new \Exception("Erro ao registrar");
-        }
+    $phone->mountLineCodecSDP('OPUS/48000/1');
 
-        // Definir timeout para 120 segundos
-        $phone->defineTimeout(120);
-        $audioBuffer = '';
+    $phone->onAnswer(function (trunkController $phone) {
+        $phone->receiveMedia();
+        echo "Chamada atendida!\n";
+    });
 
-        // Callback: chamada recebida (ringing)
-        $phone->onRinging(function ($phone) {
-            cli::pcl("Chamada recebida", "yellow");
-        });
-
-        // Callback: chamada finalizada (hangup)
-        $phone->onHangup(function (trunkController $phone) use (&$audioBuffer) {
-            cli::pcl("Chamada finalizada", "red");
-            // Salvar áudio capturado em arquivo WAV
-            $phone->saveBufferToWavFile('gravado.wav', $audioBuffer);
-            $phone->close();
-        });
-
-        // Configurar codec Opus (48kHz, estéreo)
-        $phone->mountLineCodecSDP('opus/48000/2');
-
-        // Callback: receber áudio PCM
-        $phone->onReceivePcm(function ($pcmData, $peer, trunkController $phone) use (&$audioBuffer) {
-            cli::pcl(
-                "Recebendo áudio: " . strlen($pcmData) . " bytes de {$peer['port']} {$phone->codecName}",
-                "blue"
-            );
-            $audioBuffer .= $pcmData;
-        });
-
-        // Callback: chamada atendida
-        $phone->onAnswer(function (trunkController $phone) {
-            $phone->receiveMedia();           // Iniciar recepção de mídia
-            $phone->defineAudioFile('music.wav'); // Definir arquivo de áudio para envio
-            cli::pcl("Chamada aceita", "green");
-            
-            // Aguardar 100ms ou BYE
-            \libspech\Sip\interruptibleSleep(100, $phone->receiveBye);
-            
-            // Enviar DTMF (RFC 2833): número 42017165204 com 160ms de duração
-            $phone->send2833(42017165204, 160);
-            
-            // Aguardar 30ms ou BYE
-            \libspech\Sip\interruptibleSleep(30, $phone->receiveBye);
-        });
-
-        // Callback: quando recebe pressionamento de tecla (DTMF)
-        $phone->onKeyPress(function ($event, $peer) use ($phone) {
-            cli::pcl("Digitando: " . $event, "yellow");
-        });
-
-        // Fazer chamada para número
-        $phone->call('551140040104');
-        
-        cli::pcl("Script finalizado", "green");
+    $phone->onHangup(function (trunkController $phone) {
+        echo "Chamada finalizada!\n";
         $phone->close();
     });
-});
 
-cli::pcl("Processo encerrado com sucesso", "green");
+    $phone->call('5511999887766');
+});
 ```
 
-**Recursos principais demonstrados:**
-
-- ✅ Carregar credenciais de variáveis de ambiente (`.env`)
-- ✅ Registrar no servidor SIP
-- ✅ Configurar codec Opus
-- ✅ Gerenciar callbacks de estado (ringing, answer, hangup)
-- ✅ Receber e processar áudio PCM
-- ✅ Enviar DTMF (RFC 2833)
-- ✅ Salvar áudio em arquivo WAV
-- ✅ Usar CLI helper para logging colorido
-- ✅ Fazer chamadas de saída
-
-## Scripts
-
-- Não há gerenciador de pacotes ou executor de scripts neste repositório. Use o PHP CLI diretamente.
-- Ponto de entrada para a demo é `example.php`.
+**Configure o `.env` antes de executar:**
+```bash
+cp .env.example .env
+# Edite .env com suas credenciais SIP
+php example.php
+```
 
 ## Variáveis de Ambiente
 
 A biblioteca utiliza variáveis de ambiente para gerenciar credenciais SIP de forma segura:
 
 ```bash
-SIP_USERNAME=seu_username
-SIP_PASSWORD=sua_password
-SIP_DOMAIN=sip.example.com
-SIP_PORT=5060
-SIP_TIMEOUT=120
+# Credenciais SIP
+SIP_USERNAME=seu_username      # Nome de usuário fornecido pelo provedor SIP
+SIP_PASSWORD=sua_password      # Senha fornecida pelo provedor SIP
+SIP_HOST=sip.example.com       # Domínio ou IP do servidor SIP
+SIP_PORT=5060                  # Porta SIP (padrão: 5060)
+SIP_TIMEOUT=120                # Timeout global em segundos
 ```
 
-Copie o arquivo `.env.example` para `.env` e preencha com suas credenciais:
+**Como configurar:**
 
-```bash
-cp .env.example .env
+1. Copie o arquivo de exemplo:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edite `.env` com suas credenciais
+
+3. As variáveis são carregadas automaticamente pelo `autoloader.php`
+
+**Carregamento no código:**
+```php
+$username = getenv('SIP_USERNAME') ?: '';
+$password = getenv('SIP_PASSWORD') ?: '';
+$host = getenv('SIP_HOST') ?: 'spechshop.com';
 ```
 
-As credenciais são carregadas com `getenv()` no código. TODO: documentar qualquer configuração adicional de runtime (proxies, IP público/NAT).
+> ⚠️ **Segurança**: Nunca comite o arquivo `.env` no controle de versão. Ele está incluído no `.gitignore` por padrão.
 
-## API de Callbacks
+## Referência da API
 
-A classe `trunkController` oferece os seguintes callbacks para gerenciar eventos de chamada:
+### Classe `trunkController`
 
-### Eventos de Chamada
+A classe principal para gerenciar chamadas SIP. Localizada em `plugins/Utils/libspech/trunkController.php`.
+
+#### Construtor
 
 ```php
-// Chamada recebida (ringing)
-$phone->onRinging(function ($phone) {
-    echo "Tocando...\n";
-});
-
-// Chamada atendida
-$phone->onAnswer(function (trunkController $phone) {
-    $phone->receiveMedia();
-    // ... processar áudio ...
-});
-
-// Chamada finalizada (hangup)
-$phone->onHangup(function (trunkController $phone) {
-    $phone->close();
-});
-
-// Pressionamento de tecla (DTMF)
-$phone->onKeyPress(function ($event, $peer) {
-    echo "Dígito recebido: " . $event . "\n";
-});
+new trunkController(
+    string $username,  // Nome de usuário SIP
+    string $password,  // Senha SIP
+    string $host,      // IP do servidor SIP
+    int $port = 5060   // Porta SIP (padrão: 5060)
+)
 ```
 
-### Callbacks de Mídia
+#### Métodos de Controle de Chamada
 
 ```php
-// Receber áudio PCM
-$phone->onReceivePcm(function ($pcmData, $peer, trunkController $phone) {
-    // $pcmData: dados de áudio em formato PCM
-    // $peer: endereço IP e porta do servidor RTP remoto
-    // $phone: instância do controlador
-});
+// Registrar no servidor SIP
+bool register(int $retries = 3)
+// Retorna: true se registrado com sucesso, false caso contrário
+// $retries: número de tentativas antes de falhar
 
-// Alternativa (compatibilidade)
-$phone->onReceiveAudio(function ($pcmData, $peer, trunkController $phone) {
-    // Mesmo que onReceivePcm
-});
+// Realizar chamada de saída
+void call(string $number)
+// $number: número de telefone para chamar (formato livre)
+
+// Encerrar chamada
+void bye()
+// Envia mensagem BYE e encerra a chamada ativa
+
+// Fechar conexão e liberar recursos
+void close()
+// SEMPRE chame este método ao final para liberar sockets
 ```
 
-### Métodos Principais
+#### Configuração de Codec e Mídia
 
 ```php
-// Registro no servidor SIP
-$phone->register($retries);
-
-// Fazer chamada de saída
-$phone->call($number);
-
 // Configurar codec SDP
-$phone->mountLineCodecSDP('opus/48000/2');  // Opus, 48kHz, estéreo
-$phone->mountLineCodecSDP('L16/8000');      // Linear PCM, 8kHz
+void mountLineCodecSDP(string $codec)
+// Exemplos:
+//   'OPUS/48000/1' - Opus 48kHz mono
+//   'OPUS/48000/2' - Opus 48kHz estéreo
+//   'G729/8000'    - G.729 8kHz
+//   'PCMU/8000'    - G.711 µ-law
+//   'PCMA/8000'    - G.711 A-law
 
-// Gerenciamento de áudio
-$phone->receiveMedia();                      // Iniciar recepção
-$phone->defineAudioFile('file.wav');         // Definir arquivo para envio
-$phone->saveBufferToWavFile('out.wav', $data);
+// Iniciar recepção de mídia RTP
+void receiveMedia()
+// DEVE ser chamado dentro de onAnswer()
+
+// Definir arquivo de áudio para envio
+void defineAudioFile(string $path)
+// $path: caminho para arquivo WAV
+
+// Salvar buffer de áudio em arquivo WAV
+void saveBufferToWavFile(string $path, string $data)
+// $path: caminho de saída
+// $data: buffer PCM bruto
+
+// Obter buffer de áudio gravado
+string getBuffer()
+// Retorna: buffer PCM completo da chamada
+// IMPORTANTE: Requer que enableAudioRecording() tenha sido chamado
+```
+
+#### Recursos de Áudio Avançados
+
+```php
+// Habilitar gravação de áudio
+void enableAudioRecording()
+// Grava automaticamente todo áudio recebido
+// Use getBuffer() no onHangup para obter o áudio completo
+
+// Habilitar VAD (Voice Activity Detection)
+void enableVAD()
+// Detecta quando há voz ativa vs silêncio
 
 // Enviar DTMF (RFC 2833)
-$phone->send2833($number, $duration);       // $duration em ms
+void send2833(int|string $digits, int $durationMs)
+// $digits: dígito(s) a enviar (0-9, *, #, A-D)
+// $durationMs: duração em milissegondos
+```
 
-// Configuração
-$phone->defineTimeout($seconds);             // Timeout em segundos
-$phone->close();                             // Finalizar conexão
+#### Callbacks de Eventos
+
+```php
+// Chamada recebida/tocando (180 Ringing)
+void onRinging(callable $callback)
+// Callback: function($phone) { }
+
+// Chamada atendida (200 OK + ACK)
+void onAnswer(callable $callback)
+// Callback: function(trunkController $phone) { }
+// IMPORTANTE: Chame receiveMedia() aqui
+
+// Chamada finalizada (BYE recebido)
+void onHangup(callable $callback)
+// Callback: function(trunkController $phone) { }
+// Recomendado: Salvar áudio e chamar close()
+
+// Tecla DTMF pressionada remotamente
+void onKeyPress(callable $callback)
+// Callback: function(string $digit, array $peer) { }
+// $digit: caractere pressionado
+// $peer: ['ip' => '...', 'port' => ...]
+
+// Áudio PCM recebido (para processamento em tempo real)
+void onReceivePcm(callable $callback)
+// Callback: function(string $pcmData, array $peer, trunkController $phone) { }
+// $pcmData: buffer PCM bruto
+// Chamado continuamente durante a chamada
+// NOTA: Para apenas gravar, use enableAudioRecording() + getBuffer()
+
+// VAD mudou de estado
+void onVadChange(callable $callback)
+// Callback: function(bool $isVoiceActive, float $energy, string $callId) { }
+// $isVoiceActive: true = voz detectada, false = silêncio
+// $energy: nível de energia do sinal
+```
+
+#### Configuração Avançada
+
+```php
+// Definir timeout global da chamada
+void defineTimeout(int $seconds)
+// Encerra automaticamente após $seconds
+
+// Desbloquear corotina (uso interno)
+void unblockCoroutine()
+// Libera corotinas aguardando em blockCoroutine()
+```
+
+### Funções Auxiliares
+
+```php
+// Sleep interruptível (namespace libspech\Sip)
+void interruptibleSleep(int $seconds, bool &$flag)
+// Dorme $seconds ou até $flag = true
+// Use sempre em vez de sleep() dentro de callbacks
+
+// Obter IP local (classe network)
+?string libspech\Network\network::getLocalIp()
+// Retorna IP não-loopback da máquina
+
+// Verificar se IP é privado
+bool libspech\Network\network::isPrivateIp(string $ip)
+
+// Alocar porta RTP disponível
+int libspech\Network\network::allocateRtpPort()
+// Retorna porta livre entre 10000-62000
+```
+
+### Classe `cli` - Utilitários de Terminal
+
+```php
+use libspech\Cli\cli;
+
+// Imprimir texto colorido
+cli::pcl(string $message, string $color = 'white')
+
+// Cores disponíveis:
+// 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'
+// 'bold_black', 'bold_red', 'bold_green', 'bold_yellow', ...
+
+// Exemplo:
+cli::pcl("Chamada atendida!", "green");
+cli::pcl("Erro ao registrar", "bold_red");
 ```
 
 ## Estrutura do Projeto
@@ -607,11 +908,7 @@ generateInviteResponse(array $headers): array    // Resposta 200 OK para INVITE
 
 ## Codecs
 
-Payloads suportados/disponíveis no codebase:
-
-## Codecs
-
-Payloads suportados/disponíveis no codebase:
+Payloads suportados e disponíveis no codebase:
 
 | Codec                  | Tipo de Payload | Taxa de Amostragem | Status   | Notas/Extensão                                  |
 |------------------------|-----------------|---------------------|----------|-------------------------------------------------|
@@ -755,108 +1052,490 @@ Toda a I/O é não-bloqueante usando corrotinas Swoole:
 - ✅ Código linear e fácil de entender
 - ✅ Integração nativa com extensões Swoole (timers, queues, etc.)
 
+## Casos de Uso Práticos
+
+### 🤖 Automação de Atendimento (IVR)
+- Receber chamadas e tocar mensagens de áudio
+- Detectar DTMF para navegação em menus
+- Gravar mensagens de voz dos usuários
+- Transferir para números específicos baseado em escolha
+
+### 📞 Call Center e Discador Automático
+- Realizar chamadas em massa (dialer)
+- Gravar todas as conversas
+- Detectar quando há voz ativa (VAD) para análise
+- Enviar DTMF para navegar em URAs de terceiros
+
+### 🎙️ Transcrição de Chamadas em Tempo Real
+- Capturar áudio PCM durante a chamada
+- Integrar com APIs de transcrição (Google, Whisper, etc.)
+- Processar apenas quando VAD detecta voz
+- Salvar transcrição e áudio sincronizados
+
+### 🔔 Notificações por Telefone
+- Enviar alertas críticos via chamada telefônica
+- Tocar mensagens de áudio pré-gravadas
+- Confirmar recebimento via DTMF
+- Retry automático se não atendida
+
+### 📊 Monitoramento de Qualidade (QoS)
+- Analisar jitter e perda de pacotes RTP
+- Medir latência e qualidade de áudio
+- Detectar problemas de rede
+- Gerar relatórios de métricas
+
 ## Notas de Uso
 
-- Rede/NAT: certifique-se de que o IP local e portas que a biblioteca vincula sejam alcançáveis pelo peer SIP. STUN/travessia NAT
-  não está incluída. TODO: documentar utilitários auxiliares ou melhores práticas para ambientes NAT.
-- Segurança: esta biblioteca foca no SIP básico sobre UDP. TLS/SRTP não estão documentados aqui. TODO: esclarecer status de suporte TLS/SRTP.
+### Rede e NAT
+- Certifique-se de que o IP local e portas sejam alcançáveis pelo servidor SIP
+- STUN/travessia NAT não está incluída nesta versão
+- Para ambientes com NAT, considere configurar port forwarding para portas RTP (10000-62000)
+- Use `network::getLocalIp()` para detectar automaticamente seu IP local
+
+### Segurança
+- Esta biblioteca foca em SIP básico sobre UDP
+- TLS/SRTP não estão implementados atualmente
+- Use em redes confiáveis ou configure VPN/túnel seguro
+- Nunca exponha credenciais SIP em código (use `.env`)
+
+### Performance
+- Cada chamada roda em uma corotina separada (zero custo de thread)
+- Capaz de gerenciar milhares de chamadas simultâneas
+- Buffer adaptativo mitiga jitter automaticamente
+- Codecs leves (G.729) economizam largura de banda
 
 ## Exemplos Avançados
 
-### Gravando Áudio de Múltiplas Chamadas
+Esta seção demonstra implementações completas para casos de uso reais.
+
+### 📞 Exemplo 1: Discador Automático com Gravação Múltipla
+
+Realize múltiplas chamadas simultâneas e grave cada uma em arquivo separado:
 
 ```php
 <?php
 use libspech\Sip\trunkController;
+use libspech\Cli\cli;
+
+\Swoole\Runtime::enableCoroutine();
+include 'plugins/autoloader.php';
 
 \Swoole\Coroutine\run(function () {
     $calls = [
-        '5511999999999',
-        '5511888888888',
+        '5511999999999' => 'cliente_a',
+        '5511888888888' => 'cliente_b',
+        '5511777777777' => 'cliente_c',
     ];
-    
-    foreach ($calls as $number) {
-        \Swoole\Coroutine::create(function () use ($number) {
-            $phone = new trunkController($username, $password, $host, 5060);
-            $phone->register(2);
-            
-            $audioBuffer = '';
-            
-            $phone->onReceivePcm(function ($pcmData, $peer, $p) use (&$audioBuffer) {
-                $audioBuffer .= $pcmData;
+
+    foreach ($calls as $number => $clientName) {
+        // Cada chamada roda em corotina separada
+        \Swoole\Coroutine::create(function () use ($number, $clientName) {
+            $phone = new trunkController(
+                getenv('SIP_USERNAME'),
+                getenv('SIP_PASSWORD'),
+                getenv('SIP_HOST')
+            );
+
+            if (!$phone->register(2)) {
+                cli::pcl("Falha ao registrar para $clientName", "red");
+                return;
+            }
+
+            $phone->mountLineCodecSDP('OPUS/48000/1');
+            $phone->enableAudioRecording();
+
+            $phone->onRinging(function ($p) use ($clientName) {
+                cli::pcl("[$clientName] Chamando...", "yellow");
             });
-            
-            $phone->onHangup(function ($p) use (&$audioBuffer, $number) {
-                $filename = "call_{$number}_" . date('YmdHis') . ".wav";
+
+            $phone->onAnswer(function ($p) use ($clientName) {
+                $p->receiveMedia();
+                cli::pcl("[$clientName] Chamada atendida!", "green");
+            });
+
+            $phone->onHangup(function ($p) use ($number, $clientName) {
+                // Obtém o buffer completo gravado automaticamente
+                $audioBuffer = $p->getBuffer();
+                $timestamp = date('Y-m-d_H-i-s');
+                $filename = "recordings/{$clientName}_{$number}_{$timestamp}.wav";
                 $p->saveBufferToWavFile($filename, $audioBuffer);
-                echo "Gravado: $filename\n";
+                cli::pcl("[$clientName] Gravação salva: $filename", "green");
+                $p->close();
             });
-            
+
+            // Inicia a chamada
             $phone->call($number);
         });
     }
 });
+
+cli::pcl("Todas as chamadas finalizadas", "green");
 ```
 
-### Detecção de DTMF e Menu IVR
+**Saída esperada:**
+```
+[cliente_a] Chamando...
+[cliente_b] Chamando...
+[cliente_c] Chamando...
+[cliente_a] Chamada atendida!
+[cliente_c] Chamada atendida!
+[cliente_b] Chamada atendida!
+[cliente_a] Gravação salva: recordings/cliente_a_5511999999999_2025-02-16_14-30-25.wav
+[cliente_c] Gravação salva: recordings/cliente_c_5511777777777_2025-02-16_14-30-28.wav
+[cliente_b] Gravação salva: recordings/cliente_b_5511888888888_2025-02-16_14-30-31.wav
+Todas as chamadas finalizadas
+```
+
+### 🎛️ Exemplo 2: Menu IVR Interativo com DTMF
+
+Implemente um sistema IVR que responde a teclas pressionadas pelo usuário:
 
 ```php
 <?php
-$phone->onKeyPress(function ($digit, $peer) use ($phone) {
-    switch ($digit) {
-        case '1':
-            echo "Opção 1 pressionada\n";
-            $phone->defineAudioFile('menu_option1.wav');
-            break;
-        case '2':
-            echo "Opção 2 pressionada\n";
-            $phone->defineAudioFile('menu_option2.wav');
-            break;
-        case '*':
-            echo "Retornar ao menu\n";
-            $phone->defineAudioFile('main_menu.wav');
-            break;
-        case '#':
-            echo "Finalizar chamada\n";
-            $phone->close();
-            break;
-    }
+use libspech\Sip\trunkController;
+use libspech\Cli\cli;
+
+\Swoole\Runtime::enableCoroutine();
+include 'plugins/autoloader.php';
+
+\Swoole\Coroutine\run(function () {
+    \Swoole\Coroutine::create(function () {
+        $phone = new trunkController(
+            getenv('SIP_USERNAME'),
+            getenv('SIP_PASSWORD'),
+            getenv('SIP_HOST')
+        );
+
+        $phone->register(2);
+        $phone->mountLineCodecSDP('OPUS/48000/1');
+
+        // Estado do menu
+        $menuState = 'main';
+        $selectedOption = null;
+
+        $phone->onAnswer(function ($p) use (&$menuState) {
+            $p->receiveMedia();
+            // Toca menu principal ao atender
+            $p->defineAudioFile('audios/menu_principal.wav');
+            cli::pcl("Menu principal tocando...", "cyan");
+        });
+
+        // Processa teclas pressionadas
+        $phone->onKeyPress(function ($digit, $peer) use ($phone, &$menuState, &$selectedOption) {
+            cli::pcl("Tecla pressionada: $digit", "yellow");
+
+            switch ($menuState) {
+                case 'main':
+                    switch ($digit) {
+                        case '1':
+                            cli::pcl("Opção 1: Suporte Técnico", "green");
+                            $phone->defineAudioFile('audios/suporte_tecnico.wav');
+                            $menuState = 'submenu_1';
+                            break;
+                        case '2':
+                            cli::pcl("Opção 2: Vendas", "green");
+                            $phone->defineAudioFile('audios/vendas.wav');
+                            $menuState = 'submenu_2';
+                            break;
+                        case '3':
+                            cli::pcl("Opção 3: Financeiro", "green");
+                            $phone->defineAudioFile('audios/financeiro.wav');
+                            $menuState = 'submenu_3';
+                            break;
+                        case '9':
+                            cli::pcl("Opção 9: Falar com atendente", "green");
+                            // Aqui você poderia transferir para número real
+                            $phone->defineAudioFile('audios/transferindo.wav');
+                            break;
+                        case '0':
+                            cli::pcl("Opção 0: Repetir menu", "cyan");
+                            $phone->defineAudioFile('audios/menu_principal.wav');
+                            break;
+                        case '#':
+                            cli::pcl("Finalizando chamada", "red");
+                            $phone->bye();
+                            break;
+                        default:
+                            cli::pcl("Opção inválida: $digit", "red");
+                            $phone->defineAudioFile('audios/opcao_invalida.wav');
+                    }
+                    break;
+
+                case 'submenu_1':
+                case 'submenu_2':
+                case 'submenu_3':
+                    if ($digit === '*') {
+                        cli::pcl("Voltando ao menu principal", "cyan");
+                        $phone->defineAudioFile('audios/menu_principal.wav');
+                        $menuState = 'main';
+                    } elseif ($digit === '#') {
+                        cli::pcl("Confirmando opção", "green");
+                        $phone->defineAudioFile('audios/obrigado.wav');
+                        // Aguarda 3 segundos e desliga
+                        \libspech\Sip\interruptibleSleep(3, $phone->receiveBye);
+                        $phone->bye();
+                    }
+                    break;
+            }
+        });
+
+        $phone->onHangup(function ($p) {
+            cli::pcl("Chamada encerrada pelo usuário", "red");
+            $p->close();
+        });
+
+        // Aguarda chamada de entrada ou faz chamada de saída
+        $phone->call('5511999887766');
+    });
 });
 ```
 
-### Processamento em Tempo Real com VAD
+**Estrutura de áudios necessária:**
+```
+audios/
+├── menu_principal.wav    # "Para suporte técnico tecle 1, vendas tecle 2..."
+├── suporte_tecnico.wav   # "Você escolheu suporte técnico. Tecle * para voltar..."
+├── vendas.wav           # "Você escolheu vendas. Tecle * para voltar..."
+├── financeiro.wav       # "Você escolheu financeiro. Tecle * para voltar..."
+├── transferindo.wav     # "Transferindo para um atendente..."
+├── opcao_invalida.wav   # "Opção inválida. Tente novamente."
+└── obrigado.wav         # "Obrigado por ligar. Tenha um bom dia!"
+```
+
+### 🎙️ Exemplo 3: Transcrição em Tempo Real com VAD
+
+Processe áudio apenas quando há fala ativa, economizando recursos de transcrição:
 
 ```php
 <?php
-$mediaChannel = new MediaChannel($callId);
-$mediaChannel->enableVAD();  // Voice Activity Detection
+use libspech\Sip\trunkController;
+use libspech\Cli\cli;
 
-$mediaChannel->onVadChange(function ($isVoiceActive) {
-    if ($isVoiceActive) {
-        echo "Voz detectada\n";
-    } else {
-        echo "Silêncio\n";
-    }
+\Swoole\Runtime::enableCoroutine();
+include 'plugins/autoloader.php';
+
+\Swoole\Coroutine\run(function () {
+    \Swoole\Coroutine::create(function () {
+        $phone = new trunkController(
+            getenv('SIP_USERNAME'),
+            getenv('SIP_PASSWORD'),
+            getenv('SIP_HOST')
+        );
+
+        $phone->register(2);
+        $phone->mountLineCodecSDP('OPUS/48000/1');
+
+        // Habilita VAD e gravação automática
+        $phone->enableVAD();
+        $phone->enableAudioRecording();
+
+        // Buffer temporário apenas para segmentos de voz (processamento em tempo real)
+        $voiceBuffer = '';
+        $isCollectingVoice = false;
+        $silenceFrames = 0;
+
+        // Detecta mudança de estado de voz
+        $phone->onVadChange(function ($isVoiceActive, $energy, $callId) use (&$isCollectingVoice, &$silenceFrames) {
+            if ($isVoiceActive) {
+                cli::pcl("🎤 Voz detectada! (Energia: $energy)", "bold_green");
+                $isCollectingVoice = true;
+                $silenceFrames = 0;
+            } else {
+                cli::pcl("🔇 Silêncio detectado (Energia: $energy)", "bold_red");
+                $silenceFrames++;
+            }
+        });
+
+        // Processa áudio em tempo real (apenas para segmentos de transcrição)
+        $phone->onReceivePcm(function ($pcmData, $peer, $p) use (&$voiceBuffer, &$isCollectingVoice, &$silenceFrames) {
+            // Coleta áudio apenas durante fala para transcrição em tempo real
+            if ($isCollectingVoice) {
+                $voiceBuffer .= $pcmData;
+
+                // Após 5 frames de silêncio, processa o segmento
+                if ($silenceFrames >= 5) {
+                    cli::pcl("📝 Segmento de voz capturado: " . strlen($voiceBuffer) . " bytes", "cyan");
+
+                    // Envie para API de transcrição em tempo real
+                    // $transcription = transcribeAudio($voiceBuffer);
+                    // cli::pcl("Transcrição: $transcription", "yellow");
+
+                    // Limpa buffer para próximo segmento
+                    $voiceBuffer = '';
+                    $isCollectingVoice = false;
+                    $silenceFrames = 0;
+                }
+            }
+        });
+
+        $phone->onAnswer(function ($p) {
+            $p->receiveMedia();
+            cli::pcl("📞 Chamada atendida - Transcrição ativa", "green");
+        });
+
+        $phone->onHangup(function ($p) use (&$voiceBuffer) {
+            // Processa segmento final se houver
+            if (strlen($voiceBuffer) > 0) {
+                // $transcription = transcribeAudio($voiceBuffer);
+                cli::pcl("📝 Segmento final processado", "green");
+            }
+
+            // Obtém gravação completa automaticamente
+            $fullRecording = $p->getBuffer();
+            $p->saveBufferToWavFile('recordings/call_full.wav', $fullRecording);
+            cli::pcl("📼 Gravação completa salva", "green");
+
+            $p->close();
+        });
+
+        $phone->call('5511999887766');
+    });
 });
 
-$mediaChannel->onReceive(function ($pcmData, $peer) {
-    if ($mediaChannel->isVoiceActive) {
-        // Processar apenas quando há voz
-        processAudio($pcmData);
-    }
+cli::pcl("Processo de transcrição encerrado", "green");
+```
+
+**Integração com API de Transcrição:**
+
+```php
+// Exemplo de integração com Google Speech-to-Text
+function transcribeAudio(string $pcmData): string {
+    // Converte PCM para formato aceito pela API
+    $base64Audio = base64_encode($pcmData);
+
+    $apiKey = getenv('GOOGLE_API_KEY');
+    $url = "https://speech.googleapis.com/v1/speech:recognize?key=$apiKey";
+
+    $data = [
+        'config' => [
+            'encoding' => 'LINEAR16',
+            'sampleRateHertz' => 48000,
+            'languageCode' => 'pt-BR',
+        ],
+        'audio' => [
+            'content' => $base64Audio
+        ]
+    ];
+
+    // Faz requisição para API (pseudo-código)
+    $response = httpPost($url, json_encode($data));
+    $result = json_decode($response, true);
+
+    return $result['results'][0]['alternatives'][0]['transcript'] ?? '';
+}
+```
+
+## Testes e Validação
+
+### Testando Manualmente
+
+Execute o `example.php` para validar sua instalação:
+
+```bash
+# 1. Configure suas credenciais
+cp .env.example .env
+nano .env  # Edite com suas credenciais SIP
+
+# 2. Execute o exemplo
+php example.php
+
+# 3. Verifique se:
+# - Registro SIP foi bem-sucedido
+# - Chamada foi realizada
+# - Áudio foi gravado em rec.wav
+```
+
+### Validando Codecs
+
+Teste diferentes codecs para verificar compatibilidade com seu provedor:
+
+```bash
+# Teste G.729 (baixa largura de banda)
+php -r "require 'plugins/autoloader.php'; \$p = new libspech\Sip\trunkController('user','pass','host'); \$p->mountLineCodecSDP('G729/8000');"
+
+# Teste Opus (alta qualidade)
+php -r "require 'plugins/autoloader.php'; \$p = new libspech\Sip\trunkController('user','pass','host'); \$p->mountLineCodecSDP('OPUS/48000/1');"
+```
+
+### Depuração
+
+Para depurar problemas de conexão ou áudio:
+
+```php
+<?php
+use libspech\Cli\cli;
+
+// Habilita logging detalhado
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+// Adiciona logs em todos os callbacks
+$phone->onRinging(function ($p) {
+    cli::pcl("[DEBUG] onRinging disparado", "cyan");
+});
+
+$phone->onAnswer(function ($p) {
+    cli::pcl("[DEBUG] onAnswer disparado", "cyan");
+    cli::pcl("[DEBUG] Codec negociado: " . $p->codecName, "cyan");
+});
+
+$phone->onReceivePcm(function ($pcmData, $peer, $p) {
+    cli::pcl("[DEBUG] Áudio recebido: " . strlen($pcmData) . " bytes de {$peer['ip']}:{$peer['port']}", "cyan");
 });
 ```
 
-## Testes
+### Testes Automatizados
 
-- Não há testes automatizados no repositório no momento.
-- TODO: adicionar testes unitários/integração para parsing de mensagens SIP, timing RTP, DTMF e fluxos de chamadas de exemplo.
+Atualmente não há testes automatizados no repositório. Contribuições são bem-vindas para:
+- ✅ Testes unitários de parsing SIP/SDP
+- ✅ Testes de codecs (encode/decode)
+- ✅ Testes de fluxo de chamada simulada
+- ✅ Testes de DTMF e VAD
+- ✅ Testes de integração com servidores SIP
+
+## Recursos Adicionais
+
+### Documentação Oficial
+
+- 📘 **[SIGNALING_ARRAYS.md](SIGNALING_ARRAYS.md)** - Entenda a estrutura interna dos arrays de sinalização SIP
+- 📄 **[example.php](example.php)** - Exemplo completo e comentado (9 sessões)
+- 🔐 **[SECURITY.md](SECURITY.md)** - Política de segurança e reporte de vulnerabilidades
+
+### Links Úteis
+
+- 🌐 **Website Oficial**: [https://spechshop.com](https://spechshop.com)
+- 💻 **Repositório GitHub**: [https://github.com/spechshop/libspech](https://github.com/spechshop/libspech)
+- 📦 **Releases (pcg729)**: [https://github.com/berzersks/pcg729/releases](https://github.com/berzersks/pcg729/releases)
+
+### Protocolos e RFCs
+
+Este projeto implementa os seguintes padrões:
+
+- **RFC 3261** - SIP (Session Initiation Protocol)
+- **RFC 3550** - RTP (Real-time Transport Protocol)
+- **RFC 2833** - DTMF via RTP (telephone-event)
+- **RFC 4566** - SDP (Session Description Protocol)
+- **RFC 2617** - HTTP Digest Authentication (usado no SIP)
+
+### Comunidade e Suporte
+
+- 🐛 **Reportar Bug**: Abra uma issue no [GitHub](https://github.com/spechshop/libspech/issues)
+- 💡 **Sugerir Feature**: Use as GitHub Discussions
+- 🤝 **Contribuir**: Envie pull requests - toda ajuda é bem-vinda!
+- 📧 **Contato**: Visite [spechshop.com](https://spechshop.com) para informações de contato
+
+### Agradecimentos
+
+- **Swoole Team** - Framework de corotinas PHP
+- **Belledonne Communications** - BCG729 codec implementation
+- **Xiph.Org Foundation** - Opus codec
+- **Comunidade Open Source** - Por tornar projetos como este possíveis
 
 ## Licença
 
 This project is licensed under the **Apache License 2.0**.
 
-**Copyright © 2025 Lotus / berzersks**
+**Copyright © 2026 Lotus / berzersks**
 **Website: [https://spechshop.com](https://spechshop.com)**
 **Official Repository: [https://github.com/spechshop/libspech](https://github.com/spechshop/libspech)**
 

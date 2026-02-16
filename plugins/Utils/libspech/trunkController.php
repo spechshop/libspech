@@ -312,6 +312,8 @@ class trunkController
         return $result;
     }
 
+    public int $defaultChannels = 1;
+
     public function mountLineCodecSDP(string $codec = 'PCMA/8000'): array
     {
         $codecRtpMap = [];
@@ -351,6 +353,7 @@ class trunkController
 
         if (!empty($parts[2])) {
             if (intval($parts[2]) > 1) $lineString .= "/$parts[2]";
+            $defaultChannels = $parts[2];
         }
         $this->ptsRegistered[$pt] = $lineString;
         $start = 101;
@@ -367,12 +370,18 @@ class trunkController
             }
         }
         $fmtp[] = "rtpmap:$ptDtmf telephone-event/" . $defaultRate;
+
         $fmtp[] = "fmtp:$ptDtmf 0-15";
+        if ($name === 'opus') $fmtp[] = "fmtp:$ptDtmf maxplaybackrate=24000;sprop-maxcapturerate=24000;maxaveragebitrate=64000;useinbandfec=1";
+
+
+
         if ($pt == 18) {
             $fmtp[] = "fmtp:$pt annexb=no";
         }
         $this->mapLearn[$pt] = [$lineString];
         if (!array_key_exists($ptDtmf, $this->mapLearn)) $this->mapLearn[$ptDtmf] = $fmtp;
+        $this->defaultChannels = $defaultChannels;
 
 
         return [
@@ -473,7 +482,7 @@ class trunkController
         ];
     }
 
-    public function __invoke()
+    public function __invoke(): void
     {
         $callId = $this->callId;
         cli::pcl("CALL ID {$callId} foi criado");
@@ -537,69 +546,6 @@ class trunkController
             $t <<= ($i2 & 0x70) >> 4;
             $this->ulawTable[$i] = $i2 & 0x80 ? 132 - $t : $t - 132;
         }
-    }
-
-    public function proxyMedia(array $options): false|int
-    {
-        // Verificar se o proxy já está ativo para esta chamada
-        if ($this->proxyMediaActive && $this->currentProxyId) {
-            cli::pcl("ProxyMedia já está ativo para chamada {$this->callId} com ID {$this->currentProxyId}", 'yellow');
-            return $this->currentProxyId;
-        }
-
-        return Coroutine::create(function () use ($options) {
-            $spechId = $options['cid'] . "_{$options['peerIp']}:{$options['peerPort']}:{$options['proxyPort']}";
-            $this->currentProxyId = $spechId;
-            $this->proxyMediaActive = true;
-
-            cli::pcl("Iniciando ProxyMedia para chamada {$this->callId} com ID {$spechId}", 'green');
-
-            $portsUse = cache::global()["portsUse"] ?? [];
-
-            $proxyPort = $options["proxyPort"];
-            if (!$options['codecMapper']) {
-                $this->proxyMediaActive = false;
-                $this->currentProxyId = null;
-                return false;
-            }
-
-
-            $fakeStartTime = time();
-            $useFake = false;
-            if (!$options['rcc']) {
-                $useFake = true;
-            }
-            $portsUse[] = $proxyPort;
-            $portsUse = array_values($portsUse);
-            cache::define("portsUse", $portsUse);
-            $callId = $this->callId;
-            if ($this->inTransfer) {
-                $kvc = array_keys($this->volumeCodec);
-                foreach ($kvc as $ip) {
-                    if (!array_key_exists($ip, $this->originVolumes)) {
-                        $this->originVolumes[$ip] = $options["polo"];
-                    }
-                }
-            }
-            $apps = array_keys($this->originVolumes);
-
-
-            foreach ($apps as $ip) {
-                $username = $this->originVolumes[$ip];
-                $this->box[$ip] = [
-                    "pt" => $this->volumeCodec[$ip],
-                    "username" => $username,
-                    "channel" => false,
-                    "rtp" => false,
-                ];
-            }
-            $options["originVolumes"] = $this->originVolumes;
-            $options["volumeCodec"] = $this->volumeCodec;
-            $rpcClient = new rpcClient();
-            $rpcClient->rpcSet($spechId, $options);
-
-            return $callId;
-        });
     }
 
     public function record(string $file): void
@@ -1356,6 +1302,18 @@ class trunkController
 
 
             $this->mediaChannel = new MediaChannel($rtpSocket, $this->callId);
+
+
+            if ($this->vadEnabled) {
+
+                $this->mediaChannel->enableVAD();
+                $this->mediaChannel->onVadChange(function ($isVoiceActive, $energy, $id) {
+                    cli::pcl("{$id} Nivel de energia: {$energy}", !$isVoiceActive ? 'bold_red' : 'bold_green');
+                });
+                $this->mediaChannel->setVadRegistrationThreshold(15.51);
+            }
+
+
             $this->mediaChannel->portList = $this->audioReceivePort;
             $this->mediaChannel->onDtmfCallable = $this->onDtmfCallable;
 
@@ -1382,15 +1340,19 @@ class trunkController
 
 
             $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $this->ssrc);
+            $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
+            $opus = new \opusChannel($this->frequencyCall, $this->defaultChannels);
+            $opus->setBitrate($this->frequencyCall);
+            $opus->setSignalVoice(true);
+            $opus->setDTX(true);
+            $opus->setVBR(true);
+            $opus->setComplexity(10);
 
 
-            $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel)
-
-
-            use ($rtpSocket) {
+            $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $opus) {
                 //return;
 
-                if (strlen($rtpc->payloadRaw) < 12) return;;
+                if (strlen($rtpc->payloadRaw) < 12) return;
 
                 $targetId = $peer['address'] . ':' . $peer['port'];
 
@@ -1413,13 +1375,21 @@ class trunkController
                         $pcmData = decodePcmaToPcm($rtpc->payloadRaw);
                         break;
                     case 'G729':
-                        $pcmData = $channel->channelDecode->decode($rtpc->payloadRaw);
+                        $pcmData = $this->mediaChannel->members[$targetId]['rtpChannel']->bcg729Channel->decode($rtpc->payloadRaw);
                         break;
                     case 'OPUS':
 
                         if (!empty($channel->members[$targetId]['opus'])) {
-                            $pcmData = $channel->members[$targetId]['opus']->decode($rtpc->payloadRaw);
+
                         }
+                        $pcmData = $opus->decode($rtpc->payloadRaw);
+                       // cli::pcl("Recebendo " . strlen($pcmData) . " bytes de {$peer['address']}:{$peer['port']} | Sequence: $rtpc->sequence | TimeStamp: {$rtpc->timestamp} | SSRC: {$rtpChannel->ssrc}", 'bold_yellow');
+
+                        $pcmData = resampler($pcmData, 48000, 8000);
+
+
+
+
                         break;
                     case 'L16':
                         $pcmData = decodeL16ToPcm($rtpc->payloadRaw);
@@ -1428,23 +1398,207 @@ class trunkController
                         $pcmData = '';
                         break;
                 };
-                $mode = 1;
+
+                if ($channel->recordingEnabled) {
+                    if (!array_key_exists($ssrc, $this->bufferWriteSound)) $this->bufferWriteSound[$ssrc] = [];
+                    if (!array_key_exists($frequencyPacket, $this->bufferWriteSound[$ssrc])) $this->bufferWriteSound[$ssrc][$frequencyPacket] = [];
+                    if (!array_key_exists($packetCodecName, $this->bufferWriteSound[$ssrc][$frequencyPacket])) $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] = '';
+                    if ($packetCodecName !== 'OPUS')
+                        $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] .= $rtpc->payloadRaw;
+                    else
+                        $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] .= $pcmData;
+                }
                 if (is_callable($this->onReceivePcmCallback)) {
                     $closePcm = ($this->onReceivePcmCallback)(...);
-
                     go($closePcm, $pcmData, $peer, $this, $packetCodecName, $frequencyPacket);
                 }
                 if (is_callable($this->audioFileHandle)) {
                     $closure = ($this->audioFileHandle)(...);
                     go($closure, $pcmData, $peer, $this);
                 }
+                if ($this->vadEnabled) {
+                    if ($pcmData !== false) {
+                        $idFrom = $peer['address'] . ':' . $peer['port'];
+                        $this->processVAD($pcmData, $idFrom);
+                    }
+                }
             });
+
 
             $this->mediaChannel->start();
 
             // Garantir que o mediaChannel seja desbloqueado e fechado
             $this->mediaChannel?->unblock();
         });
+    }
+
+    private bool $adaptationEnabled = false;
+    private array $qualityReports = [];
+    private int $adaptationCheckInterval = 50;
+    private int $packetsProcessed = 0;
+    public array $registeredIds = [];
+    private array $lastVadActivity = [];
+    private int $vadTimeoutSeconds = 10;
+    private float $vadRegistrationThreshold = 1;
+
+    public $onVadChangeCallable = null;
+    public bool $isVoiceActive = false;
+    public bool $vadEnabled = false;
+    
+    // Novo sistema VAD com threshold adaptativo
+    private float $vadMinEnergy = 2.0;
+    private float $vadNoiseFloor = 0.0;
+    private float $vadSpeechThreshold = 0.0;
+    private array $vadEnergyHistory = [];
+    private int $vadHistorySize = 100;
+    private int $vadHangoverFrames = 15;
+    private int $vadCurrentHangover = 0;
+    private int $vadFrameCounter = 0;
+    private int $vadReportInterval = 50;
+    private int $vadNoiseEstimateInterval = 200;
+    private int $vadNoiseFrameCounter = 0;
+    public bool $recordingEnabled = false;
+    private string $recordingPath = '';
+    private array $dtmfLastEvent = [];
+    private int $dtmfDebounceMs = 100;
+    private array $dtmfPacketCache = []; // Cache para detectar retransmissões RFC 4733
+    public array $audioMetrics = [
+        'total_packets' => 0,
+        'lost_packets' => 0,
+        'avg_energy' => 0.0,
+        'voice_time' => 0.0,
+        'silence_time' => 0.0,
+    ];
+    public function processVAD(string $pcmData, ...$extra): void
+    {
+        if (!$this->vadEnabled) {
+            return;
+        }
+        
+        $energy = volumeAverage($pcmData);
+        $idFrom = $extra[0] ?? $this->callId;
+        
+        // Adiciona energia ao histórico
+        $this->vadEnergyHistory[] = $energy;
+        if (count($this->vadEnergyHistory) > $this->vadHistorySize) {
+            array_shift($this->vadEnergyHistory);
+        }
+        
+        // Atualiza estimativa de ruído periodicamente
+        $this->vadNoiseFrameCounter++;
+        if ($this->vadNoiseFrameCounter >= $this->vadNoiseEstimateInterval) {
+            $this->vadNoiseFrameCounter = 0;
+            $this->updateNoiseEstimate();
+        }
+        
+        // Calcula threshold adaptativo
+        $adaptiveThreshold = max($this->vadMinEnergy, $this->vadSpeechThreshold);
+        
+        $wasActive = $this->isVoiceActive;
+        
+        // Detecção de voz
+        if ($energy > $adaptiveThreshold) {
+            $this->isVoiceActive = true;
+            $this->vadCurrentHangover = $this->vadHangoverFrames;
+        } else if ($this->vadCurrentHangover > 0) {
+            $this->vadCurrentHangover--;
+            $this->isVoiceActive = true;
+        } else {
+            $this->isVoiceActive = false;
+        }
+        
+        // Registra atividade
+        if ($this->isVoiceActive) {
+            if (!isset($this->registeredIds[$idFrom])) {
+                $this->registeredIds[$idFrom] = true;
+            }
+            $this->lastVadActivity[$idFrom] = microtime(true);
+            $this->audioMetrics['voice_time'] += 0.02;
+        } else {
+            $this->audioMetrics['silence_time'] += 0.02;
+        }
+        
+        // Atualiza métricas
+        $this->audioMetrics['avg_energy'] = $this->audioMetrics['avg_energy'] * 0.95 + $energy * 0.05;
+        
+        // Report periódico
+        $this->vadFrameCounter++;
+        $periodicReport = $this->vadFrameCounter >= $this->vadReportInterval;
+        if ($periodicReport) {
+            $this->vadFrameCounter = 0;
+        }
+        
+        // Callback apenas em mudança de estado ou report periódico
+        if ($wasActive !== $this->isVoiceActive || $periodicReport) {
+            if (is_callable($this->onVadChangeCallable)) {
+                go($this->onVadChangeCallable, $this->isVoiceActive, $energy, $extra[0]);
+            }
+        }
+    }
+    
+    private function updateNoiseEstimate(): void
+    {
+        if (count($this->vadEnergyHistory) < 50) {
+            return;
+        }
+        
+        // Pega os 30% menores valores (ruído de fundo)
+        $sorted = $this->vadEnergyHistory;
+        sort($sorted);
+        $noiseCount = (int)(count($sorted) * 0.3);
+        $noiseSamples = array_slice($sorted, 0, max(1, $noiseCount));
+        
+        // Calcula média e desvio padrão do ruído
+        $this->vadNoiseFloor = array_sum($noiseSamples) / count($noiseSamples);
+        
+        // Threshold é ruído + margem de segurança
+        $this->vadSpeechThreshold = $this->vadNoiseFloor * 2.5;
+    }
+    
+    public function onVadChange(callable $callback): void
+    {
+        $this->onVadChangeCallable = $callback;
+    }
+
+    public function getBuffer()
+    {
+        $mixed = '';
+        $channels = [];
+        $bcgChannel = new \bcg729Channel();
+
+
+        foreach ($this->bufferWriteSound as $ssrc => $freq) {
+
+            foreach ($freq as $freqPacket => $codec) {
+                foreach ($codec as $codecName => $pcm) {
+                    switch ($codecName) {
+                        case 'G729':
+                            $channels[] = $bcgChannel->decode($pcm);
+                            break;
+                        case 'PCMU':
+                            $channels[] = decodePcmuToPcm($pcm);
+                            break;
+                        case 'PCMA':
+                            $channels[] = decodePcmaToPcm($pcm);
+                            break;
+                        case 'L16':
+                            $channels[] = decodeL16ToPcm($pcm);
+                            break;
+                        case 'OPUS':
+                            $dec = $pcm;
+                            $channels[] = $dec;
+                            break;
+                        default:
+                            $channels[] = '';
+                            break;
+                    }
+                }
+            }
+        }
+        $mixed = mixAudioChannels($channels);
+        return resample($mixed, 48000, 48000, [
+
+        ]);
     }
 
 
@@ -1962,13 +2116,9 @@ class trunkController
 
     public function saveBufferToWavFile(string $caminho, string $audioBuffer): void
     {
-        go(function ($audioBuffer, $caminho) {
-            $audioBuffer = resampler($audioBuffer, $this->frequencyCall, $this->frequencyCall);
 
-
-            $audio = waveHead3(strlen($audioBuffer), $this->frequencyCall, 1, 1) . $audioBuffer;
-            Coroutine::writeFile($caminho, $audio);
-        }, $audioBuffer, $caminho);
+        $audio = waveHead3(strlen($audioBuffer), $this->frequencyCall, $this->defaultChannels, 1) . $audioBuffer;
+        Coroutine::writeFile($caminho, $audio);
     }
 
     public function mixPcmArray(array $chunks): string
@@ -2288,6 +2438,8 @@ class trunkController
             // ----------------------------
             // Codec processing
             // ----------------------------
+            $emptyFrame = str_repeat("\x00", 160);
+
 
             switch (strtoupper($phone->codecName)) {
 
@@ -2318,6 +2470,10 @@ class trunkController
                         $pcm48 = resampler($pcmChunk, $frequencyPacket, 48000);
                     } else {
                         $pcm48 = $pcmChunk;
+                    }
+                    if (strlen($pcm48) < 2) {
+                        return;
+
                     }
                     $encode = $phone->mediaChannel->members[$idFrom]['opus']
                         ->encode($pcm48);
@@ -2392,6 +2548,19 @@ class trunkController
     public function getCid()
     {
         return $this->cid;
+    }
+
+    public bool $audioRecordingEnabled = false;
+
+    public function enableAudioRecording(): void
+    {
+        $this->audioRecordingEnabled = true;
+    }
+
+
+    public function enableVAD(): void
+    {
+        $this->vadEnabled = true;
     }
 
 

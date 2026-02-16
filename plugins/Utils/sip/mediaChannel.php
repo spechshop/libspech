@@ -9,6 +9,7 @@ use libspech\Sip\AudioQualityDetector;
 use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
+use function libspech\Sip\volumeAverage;
 
 class MediaChannel
 {
@@ -308,7 +309,7 @@ class MediaChannel
 
                 $currentTime = microtime(true);
                 $packet = $this->socket->recvfrom($peer, 1);
-                cli::pcl("RECV: " . strlen($packet), 'yellow');
+
 
 
                 if (!$packet) {
@@ -360,16 +361,13 @@ class MediaChannel
                 $rtpc = new rtpc($packet);
                 $pt = $rtpc->getCodec();
                 $ssrc = $this->generateDeterministicSsrc($idFrom . $pt);
-
                 if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
                     $member = $this->members[$idFrom] ?? null;
                     if ($member) {
                         $this->ptCodecs[$rtpc->getCodec()] = $member['codec'] ?? $this->defaultCodec;
                     }
                 }
-
                 $codec = $this->resolveCodecNameFromPt($pt) ?? $pt;
-
                 if (!array_key_exists($ssrc, $this->rtpChans)) {
                     $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->ptCodecsFrequency[$codec] ?? 8000, 20, $ssrc);
                     $this->rtpChans[$ssrc]->sequenceNumber = $rtpc->sequence++;
@@ -391,11 +389,7 @@ class MediaChannel
                         'frequency' => $this->resolveFrequencyFromPt($rtpc->getCodec()) ?? 8000,
                     ]);
                 }
-
                 $this->members[$idFrom]['ssrc'] = $ssrc;
-                $pcmData = false;
-
-
                 if ($this->onReceiveCallable) {
                     go(function () use ($rtpc, $peer, $ssrc) {
                         call_user_func($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
@@ -425,10 +419,12 @@ class MediaChannel
                     continue;
                 }
 
-                foreach ($this->members as $targetId => $info) {
+                 foreach ($this->members as $targetId => $info) {
 
 
-                        if ($targetId === $idFrom) continue;
+                        if ($targetId === $idFrom) {
+                            continue;
+                        }
 
 
 
@@ -444,6 +440,8 @@ class MediaChannel
                             'rtpChannel' => new rtpChannel($info['pt'], $info['frequency'] ?? 8000, 20, $destSsrc)
                         ];
                     }
+
+
 
                     $destChannel = &$destinationChannels[$targetId];
                     $currentFrequency = $info['frequency'] ?? 8000;
@@ -469,10 +467,9 @@ class MediaChannel
                         'L16' => pcmLeToBe($rtpc->payloadRaw),
                         default => false,
                     };
-                    cli::pcl('pcm receive');
 
 
-                    if (!$pcmData) exit;
+
                  //   else var_dump($rtpc);
 
 
@@ -480,7 +477,6 @@ class MediaChannel
 
                     $encode = null;
                     $frequencyMember = $currentFrequency;
-                    cli::pcl("Recebendo audio " . strlen($rtpc->payloadRaw) . " trunk: $rtpc->payloadType user: $info[codec]", "green");
 
                     switch (strtoupper($info['codec'])) {
                         case 'PCMU':
@@ -497,7 +493,7 @@ class MediaChannel
                             break;
                         case 'OPUS':
                             $pcm48_mono = $this->members[$targetId]['opus']->resample($pcmData, $frequencyPacket, 48000);
-                            $encode = $this->members[$targetId]['opus']->encode($pcm48_mono, 48000);
+                            $encode = $this->members[$targetId]['opus']->encode($pcm48_mono , 48000);
                             break;
                         case 'L16':
                             $encode = resampler($pcmData, $frequencyPacket, $frequencyMember, true);
@@ -564,7 +560,7 @@ class MediaChannel
 
 
                 $config = $peer['config'];
-                if (!empty($config['userdtx'])) $opus->setDTX(true);
+                 $opus->setDTX(true);
                 $opus->setVBR(true);
                 $opus->setComplexity(1);
                 $opus->setSignalVoice(true);
@@ -607,6 +603,7 @@ class MediaChannel
             $this->isVoiceActive = false;
         }
         if ($wasActive !== $this->isVoiceActive) {
+            cli::pcl("VAD: $idFrom " . ($this->isVoiceActive ? 'voice' : 'silence'), 'yellow');
             if (is_callable($this->onVadChangeCallable)) {
                 go($this->onVadChangeCallable, $this->isVoiceActive, $energy, $extra[0]);
             }

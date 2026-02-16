@@ -248,7 +248,7 @@ class renderMessages
             "methodForParser" => "OPTIONS " . $Ce . " SIP/2.0",
             "headers" => [
                 "Via" => ["SIP/2.0/UDP " . network::getLocalIp() . ":" . $respondPort . ";branch=z9hG4bK-" . md5(random_bytes(4)) . ";rport"],
-                "From" => ['"spechshop" ' . sip::renderURI([
+                "From" => [sip::renderURI([
                         'user' => 'spechshop',
                         'peer' => [
                             'host' => network::getLocalIp(),

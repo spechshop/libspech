@@ -1,7 +1,7 @@
 /**
  * libspech - Real-time SIP/RTP VoIP Library for PHP
  *
- * Copyright (c) 2025 Lotus / berzersks
+ * Copyright (c) 2026 Lotus / berzersks
  * Website: https://spechshop.com
  * All Rights Reserved.
  *
