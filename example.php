@@ -80,6 +80,7 @@ include 'plugins/autoloader.php';
             // Desbloqueia a corotina para continuar a execução
             $phone->unblockCoroutine();
             cli::pcl("Bye recebido", "red");
+
         });
 
         // ====================================================================
@@ -119,10 +120,10 @@ include 'plugins/autoloader.php';
             \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
 
             // Envia DTMF com o valor 999999999 e duração de 960ms
-            $phone->send2833(999999999, 960);
+            $phone->send2833(999999999);
 
             // Aguarda mais 10 segundos antes de encerrar
-            \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
+            \libspech\Sip\interruptibleSleep(30, $phone->receiveBye);
 
             // Envia BYE para encerrar a chamada
             $phone->bye();
@@ -141,7 +142,7 @@ include 'plugins/autoloader.php';
         // SESSÃO 8: INICIALIZAÇÃO DA CHAMADA
         // ====================================================================
         // Realiza uma chamada de saída para o número especificado
-        $phone->call('5511999887766');
+        $phone->call('551140040104');
 
         // ====================================================================
         // SESSÃO 9: FINALIZAÇÃO E LIMPEZA

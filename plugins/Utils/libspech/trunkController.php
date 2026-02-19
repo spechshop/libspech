@@ -375,7 +375,6 @@ class trunkController
         if ($name === 'opus') $fmtp[] = "fmtp:$ptDtmf maxplaybackrate=24000;sprop-maxcapturerate=24000;maxaveragebitrate=64000;useinbandfec=1";
 
 
-
         if ($pt == 18) {
             $fmtp[] = "fmtp:$pt annexb=no";
         }
@@ -591,29 +590,78 @@ class trunkController
         return max(1, min(100, round($normalized * 100, 2)));
     }
 
-    public function send2833($digits, int $durationMs = 200, int $volume = 10): void
+    public function send2833($digit, int $durationMs = 200, int $volume = 10): void
     {
-        if ($durationMs < 100) {
-            $durationMs = 100;
-        }
-        if (!is_a($this->rtpSocket, Socket::class)) {
-            return;
-        }
-        if ($this->closing || $this->error) {
-            return;
-        }
+        foreach (str_split($digit) as $digit) {
 
-
-        foreach (str_split($digits, 1) as $digit) {
-            try {
-                $sequences = $this->rtpChannel->generateDtmfSequence($digit, $durationMs);
-            } catch (\Throwable $e) {
+            // Requer socket/destino inicializados por sendSilence()
+            if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
+                cli::cl("bold_red", "[2833] socket/destino não inicializados.");
                 return;
             }
-            foreach ($sequences as $sequence) {
-                $this->rtpSocket->sendto($this->remoteIp, $this->remotePort, $sequence);
+
+            /** @var Socket $socket */
+            $socket = $this->rtpSocket;
+            $ip = $this->remoteIp;
+            $port = $this->remotePort;
+
+            // Mapeia o dígito → event id (RFC 2833)
+            $event = match (strtoupper($digit)) {
+                '0' => 0,
+                '1' => 1,
+                '2' => 2,
+                '3' => 3,
+                '4' => 4,
+                '5' => 5,
+                '6' => 6,
+                '7' => 7,
+                '8' => 8,
+                '9' => 9,
+                '*' => 10,
+                '#' => 11,
+                'A' => 12,
+                'B' => 13,
+                'C' => 14,
+                'D' => 15,
+                default => 0
+            };
+
+            // PT de telephone-event (negociado no SDP; comum: 101)
+            $ptTelephoneEvent = property_exists($this, 'ptTelephoneEvent') ? (int)$this->ptTelephoneEvent : 101;
+
+            // RFC 2833: o timestamp dos pacotes do mesmo evento deve permanecer CONSTANTE
+            $eventTs = $this->timestamp;        // timestamp de início do evento
+            $stepMs = 20;                       // envia em passos de 20ms
+            $stepSmpl = 160;                     // 20ms @ 8kHz
+            $totalSteps = max(3, (int)ceil($durationMs / $stepMs)); // mínimo 3 (start, cont, end)
+            $finalDurationSmpl = $totalSteps * $stepSmpl;
+
+            // START (marker bit = 1)
+            $durationSmpl = $stepSmpl; // cumulativo
+            $payload = pack('CCCC', $event, $volume, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
+            $hdr = pack('CCnNN', 0x80, 0x80 | $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
+            $socket->sendto($ip, $port, $hdr . $payload);
+            Coroutine::sleep($stepMs / 1000);
+
+            // CONTINUE frames (se houver)
+            for ($i = 2; $i <= $totalSteps - 1; $i++) {
+                $durationSmpl = $i * $stepSmpl;  // cumulativo
+                $payload = pack('CCCC', $event, $volume, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
+                $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
+                $socket->sendto($ip, $port, $hdr . $payload);
+                Coroutine::sleep($stepMs / 1000);
             }
-            Coroutine::sleep($durationMs / 1000);
+
+            // END (E bit = 1) — envia 3 vezes p/ confiabilidade
+            $payloadEnd = pack('CCCC', $event, 0x80 | ($volume & 0x3F), ($finalDurationSmpl >> 8) & 0xFF, $finalDurationSmpl & 0xFF);
+            for ($r = 0; $r < 3; $r++) {
+                $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
+                $socket->sendto($ip, $port, $hdr . $payloadEnd);
+                Coroutine::sleep($stepMs / 1000);
+            }
+
+            // Avança o timestamp global pelo tempo gasto no evento (mantém timeline contínua)
+            $this->timestamp = $eventTs + $finalDurationSmpl;
         }
     }
 
@@ -1383,11 +1431,9 @@ class trunkController
 
                         }
                         $pcmData = $opus->decode($rtpc->payloadRaw);
-                       // cli::pcl("Recebendo " . strlen($pcmData) . " bytes de {$peer['address']}:{$peer['port']} | Sequence: $rtpc->sequence | TimeStamp: {$rtpc->timestamp} | SSRC: {$rtpChannel->ssrc}", 'bold_yellow');
+                        // cli::pcl("Recebendo " . strlen($pcmData) . " bytes de {$peer['address']}:{$peer['port']} | Sequence: $rtpc->sequence | TimeStamp: {$rtpc->timestamp} | SSRC: {$rtpChannel->ssrc}", 'bold_yellow');
 
                         $pcmData = resampler($pcmData, 48000, 8000);
-
-
 
 
                         break;
@@ -1444,7 +1490,7 @@ class trunkController
     public $onVadChangeCallable = null;
     public bool $isVoiceActive = false;
     public bool $vadEnabled = false;
-    
+
     // Novo sistema VAD com threshold adaptativo
     private float $vadMinEnergy = 2.0;
     private float $vadNoiseFloor = 0.0;
@@ -1469,33 +1515,34 @@ class trunkController
         'voice_time' => 0.0,
         'silence_time' => 0.0,
     ];
+
     public function processVAD(string $pcmData, ...$extra): void
     {
         if (!$this->vadEnabled) {
             return;
         }
-        
+
         $energy = volumeAverage($pcmData);
         $idFrom = $extra[0] ?? $this->callId;
-        
+
         // Adiciona energia ao histórico
         $this->vadEnergyHistory[] = $energy;
         if (count($this->vadEnergyHistory) > $this->vadHistorySize) {
             array_shift($this->vadEnergyHistory);
         }
-        
+
         // Atualiza estimativa de ruído periodicamente
         $this->vadNoiseFrameCounter++;
         if ($this->vadNoiseFrameCounter >= $this->vadNoiseEstimateInterval) {
             $this->vadNoiseFrameCounter = 0;
             $this->updateNoiseEstimate();
         }
-        
+
         // Calcula threshold adaptativo
         $adaptiveThreshold = max($this->vadMinEnergy, $this->vadSpeechThreshold);
-        
+
         $wasActive = $this->isVoiceActive;
-        
+
         // Detecção de voz
         if ($energy > $adaptiveThreshold) {
             $this->isVoiceActive = true;
@@ -1506,7 +1553,7 @@ class trunkController
         } else {
             $this->isVoiceActive = false;
         }
-        
+
         // Registra atividade
         if ($this->isVoiceActive) {
             if (!isset($this->registeredIds[$idFrom])) {
@@ -1517,17 +1564,17 @@ class trunkController
         } else {
             $this->audioMetrics['silence_time'] += 0.02;
         }
-        
+
         // Atualiza métricas
         $this->audioMetrics['avg_energy'] = $this->audioMetrics['avg_energy'] * 0.95 + $energy * 0.05;
-        
+
         // Report periódico
         $this->vadFrameCounter++;
         $periodicReport = $this->vadFrameCounter >= $this->vadReportInterval;
         if ($periodicReport) {
             $this->vadFrameCounter = 0;
         }
-        
+
         // Callback apenas em mudança de estado ou report periódico
         if ($wasActive !== $this->isVoiceActive || $periodicReport) {
             if (is_callable($this->onVadChangeCallable)) {
@@ -1535,26 +1582,26 @@ class trunkController
             }
         }
     }
-    
+
     private function updateNoiseEstimate(): void
     {
         if (count($this->vadEnergyHistory) < 50) {
             return;
         }
-        
+
         // Pega os 30% menores valores (ruído de fundo)
         $sorted = $this->vadEnergyHistory;
         sort($sorted);
         $noiseCount = (int)(count($sorted) * 0.3);
         $noiseSamples = array_slice($sorted, 0, max(1, $noiseCount));
-        
+
         // Calcula média e desvio padrão do ruído
         $this->vadNoiseFloor = array_sum($noiseSamples) / count($noiseSamples);
-        
+
         // Threshold é ruído + margem de segurança
         $this->vadSpeechThreshold = $this->vadNoiseFloor * 2.5;
     }
-    
+
     public function onVadChange(callable $callback): void
     {
         $this->onVadChangeCallable = $callback;
