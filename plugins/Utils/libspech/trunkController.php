@@ -638,7 +638,7 @@ class trunkController
 
             // START (marker bit = 1)
             $durationSmpl = $stepSmpl; // cumulativo
-            $payload = pack('CCCC', $event, $volume, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
+            $payload = pack('CCCC', $event, $volume & 0x3F, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
             $hdr = pack('CCnNN', 0x80, 0x80 | $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
             $socket->sendto($ip, $port, $hdr . $payload);
             Coroutine::sleep($stepMs / 1000);
@@ -646,7 +646,7 @@ class trunkController
             // CONTINUE frames (se houver)
             for ($i = 2; $i <= $totalSteps - 1; $i++) {
                 $durationSmpl = $i * $stepSmpl;  // cumulativo
-                $payload = pack('CCCC', $event, $volume, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
+                $payload = pack('CCCC', $event, $volume & 0x3F, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
                 $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
                 $socket->sendto($ip, $port, $hdr . $payload);
                 Coroutine::sleep($stepMs / 1000);
@@ -655,13 +655,18 @@ class trunkController
             // END (E bit = 1) — envia 3 vezes p/ confiabilidade
             $payloadEnd = pack('CCCC', $event, 0x80 | ($volume & 0x3F), ($finalDurationSmpl >> 8) & 0xFF, $finalDurationSmpl & 0xFF);
             for ($r = 0; $r < 3; $r++) {
-                $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
+                $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber, $eventTs, $this->ssrc);
                 $socket->sendto($ip, $port, $hdr . $payloadEnd);
-                Coroutine::sleep($stepMs / 1000);
+                if ($r < 2) Coroutine::sleep(0.001); // 1ms entre retransmissões END
             }
+            $this->sequenceNumber++;
 
             // Avança o timestamp global pelo tempo gasto no evento (mantém timeline contínua)
             $this->timestamp = $eventTs + $finalDurationSmpl;
+            
+            // Gap de 50ms entre dígitos (silêncio) para separação adequada
+            Coroutine::sleep(0.050);
+            $this->timestamp += 400; // 50ms @ 8kHz = 400 samples
         }
     }
 
@@ -848,7 +853,7 @@ class trunkController
                 return false;
             }
 
-            $res = $this->socket->recvfrom($peer, 1);
+            print $res = $this->socket->recvfrom($peer, 1);
             if (!$res) {
                 if ($this->socket->isClosed()) {
                     return false;
@@ -1335,18 +1340,10 @@ class trunkController
             $this->speakWaitSequence = [];
             $this->waitingEnd = 0;
             $this->startSpeak = false;
-            $silPayload20ms = str_repeat("\x00", 160);
-
-
-            $audioFile = null;
-            $audioData = null;
-            $audioPosition = 0;
-            $audioFinished = false;
 
             $this->error = false;
             $this->callActive = true;
             $this->receiveBye = false;
-            $audioFile = $this->audioFilePath;
 
 
             $this->mediaChannel = new MediaChannel($rtpSocket, $this->callId);
@@ -1398,6 +1395,7 @@ class trunkController
 
 
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $opus) {
+
                 //return;
 
                 if (strlen($rtpc->payloadRaw) < 12) return;
@@ -1412,7 +1410,7 @@ class trunkController
 
 
                 $packetCodecName = $channel->resolveCodecNameFromPt($rtpc->payloadType);
-                $pcmData = '';
+
 
 
                 switch (strtoupper($packetCodecName)) {
@@ -1971,7 +1969,8 @@ class trunkController
 
 
             /** @var ? $peer */
-            $res = $this->socket->recvfrom($peer, 1);
+            $res = $this->socket->recvfrom($peer, 10);
+
             if ($res !== false) {
                 break;
             } else {
