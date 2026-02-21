@@ -20,6 +20,7 @@ ini_set('memory_limit', '1024M');
 // Importa as classes necessárias do sistema
 use libspech\Cli\cli;
 use libspech\Sip\trunkController;
+use function libspech\Sip\interruptibleSleep;
 
 // Habilita o suporte a corotinas do Swoole para execução assíncrona
 \Swoole\Runtime::enableCoroutine();
@@ -75,6 +76,13 @@ include 'plugins/autoloader.php';
         });
 
         // Callback executado quando a chamada é desligada (hangup/bye)
+
+
+        $phone->onFailed(function ($message) use ($phone) {
+            cli::pcl("Chamada falhou: $message", "red");
+            $phone->bye();
+        });
+
         $phone->onHangup(function (trunkController $phone)  {
             // Salva o buffer de áudio gravado em um arquivo WAV
             $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
@@ -83,12 +91,6 @@ include 'plugins/autoloader.php';
             cli::pcl("Bye recebido", "red");
 
         });
-
-        $phone->onFailed(function ($message) use ($phone) {
-            cli::pcl("Chamada falhou: $message", "red");
-            $phone->bye();
-        });
-
 
         // ====================================================================
         // SESSÃO 6: CONFIGURAÇÃO DE CODEC E RECURSOS DE ÁUDIO
@@ -100,7 +102,7 @@ include 'plugins/autoloader.php';
         $phone->enableAudioRecording();
 
         // Habilita VAD (Voice Activity Detection) - detecta quando há voz ativa | Não recomendado pois gasta muitos recursos
-        $phone->enableVAD();
+       // $phone->enableVAD();
         //$phone->setCallerId('5569984477329');
 
         // Callback executado quando o VAD detecta mudança entre voz e silêncio
@@ -122,19 +124,32 @@ include 'plugins/autoloader.php';
             \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
 
             // Envia DTMF (tom de teclado) - caractere '*' com duração de 160ms
-            $phone->send2833('*', 160);
+            $phone->send2833('*');
+            interruptibleSleep(5, $phone->receiveBye);
+            $phone->send2833('*');
 
             // Aguarda mais 10 segundos de forma interruptível
             \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
 
+
             // Envia DTMF com o valor 999999999 e duração de 960ms
-            $phone->send2833(42017165204);
+
 
             // Aguarda mais 10 segundos antes de encerrar
-            \libspech\Sip\interruptibleSleep(30, $phone->receiveBye);
+            \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
+            $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
 
+
+
+
+            cli::pcl("Enviando BYE", "yellow");
+            $start = microtime(true);
+            var_dump(\libspech\libspech\sound::deepGramFile('rec.wav', false, getenv('DEEPGRAM')));
+            $end = microtime(true);
+            cli::pcl("Tempo de processamento: " . round($end - $start, 2) . " segundos", "yellow");
             // Envia BYE para encerrar a chamada
             $phone->bye();
+            $phone->close();
 
             // Define flags indicando que a chamada foi encerrada
             $phone->receiveBye = true;

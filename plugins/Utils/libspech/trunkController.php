@@ -592,84 +592,75 @@ class trunkController
 
     public function send2833($digit, int $durationMs = 200, int $volume = 10): void
     {
-        foreach (str_split($digit) as $digit) {
+        // Requer socket/destino inicializados por sendSilence()
+        if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
+            print self::cl("bold_red", "[2833] socket/destino não inicializados.");
+            return;
+        }
 
-            // Requer socket/destino inicializados por sendSilence()
-            if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
-                cli::cl("bold_red", "[2833] socket/destino não inicializados.");
-                return;
-            }
+        /** @var Socket $socket */
+        $socket = $this->rtpSocket;
+        $ip = $this->remoteIp;
+        $port = $this->remotePort;
 
-            /** @var Socket $socket */
-            $socket = $this->rtpSocket;
-            $ip = $this->remoteIp;
-            $port = $this->remotePort;
+        // Mapeia o dígito → event id (RFC 2833)
+        $event = match (strtoupper($digit)) {
+            '0' => 0,
+            '1' => 1,
+            '2' => 2,
+            '3' => 3,
+            '4' => 4,
+            '5' => 5,
+            '6' => 6,
+            '7' => 7,
+            '8' => 8,
+            '9' => 9,
+            '*' => 10,
+            '#' => 11,
+            'A' => 12,
+            'B' => 13,
+            'C' => 14,
+            'D' => 15,
+            default => 0
+        };
 
-            // Mapeia o dígito → event id (RFC 2833)
-            $event = match (strtoupper($digit)) {
-                '0' => 0,
-                '1' => 1,
-                '2' => 2,
-                '3' => 3,
-                '4' => 4,
-                '5' => 5,
-                '6' => 6,
-                '7' => 7,
-                '8' => 8,
-                '9' => 9,
-                '*' => 10,
-                '#' => 11,
-                'A' => 12,
-                'B' => 13,
-                'C' => 14,
-                'D' => 15,
-                default => 0
-            };
+        // PT de telephone-event (negociado no SDP; comum: 101)
+        $ptTelephoneEvent = property_exists($this, 'ptTelephoneEvent') ? (int)$this->ptTelephoneEvent : 101;
 
-            // PT de telephone-event (negociado no SDP; comum: 101)
-            $ptTelephoneEvent = property_exists($this, 'ptTelephoneEvent') ? (int)$this->ptTelephoneEvent : 101;
+        // RFC 2833: o timestamp dos pacotes do mesmo evento deve permanecer CONSTANTE
+        $eventTs = $this->timestamp;        // timestamp de início do evento
+        $stepMs = 20;                       // envia em passos de 20ms
+        $stepSmpl = 160;                     // 20ms @ 8kHz
+        $totalSteps = max(3, (int)ceil($durationMs / $stepMs)); // mínimo 3 (start, cont, end)
+        $finalDurationSmpl = $totalSteps * $stepSmpl;
 
-            // RFC 2833: o timestamp dos pacotes do mesmo evento deve permanecer CONSTANTE
-            $eventTs = $this->timestamp;        // timestamp de início do evento
-            $stepMs = 20;                       // envia em passos de 20ms
-            $stepSmpl = 160;                     // 20ms @ 8kHz
-            $totalSteps = max(3, (int)ceil($durationMs / $stepMs)); // mínimo 3 (start, cont, end)
-            $finalDurationSmpl = $totalSteps * $stepSmpl;
+        // START (marker bit = 1)
+        $durationSmpl = $stepSmpl; // cumulativo
+        $payload = pack('CCCC', $event, $volume, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
+        $hdr = pack('CCnNN', 0x80, 0x80 | $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
+        $socket->sendto($ip, $port, $hdr . $payload);
+        Coroutine::sleep($stepMs / 1000);
 
-            // START (marker bit = 1)
-            $durationSmpl = $stepSmpl; // cumulativo
-            $payload = pack('CCCC', $event, $volume & 0x3F, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
-            $hdr = pack('CCnNN', 0x80, 0x80 | $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
+        // CONTINUE frames (se houver)
+        for ($i = 2; $i <= $totalSteps - 1; $i++) {
+            $durationSmpl = $i * $stepSmpl;  // cumulativo
+            $payload = pack('CCCC', $event, $volume, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
+            $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
             $socket->sendto($ip, $port, $hdr . $payload);
             Coroutine::sleep($stepMs / 1000);
-
-            // CONTINUE frames (se houver)
-            for ($i = 2; $i <= $totalSteps - 1; $i++) {
-                $durationSmpl = $i * $stepSmpl;  // cumulativo
-                $payload = pack('CCCC', $event, $volume & 0x3F, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
-                $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
-                $socket->sendto($ip, $port, $hdr . $payload);
-                Coroutine::sleep($stepMs / 1000);
-            }
-
-            // END (E bit = 1) — envia 3 vezes p/ confiabilidade
-            $payloadEnd = pack('CCCC', $event, 0x80 | ($volume & 0x3F), ($finalDurationSmpl >> 8) & 0xFF, $finalDurationSmpl & 0xFF);
-            for ($r = 0; $r < 3; $r++) {
-                $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber, $eventTs, $this->ssrc);
-                $socket->sendto($ip, $port, $hdr . $payloadEnd);
-                if ($r < 2) Coroutine::sleep(0.001); // 1ms entre retransmissões END
-            }
-            $this->sequenceNumber++;
-
-            // Avança o timestamp global pelo tempo gasto no evento (mantém timeline contínua)
-            $this->timestamp = $eventTs + $finalDurationSmpl;
-            
-            // Gap de 50ms entre dígitos (silêncio) para separação adequada
-            Coroutine::sleep(0.050);
-            $this->timestamp += 400; // 50ms @ 8kHz = 400 samples
         }
-    }
 
+        // END (E bit = 1) — envia 3 vezes p/ confiabilidade
+        $payloadEnd = pack('CCCC', $event, 0x80 | ($volume & 0x3F), ($finalDurationSmpl >> 8) & 0xFF, $finalDurationSmpl & 0xFF);
+        for ($r = 0; $r < 3; $r++) {
+            $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
+            $socket->sendto($ip, $port, $hdr . $payloadEnd);
+            Coroutine::sleep($stepMs / 1000);
+        }
+
+        // Avança o timestamp global pelo tempo gasto no evento (mantém timeline contínua)
+        $this->timestamp = $eventTs + $finalDurationSmpl;
+    }
     public function call(string $to, $maxRings = 120): bool
     {
 
@@ -853,7 +844,7 @@ class trunkController
                 return false;
             }
 
-            print $res = $this->socket->recvfrom($peer, 1);
+             $res = $this->socket->recvfrom($peer, 1);
             if (!$res) {
                 if ($this->socket->isClosed()) {
                     return false;
