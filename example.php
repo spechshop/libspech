@@ -127,6 +127,12 @@ include 'plugins/autoloader.php';
             $phone->send2833('*');
             interruptibleSleep(5, $phone->receiveBye);
             $phone->send2833('*');
+            interruptibleSleep(5, $phone->receiveBye);
+            $phone->send2833('1');
+            interruptibleSleep(3, $phone->receiveBye);
+            $phone->send2833('2');
+            interruptibleSleep(3, $phone->receiveBye);
+            $phone->send2833('1');
 
             // Aguarda mais 10 segundos de forma interruptível
             \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
@@ -165,7 +171,7 @@ include 'plugins/autoloader.php';
         // SESSÃO 8: INICIALIZAÇÃO DA CHAMADA
         // ====================================================================
         // Realiza uma chamada de saída para o número especificado
-        $phone->call('551140040104', 5);
+        $phone->call('553140040104', 10);
 
         // ====================================================================
         // SESSÃO 9: FINALIZAÇÃO E LIMPEZA

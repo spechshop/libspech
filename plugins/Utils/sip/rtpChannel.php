@@ -176,7 +176,7 @@ class rtpChannel
         $version = self::RTP_VERSION << 6;
         $firstByte = $version;
         $marker = $this->markerBit ? 0x80 : 0x0;
-        $secondByte = $marker | $payloadType & 0x7f;
+        $secondByte = $marker | ($payloadType & 0x7f);
         $this->markerBit = false;
         return pack(self::RTP_HEADER_FORMAT, $firstByte, $secondByte, $this->sequenceNumber & 0xffff, $timestamp, $this->ssrc);
     }
@@ -338,9 +338,12 @@ class rtpChannel
         if ($delta <= 0) return 160; // Mínimo de 20ms para 8kHz
 
         // Conversão correta: mantém a proporção do sample rate
-        $durationIn8kHz = intval($delta * $this->sampleRate);
-        // return max(160, $durationIn8kHz); // Mínimo de 160 amostras (20ms em 8kHz)
-        return 320;
+        // Se sampleRate != 8000, normaliza para 8kHz (padrão DTMF RFC 2833)
+        $durationIn8kHz = ($this->sampleRate !== 8000)
+            ? intval($delta * 8000 / $this->sampleRate)
+            : $delta;
+
+        return max(160, $durationIn8kHz); // Mínimo de 160 amostras (20ms em 8kHz)
     }
 
     public function sendSingleDtmf(string $digit, callable $packetSender, int $eventDurationMs = 80, int $volume = 10): void

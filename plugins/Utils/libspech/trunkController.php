@@ -594,7 +594,7 @@ class trunkController
     {
         // Requer socket/destino inicializados por sendSilence()
         if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
-            print self::cl("bold_red", "[2833] socket/destino não inicializados.");
+            cli::pcl("[2833] socket/destino não inicializados.", "bold_red");
             return;
         }
 
@@ -602,6 +602,9 @@ class trunkController
         $socket = $this->rtpSocket;
         $ip = $this->remoteIp;
         $port = $this->remotePort;
+
+        // Debug: Log DTMF send
+        cli::pcl("[DTMF] Enviando dígito '{$digit}' (duração: {$durationMs}ms, volume: {$volume})", "bold_yellow");
 
         // Mapeia o dígito → event id (RFC 2833)
         $event = match (strtoupper($digit)) {
@@ -660,6 +663,9 @@ class trunkController
 
         // Avança o timestamp global pelo tempo gasto no evento (mantém timeline contínua)
         $this->timestamp = $eventTs + $finalDurationSmpl;
+        
+        // Debug: Log DTMF completion
+        cli::pcl("[DTMF] Dígito '{$digit}' enviado com sucesso (event={$event}, steps={$totalSteps})", "bold_green");
     }
     public function call(string $to, $maxRings = 120): bool
     {
@@ -1307,6 +1313,8 @@ class trunkController
     }
 
     public bool|MediaChannel $mediaChannel;
+
+
 
 
     public function receiveMedia(): void
