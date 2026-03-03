@@ -100,21 +100,23 @@ include 'plugins/autoloader.php';
 
         // Habilita a gravação de áudio durante a chamada
         $phone->enableAudioRecording();
+        $phone->defineAudioFile('silence_5m.wav');
 
-        // Habilita VAD (Voice Activity Detection) - detecta quando há voz ativa | Não recomendado pois gasta muitos recursos
-       // $phone->enableVAD();
-        //$phone->setCallerId('5569984477329');
 
-        // Callback executado quando o VAD detecta mudança entre voz e silêncio
-        $phone->onVadChange(function ($isVoiceActive, $energy, $id) {
-            cli::pcl("VAD: $id " . ($isVoiceActive ? 'voice' : 'silence'). " Energy: $energy ".date('H:i:s'), ($isVoiceActive ? 'bold_green' : 'bold_red'));
-        });
+
         // Callback executado quando a chamada é recebida/respondida
         $phone->onAnswer(function (trunkController $phone) {
             // Inicia o recebimento de mídia (áudio RTP)
             $phone->receiveMedia();
-
             cli::pcl("Chamada aceita", "green");
+            $phone->clearAudioBuffer();
+            $phone->waitSilence(true, 5.0);
+            $phone->saveBufferToWavFile('recSilence.wav', $phone->getBuffer());
+
+
+
+
+
 
             // ================================================================
             // SESSÃO 7: FLUXO DE INTERAÇÃO NA CHAMADA
@@ -123,9 +125,20 @@ include 'plugins/autoloader.php';
             // Aguarda 10 segundos de forma interruptível (pode ser cancelado se receber BYE)
             \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
 
+
+
+
             // Envia DTMF (tom de teclado) - caractere '*' com duração de 160ms
+
             $phone->send2833('*');
-            interruptibleSleep(5, $phone->receiveBye);
+
+
+
+
+
+
+
+            interruptibleSleep(3, $phone->receiveBye);
             $phone->send2833('*');
             interruptibleSleep(5, $phone->receiveBye);
             $phone->send2833('1');
@@ -135,12 +148,18 @@ include 'plugins/autoloader.php';
             $phone->send2833('1');
 
             // Aguarda mais 10 segundos de forma interruptível
-            \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
+            \libspech\Sip\interruptibleSleep(40, $phone->receiveBye);
+            $cpf = '42017165204';
+            foreach (str_split(substr($cpf, 0, 11)) as $digit) {
+                cli::pcl("Pressionando: {$digit}", 'blue');
+                $phone->send2833($digit);
+            }
 
 
             // Envia DTMF com o valor 999999999 e duração de 960ms
 
 
+            $phone->clearAudioBuffer();
             // Aguarda mais 10 segundos antes de encerrar
             \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
             $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());

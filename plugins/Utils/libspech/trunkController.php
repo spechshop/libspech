@@ -3,6 +3,7 @@
 namespace libspech\Sip;
 
 use Closure;
+use co;
 use libspech\Cache\rpcClient;
 use libspech\Cli\cli;
 use libspech\Network\network;
@@ -1313,6 +1314,23 @@ class trunkController
     }
 
     public bool|MediaChannel $mediaChannel;
+    public bool $waitingSilence = false;
+    public bool $waitingSilenceType = true;
+    public float $waitingSilenceTime = 1.0;
+    public float $waitingSilenceStart = 0;
+    public function waitSilence($waitSilence=true, float $time=1.0):void
+    {
+        $this->waitingSilence = true;
+        $this->waitingSilenceType = $waitSilence;
+        $this->waitingSilenceTime = $time;
+        $this->waitingSilenceStart = microtime(true);
+        while ($this->waitingSilence) {
+            co::sleep(0.01);
+            if (!$this->waitingSilence) {
+                break;
+            }
+        }
+    }
 
 
 
@@ -1343,11 +1361,7 @@ class trunkController
             $this->error = false;
             $this->callActive = true;
             $this->receiveBye = false;
-
-
             $this->mediaChannel = new MediaChannel($rtpSocket, $this->callId);
-
-
             if ($this->vadEnabled) {
 
                 $this->mediaChannel->enableVAD();
@@ -1356,12 +1370,8 @@ class trunkController
                 });
                 $this->mediaChannel->setVadRegistrationThreshold(15.51);
             }
-
-
             $this->mediaChannel->portList = $this->audioReceivePort;
             $this->mediaChannel->onDtmfCallable = $this->onDtmfCallable;
-
-
             $this->mediaChannel->codecMapper = [
                 $this->ptUse => strtoupper(implode('/', [
                     $this->codecName,
@@ -1369,8 +1379,6 @@ class trunkController
                 ])),
             ];
             $this->mediaChannel->registerPtCodecs($this->mediaChannel->codecMapper);
-
-
             $this->mediaChannel->addMember([
                 'address' => $this->audioRemoteIp,
                 'port' => $this->audioRemotePort,
@@ -1381,8 +1389,6 @@ class trunkController
                 'ssrc' => $this->ssrc,
                 'frequency' => $this->frequencyCall,
             ]);
-
-
             $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $this->ssrc);
             $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
             $opus = new \opusChannel($this->frequencyCall, $this->defaultChannels);
@@ -1395,7 +1401,7 @@ class trunkController
 
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $opus) {
 
-                //return;
+
 
                 if (strlen($rtpc->payloadRaw) < 12) return;
 
@@ -1438,9 +1444,33 @@ class trunkController
                         $pcmData = decodeL16ToPcm($rtpc->payloadRaw);
                         break;
                     default:
-                        $pcmData = '';
+                        $pcmData = str_repeat("\x00", 320);
+                        $pcmData = resampler($pcmData, 8000, $this->frequencyCall);
                         break;
                 };
+                if ($this->waitingSilence) {
+                    $time = microtime(true);
+                    $diff = $time - $this->waitingSilenceStart;
+                    if ($diff >= $this->waitingSilenceTime) {
+                        $this->waitingSilence = false;
+                        $this->waitingSilenceType = true;
+                        $this->waitingSilenceStart = 0;
+                        $this->waitingSilenceTime = 1.0;
+                    }
+                    $volume = $this->volumeAverage($pcmData);
+                    if ($volume >= 1.1) {
+                        $this->waitingSilenceStart = microtime(true);
+                    }
+                }
+
+
+
+
+
+
+
+
+
 
                 if ($channel->recordingEnabled) {
                     if (!array_key_exists($ssrc, $this->bufferWriteSound)) $this->bufferWriteSound[$ssrc] = [];
