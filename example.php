@@ -83,7 +83,7 @@ include 'plugins/autoloader.php';
             $phone->bye();
         });
 
-        $phone->onHangup(function (trunkController $phone)  {
+        $phone->onHangup(function (trunkController $phone) {
             // Salva o buffer de áudio gravado em um arquivo WAV
             $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
             // Desbloqueia a corotina para continuar a execução
@@ -103,19 +103,10 @@ include 'plugins/autoloader.php';
         $phone->defineAudioFile('silence_5m.wav');
 
 
-
         // Callback executado quando a chamada é recebida/respondida
         $phone->onAnswer(function (trunkController $phone) {
             // Inicia o recebimento de mídia (áudio RTP)
             $phone->receiveMedia();
-            cli::pcl("Chamada aceita", "green");
-            $phone->clearAudioBuffer();
-            $phone->waitSilence(true, 5.0);
-            $phone->saveBufferToWavFile('recSilence.wav', $phone->getBuffer());
-
-
-
-
 
 
             // ================================================================
@@ -126,53 +117,19 @@ include 'plugins/autoloader.php';
             \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
 
 
-
-
             // Envia DTMF (tom de teclado) - caractere '*' com duração de 160ms
 
             $phone->send2833('*');
-
-
-
-
-
-
-
             interruptibleSleep(3, $phone->receiveBye);
-            $phone->send2833('*');
-            interruptibleSleep(5, $phone->receiveBye);
-            $phone->send2833('1');
-            interruptibleSleep(3, $phone->receiveBye);
-            $phone->send2833('2');
-            interruptibleSleep(3, $phone->receiveBye);
-            $phone->send2833('1');
-
-            // Aguarda mais 10 segundos de forma interruptível
-            \libspech\Sip\interruptibleSleep(40, $phone->receiveBye);
             $cpf = '42017165204';
             foreach (str_split(substr($cpf, 0, 11)) as $digit) {
                 cli::pcl("Pressionando: {$digit}", 'blue');
                 $phone->send2833($digit);
             }
 
-
-            // Envia DTMF com o valor 999999999 e duração de 960ms
-
-
-            $phone->clearAudioBuffer();
-            // Aguarda mais 10 segundos antes de encerrar
-            \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
-            $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
+            interruptibleSleep(30, $phone->receiveBye);
 
 
-
-
-            cli::pcl("Enviando BYE", "yellow");
-            $start = microtime(true);
-            var_dump(\libspech\libspech\sound::deepGramFile('rec.wav', false, getenv('DEEPGRAM')));
-            $end = microtime(true);
-            cli::pcl("Tempo de processamento: " . round($end - $start, 2) . " segundos", "yellow");
-            // Envia BYE para encerrar a chamada
             $phone->bye();
             $phone->close();
 
@@ -191,6 +148,9 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // Realiza uma chamada de saída para o número especificado
         $phone->call('553140040104', 10);
+        $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
+        var_dump(\libspech\libspech\sound::deepGramFile('rec.wav', false, getenv('DEEPGRAM')));
+
 
         // ====================================================================
         // SESSÃO 9: FINALIZAÇÃO E LIMPEZA
