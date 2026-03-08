@@ -107,17 +107,17 @@ include 'plugins/autoloader.php';
         $phone->onAnswer(function (trunkController $phone) {
             // Inicia o recebimento de mídia (áudio RTP)
             $phone->receiveMedia();
-
-
+            $phone->waitSilence(false, 10);
+            interruptibleSleep(4, $phone->receiveBye);
             // ================================================================
             // SESSÃO 7: FLUXO DE INTERAÇÃO NA CHAMADA
             // ================================================================
 
             // Aguarda 10 segundos de forma interruptível (pode ser cancelado se receber BYE)
-            \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
 
 
             // Envia DTMF (tom de teclado) - caractere '*' com duração de 160ms
+
 
             $phone->send2833('*');
             interruptibleSleep(3, $phone->receiveBye);
@@ -127,7 +127,7 @@ include 'plugins/autoloader.php';
                 $phone->send2833($digit);
             }
 
-            interruptibleSleep(30, $phone->receiveBye);
+            interruptibleSleep(10, $phone->receiveBye);
 
 
             $phone->bye();

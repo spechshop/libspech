@@ -367,7 +367,6 @@ function secure_random_bytes(int $length): string
 }
 
 
-
 /**
  * Sleep interrompível que verifica condições a cada 100ms
  * Permite que operações longas sejam interrompidas rapidamente
@@ -418,3 +417,16 @@ function interruptibleSleep(float $seconds, &$abort): bool
 }
 
 
+function randf(int|float $min, int|float $max): float
+{
+    if (is_float($min) || is_float($max)) {
+        if ($min > $max) {
+            return new \Random\Randomizer()->getFloat($max, $min);
+        }
+        return new \Random\Randomizer()->getFloat($min, $max);
+    }
+    return rand(
+        $min,
+        $max
+    );
+}

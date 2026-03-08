@@ -251,7 +251,7 @@ class trunkController
         $this->userAgent = 'SPECHSHOP LIB';
 
         /** @var ? $peer */
-        print $this->socket->recvfrom($peer, 10);
+         $this->socket->recvfrom($peer, 10);
         $this->mediaChannel = false;
 
 
@@ -664,7 +664,7 @@ class trunkController
 
         // Avança o timestamp global pelo tempo gasto no evento (mantém timeline contínua)
         $this->timestamp = $eventTs + $finalDurationSmpl;
-        
+
         // Debug: Log DTMF completion
         cli::pcl("[DTMF] Dígito '{$digit}' enviado com sucesso (event={$event}, steps={$totalSteps})", "bold_green");
     }
@@ -678,8 +678,8 @@ class trunkController
 
         /** @var Socket $socket */
         $socket = $this->rtpSocket;
-        $ip     = $this->remoteIp;
-        $port   = $this->remotePort;
+        $ip = $this->remoteIp;
+        $port = $this->remotePort;
 
         $event = match (strtoupper($digit)) {
             '0' => 0,
@@ -734,24 +734,24 @@ class trunkController
         // Duração total padrão do PJSIP: 200ms
         $durationMs = 200;
 
-        $stepSamples = (int) round(($eventClockRate * $ptimeMs) / 1000);
+        $stepSamples = (int)round(($eventClockRate * $ptimeMs) / 1000);
         if ($stepSamples <= 0) {
             $stepSamples = 160; // fallback clássico 20ms @ 8k
         }
 
-        $finalDurationSamples = (int) round(($eventClockRate * $durationMs) / 1000);
+        $finalDurationSamples = (int)round(($eventClockRate * $durationMs) / 1000);
         if ($finalDurationSamples <= 0) {
             $finalDurationSamples = 1600;
         }
 
-        $steps = (int) ceil($finalDurationSamples / $stepSamples);
+        $steps = (int)ceil($finalDurationSamples / $stepSamples);
         if ($steps < 1) {
             $steps = 1;
         }
 
         // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
-        $eventTs = (int) $this->timestamp;
-        $ssrc    = (int) $this->ssrc;
+        $eventTs = (int)$this->timestamp;
+        $ssrc = (int)$this->ssrc;
 
 
         // Pacotes de progresso do evento
@@ -762,7 +762,7 @@ class trunkController
             }
 
             $isFirst = ($i === 1);
-            $isLast  = ($duration >= $finalDurationSamples);
+            $isLast = ($duration >= $finalDurationSamples);
 
             // Byte 2 do payload:
             // bit 7 = E
@@ -831,9 +831,7 @@ class trunkController
         $this->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
 
 
-
     }
-
 
 
     public function call(string $to, $maxRings = 120): bool
@@ -1020,7 +1018,7 @@ class trunkController
                 return false;
             }
 
-             $res = $this->socket->recvfrom($peer, 1);
+            $res = $this->socket->recvfrom($peer, 1);
             if (!$res) {
                 if ($this->socket->isClosed()) {
                     return false;
@@ -1487,7 +1485,8 @@ class trunkController
     public bool $waitingSilenceType = true;
     public float $waitingSilenceTime = 1.0;
     public float $waitingSilenceStart = 0;
-    public function waitSilence($waitSilence=true, float $time=1.0):void
+
+    public function waitSilence($waitSilence = true, float $time = 1.0): void
     {
         $this->waitingSilence = true;
         $this->waitingSilenceType = $waitSilence;
@@ -1495,13 +1494,15 @@ class trunkController
         $this->waitingSilenceStart = microtime(true);
         while ($this->waitingSilence) {
             co::sleep(0.01);
+            if ($this->receiveBye) break;
+            if (!$this->callActive) break;
+
+
             if (!$this->waitingSilence) {
                 break;
             }
         }
     }
-
-
 
 
     public function receiveMedia(): void
@@ -1571,7 +1572,6 @@ class trunkController
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $opus) {
 
 
-
                 if (strlen($rtpc->payloadRaw) < 12) return;
 
                 $targetId = $peer['address'] . ':' . $peer['port'];
@@ -1584,7 +1584,6 @@ class trunkController
 
 
                 $packetCodecName = $channel->resolveCodecNameFromPt($rtpc->payloadType);
-
 
 
                 switch (strtoupper($packetCodecName)) {
@@ -1618,27 +1617,38 @@ class trunkController
                         break;
                 };
                 if ($this->waitingSilence) {
+
                     $time = microtime(true);
                     $diff = $time - $this->waitingSilenceStart;
-                    if ($diff >= $this->waitingSilenceTime) {
-                        $this->waitingSilence = false;
-                        $this->waitingSilenceType = true;
-                        $this->waitingSilenceStart = 0;
-                        $this->waitingSilenceTime = 1.0;
-                    }
-                    $volume = $this->volumeAverage($pcmData);
-                    if ($volume >= 1.1) {
-                        $this->waitingSilenceStart = microtime(true);
+                    if ($this->waitingSilenceType) {
+                        if ($diff >= $this->waitingSilenceTime) {
+                            $this->waitingSilence = false;
+                            $this->waitingSilenceType = true;
+                            $this->waitingSilenceStart = 0;
+                            $this->waitingSilenceTime = 1.0;
+                        }
+                        $volume = $this->volumeAverage($pcmData);
+                        if ($volume >= 1.1) {
+                            $this->waitingSilenceStart = microtime(true);
+                        }
+                    } else {
+                        if ($diff >= $this->waitingSilenceTime) {
+                            $this->waitingSilence = false;
+                            $this->waitingSilenceType = true;
+                            $this->waitingSilenceStart = 0;
+                            $this->waitingSilenceTime = 1.0;
+                        }
+
+
+                        $volume = $this->volumeAverage($pcmData);
+                        if ($volume >= 1.1) {
+                            $this->waitingSilence = false;
+                            $this->waitingSilenceType = true;
+                            $this->waitingSilenceStart = 0;
+                            $this->waitingSilenceTime = 1.0;
+                        }
                     }
                 }
-
-
-
-
-
-
-
-
 
 
                 if ($channel->recordingEnabled) {
@@ -2615,7 +2625,6 @@ class trunkController
 
 
             $ssrc = $this->mediaChannel->members[$idFrom]['ssrc'];
-
 
 
             // --- LOOP INFINITO LIMPO ---
