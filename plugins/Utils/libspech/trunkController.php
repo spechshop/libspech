@@ -390,98 +390,6 @@ class trunkController
         ];
     }
 
-    public function defineCodecs(array $codecs = [8, 101]): void
-    {
-        $codecMediaLine = "";
-        $codecRtpMap = [];
-
-
-        if (in_array(101, $codecs)) {
-            $key = array_search(101, $codecs);
-            unset($codecs[$key]);
-            $codecs[] = 101;
-        }
-        foreach ($codecs as $codec) {
-            if (array_key_exists($codec, $this->supportedCodecs)) {
-                $codecMediaLine .= "{$codec} ";
-                foreach ($this->supportedCodecs[$codec] as $line) {
-                    $codecRtpMap[] = $line;
-                }
-            }
-        }
-        $this->codecMediaLine = trim($codecMediaLine);
-        $this->codecRtpMap = $codecRtpMap;
-        $this->codecRtpMap = array_unique($this->codecRtpMap);
-
-        $newImplementation = self::codecsMapper($codecs);
-        $this->codecMediaLine = $newImplementation["codecMediaLine"];
-        $this->codecRtpMap = $newImplementation["codecRtpMap"];
-    }
-
-    public static function codecsMapper(array $codecs = ['PCMA', 'PCMU', 'RTP2833']): array
-    {
-        $ptMap = [
-            'PCMU' => 0,
-            'PCMA' => 8,
-            'G729' => 18,
-            'L16' => 96,
-            'RTP2833' => 101,
-            'telephone-event' => 101,
-        ];
-
-        $codecMediaLine = [];
-        $codecRtpMap = [];
-
-        foreach ($codecs as $codec) {
-            if (is_numeric($codec)) {
-                $codec = (int)$codec;
-                $mode = 'reverse';
-            } else {
-                $mode = 'normal';
-                $codec = strtoupper($codec);
-            }
-            if ($mode === 'reverse') {
-                foreach ($ptMap as $value => $key) {
-                    if ($key === $codec) {
-                        $codec = $value;
-                    }
-                }
-            }
-
-            if (!isset($ptMap[$codec])) {
-                continue;
-            }
-
-            $pt = $ptMap[$codec];
-
-            switch ($codec) {
-                case 'RTP2833':
-                case 'TELEPHONE-EVENT':
-                    $codecRtpMap[] = "rtpmap:{$pt} telephone-event/8000";
-                    $codecRtpMap[] = "fmtp:{$pt} 0-15";
-                    break;
-
-                case 'L16':
-                    $codecRtpMap[] = "rtpmap:{$pt} L16/8000";
-                    break;
-                case 'G729':
-                    $codecRtpMap[] = "rtpmap:{$pt} G729/8000";
-                    $codecRtpMap[] = "fmtp:18 annexb=no";
-                    break;
-
-                default:
-                    $codecRtpMap[] = "rtpmap:{$pt} {$codec}/8000";
-                    break;
-            }
-            $codecMediaLine[] = $pt;
-        }
-
-        return [
-            'codecMediaLine' => implode(' ', $codecMediaLine),
-            'codecRtpMap' => $codecRtpMap,
-        ];
-    }
-
     public function __invoke(): void
     {
         $callId = $this->callId;
@@ -1129,6 +1037,10 @@ class trunkController
         $this->ptTelephoneEvent = array_key_last($this->mapLearn);
         $this->codecName = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['name'];
         $this->frequencyCall = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['rate'];
+
+
+
+
         if ($this->domain) {
             $mf = $this->domain;
         } else {
