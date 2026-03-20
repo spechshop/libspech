@@ -653,6 +653,7 @@ class trunkController
         }
 
         $steps = (int)ceil($finalDurationSamples / $stepSamples);
+
         if ($steps < 1) {
             $steps = 1;
         }
@@ -732,6 +733,8 @@ class trunkController
 
             if ($r < $endRetransmits - 1) {
                 Coroutine::sleep($ptimeMs / 1000);
+
+
             }
         }
 
@@ -1458,6 +1461,7 @@ class trunkController
                 $this->ptUse => strtoupper(implode('/', [
                     $this->codecName,
                     $this->frequencyCall,
+                    $this->defaultChannels
                 ])),
             ];
             $this->mediaChannel->registerPtCodecs($this->mediaChannel->codecMapper);
@@ -1470,6 +1474,7 @@ class trunkController
                 'config' => [],
                 'ssrc' => $this->ssrc,
                 'frequency' => $this->frequencyCall,
+                'channels' => $this->defaultChannels,
             ]);
             $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $this->ssrc);
             $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
@@ -1477,8 +1482,8 @@ class trunkController
             $opus->setBitrate($this->frequencyCall);
             $opus->setSignalVoice(true);
             $opus->setDTX(true);
-            $opus->setVBR(true);
-            $opus->setComplexity(10);
+
+            $opus->setComplexity(1);
 
 
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $opus) {
@@ -1488,6 +1493,8 @@ class trunkController
 
                 $targetId = $peer['address'] . ':' . $peer['port'];
 
+
+
                 $ssrc = $rtpc->ssrc;
                 if (!array_key_exists($ssrc, $channel->rtpChans)) $channel->rtpChans[$ssrc] = $this->rtpChannel;
 
@@ -1496,6 +1503,7 @@ class trunkController
 
 
                 $packetCodecName = $channel->resolveCodecNameFromPt($rtpc->payloadType);
+
 
 
                 switch (strtoupper($packetCodecName)) {
@@ -1524,8 +1532,7 @@ class trunkController
                         $pcmData = decodeL16ToPcm($rtpc->payloadRaw);
                         break;
                     default:
-                        $pcmData = str_repeat("\x00", 320);
-                        $pcmData = resampler($pcmData, 8000, $this->frequencyCall);
+                        cli::pcl("Codec não suportado: {$packetCodecName}");
                         break;
                 };
                 if ($this->waitingSilence) {
@@ -1567,10 +1574,11 @@ class trunkController
                     if (!array_key_exists($ssrc, $this->bufferWriteSound)) $this->bufferWriteSound[$ssrc] = [];
                     if (!array_key_exists($frequencyPacket, $this->bufferWriteSound[$ssrc])) $this->bufferWriteSound[$ssrc][$frequencyPacket] = [];
                     if (!array_key_exists($packetCodecName, $this->bufferWriteSound[$ssrc][$frequencyPacket])) $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] = '';
-                    if ($packetCodecName !== 'OPUS')
-                        $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] .= $rtpc->payloadRaw;
-                    else
+
+
                         $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] .= $pcmData;
+
+
                 }
                 if (is_callable($this->onReceivePcmCallback)) {
                     $closePcm = ($this->onReceivePcmCallback)(...);
@@ -1721,6 +1729,7 @@ class trunkController
         $this->onVadChangeCallable = $callback;
     }
 
+
     public function getBuffer(): string
     {
         $mixed = '';
@@ -1734,16 +1743,16 @@ class trunkController
                 foreach ($codec as $codecName => $pcm) {
                     switch ($codecName) {
                         case 'G729':
-                            $channels[] = $bcgChannel->decode($pcm);
+                            $channels[] = $pcm;
                             break;
                         case 'PCMU':
-                            $channels[] = decodePcmuToPcm($pcm);
+                            $channels[] = $pcm;
                             break;
                         case 'PCMA':
-                            $channels[] = decodePcmaToPcm($pcm);
+                            $channels[] = $pcm;
                             break;
                         case 'L16':
-                            $channels[] = decodeL16ToPcm($pcm);
+                            $channels[] = $pcm;
                             break;
                         case 'OPUS':
                             $dec = $pcm;
@@ -1756,10 +1765,7 @@ class trunkController
                 }
             }
         }
-        $mixed = mixAudioChannels($channels);
-        return resample($mixed, 48000, 48000, [
-
-        ]);
+        return mixAudioChannels($channels);
     }
 
 

@@ -11,6 +11,10 @@ use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
 use function libspech\Sip\volumeAverage;
 
+
+
+
+
 class MediaChannel
 {
     public bool $active = true;
@@ -70,7 +74,7 @@ class MediaChannel
      *     'rtpChannel' => rtpChannel
      * ]
      *
-     * @var array<string, array{address: string, port: int, codec: string, pt: int, ssrc: int, timestamp: int, config: array, opus: ?opusChannel, frequency: int, rtpChannel: rtpChannel}>
+     * @var array<string, array{address: string, port: int, codec: string, pt: int, ssrc: int, timestamp: int, config: array, LPCM_MONO: ?LPCM, LPCM_STEREO: ?LPCM, opus: ?opusChannel, frequency: int, rtpChannel: rtpChannel}>
      */
     public array $members = [];
     public int $defaultCodec = 8;
@@ -217,7 +221,7 @@ class MediaChannel
 
     public function resolveFrequencyFromPt(int $pt): int
     {
-        var_dump($this->ptCodecsFrequency, $this->ptCodecs);
+
         if (!empty($this->ptCodecsFrequency[$this->ptCodecs[$pt]])) {
             return $this->ptCodecsFrequency[$this->ptCodecs[$pt]];
         } elseif (in_array($pt, array_keys($this->codecMapper))) {
@@ -294,12 +298,20 @@ class MediaChannel
             }
 
             // Calcula o incremento de timestamp baseado na frequência e tamanho do pacote (20ms padrão)
-            $calculateTimestampIncrement = function (int $frequency, int $payloadType): int {
+            $calculateTimestampIncrement = function (int $frequency, int $payloadType, $member = false): int {
+                $ptTypeChannels = $this->ptCodecsChannels[$payloadType] ?? 1;
                 // Para G729 (PT 18): 10 bytes = 10ms de áudio
                 if ($payloadType === 18) {
                     return (int)($frequency * 0.01); // 10ms
                 }
                 // Para outros codecs: assumir 20ms
+
+                if ($member) {
+                    return $this->members[$member]['rtpChannel']->samplesPerPacket;
+
+                }
+
+
                 return (int)($frequency * 0.02); // 20ms
             };
 
@@ -309,7 +321,6 @@ class MediaChannel
 
                 $currentTime = microtime(true);
                 $packet = $this->socket->recvfrom($peer, 1);
-
 
 
                 if (!$packet) {
@@ -361,13 +372,16 @@ class MediaChannel
                 $rtpc = new rtpc($packet);
                 $pt = $rtpc->getCodec();
                 $ssrc = $this->generateDeterministicSsrc($idFrom . $pt);
+
                 if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
                     $member = $this->members[$idFrom] ?? null;
                     if ($member) {
                         $this->ptCodecs[$rtpc->getCodec()] = $member['codec'] ?? $this->defaultCodec;
                     }
                 }
+
                 $codec = $this->resolveCodecNameFromPt($pt) ?? $pt;
+
                 if (!array_key_exists($ssrc, $this->rtpChans)) {
                     $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->ptCodecsFrequency[$codec] ?? 8000, 20, $ssrc);
                     $this->rtpChans[$ssrc]->sequenceNumber = $rtpc->sequence++;
@@ -385,11 +399,14 @@ class MediaChannel
                         'timestamp' => $rtpc->timestamp,
                         'config' => $this->options['config'] ?? [],
                         'opus' => $this->members[$idFrom]['opus'] ?? null,
-
                         'frequency' => $this->resolveFrequencyFromPt($rtpc->getCodec()) ?? 8000,
                     ]);
                 }
+
                 $this->members[$idFrom]['ssrc'] = $ssrc;
+                $pcmData = false;
+
+
                 if ($this->onReceiveCallable) {
                     go(function () use ($rtpc, $peer, $ssrc) {
                         call_user_func($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
@@ -406,6 +423,7 @@ class MediaChannel
 
                 $pt = $rtpc->getCodec();
 
+
                 if (strtolower($codec) === 'telephone-event') {
                     // Fazer forward dos pacotes DTMF para todos os membros
                     $this->forwardDtmfToMembers($rtpc, $peer, $idFrom, $destinationChannels);
@@ -419,13 +437,12 @@ class MediaChannel
                     continue;
                 }
 
-                 foreach ($this->members as $targetId => $info) {
+
+                foreach ($this->members as $targetId => $info) {
 
 
-                        if ($targetId === $idFrom) {
-                            continue;
-                        }
 
+                    if ($targetId === $idFrom) continue;
 
 
                     // Inicializar canal do destino se não existir
@@ -440,8 +457,6 @@ class MediaChannel
                             'rtpChannel' => new rtpChannel($info['pt'], $info['frequency'] ?? 8000, 20, $destSsrc)
                         ];
                     }
-
-
 
                     $destChannel = &$destinationChannels[$targetId];
                     $currentFrequency = $info['frequency'] ?? 8000;
@@ -458,25 +473,32 @@ class MediaChannel
 
                     $frequencyPacket = (int)($this->members[$idFrom]['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000);
 
-                    // if (!$pcmData) {
-                    $pcmData = match (strtoupper($codec)) {
-                        'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
-                        'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
-                        'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
-                        'OPUS' => $this->members[$targetId]['opus']->decode($rtpc->payloadRaw),
-                        'L16' => pcmLeToBe($rtpc->payloadRaw),
-                        default => false,
-                    };
+                    try {
+                        if (!$pcmData)
+                            $pcmData = match (strtoupper($codec)) {
+                                'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
+                                'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
+                                'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
+                                'OPUS' => $this->members[$targetId]['opus']->decode($rtpc->payloadRaw),
+                                'L16' => decodeL16ToPcm($rtpc->payloadRaw),
+                                default => false,
+                            };
+
+                    } catch (Throwable $e) {
+
+                    }
 
 
-
-                 //   else var_dump($rtpc);
+                    if (!$pcmData) return $this->close() ?? '';
+                    //   else var_dump($rtpc);
 
 
                     //  }
 
+
                     $encode = null;
                     $frequencyMember = $currentFrequency;
+
 
                     switch (strtoupper($info['codec'])) {
                         case 'PCMU':
@@ -488,15 +510,65 @@ class MediaChannel
                             $encode = encodePcmToPcma($pcmData);
                             break;
                         case 'G729':
-                            if ($frequencyPacket !== 8000) $pcmData = resampler($pcmData, $frequencyPacket, 8000);
-                            $encode = $this->channelEncode->encode($pcmData);
+
+                            if (!array_key_exists('bcg729Channel', $this->members[$targetId]))
+                                $this->members[$targetId]['bcg729Channel'] = new bcg729Channel();
+
+
+                            if ($codec == 'G729') {
+                                $encode = $rtpc->payloadRaw;
+                            } else {
+                                $encode = $this->members[$idFrom]['rtpChannel']->bcg729Channel->encode($pcmData);
+                            }
                             break;
                         case 'OPUS':
-                            $pcm48_mono = $this->members[$targetId]['opus']->resample($pcmData, $frequencyPacket, 48000);
-                            $encode = $this->members[$targetId]['opus']->encode($pcm48_mono , 48000);
+                            try {
+
+                                $isStereo = $this->members[$targetId]['config']['stereo'] ?? false;
+                                if ($isStereo) $pcmData = resample($pcmData, $frequencyPacket, $info['frequency'], [
+                                    'input_channels' => $this->ptCodecsChannels[$rtpc->getCodec()] ?? 1,
+                                    'output_channels' => $this->ptCodecsChannels[$info['pt']] ?? 1,
+                                ]);
+                                else $pcmData = resampler($pcmData, $frequencyPacket, $info['frequency']);
+
+                                $encode = $this->members[$targetId]['opus']->encode($pcmData);
+
+
+                            } catch (\Throwable $e) {
+                                cli::pcl("OPUS ERROR: " . $e->getMessage(), 'red');
+                                // Reset and reconfigure Opus encoder
+                                $this->members[$targetId]['opus']->reset();
+                                $this->members[$targetId]['opus']->setVBR(true);
+                                $this->members[$targetId]['opus']->setComplexity(1);
+                                $this->members[$targetId]['opus']->setDTX(false); // serve para>
+                                $this->members[$targetId]['opus']->setSignalVoice(true);
+
+
+                                $pcmData = resampler($pcmData, $frequencyPacket, 48000);
+
+                                try {
+                                    $encode = $this->members[$targetId]['opus']->encode($pcmData, 48000);
+                                    $this->members[$targetId]['opus']->reset();
+                                } catch (\Throwable $e) {
+                                    // Reset and reconfigure Opus encoder
+                                    $this->members[$targetId]['opus']->reset();
+                                }
+                            }
+
+
                             break;
                         case 'L16':
-                            $encode = resampler($pcmData, $frequencyPacket, $frequencyMember, true);
+                            if ($this->ptCodecsChannels[$info['pt']] > 1) {
+                                // Converte mono para estéreo e resample para a frequência do destino
+                                $encode = resample($pcmData, $frequencyPacket, $info['frequency'], [
+                                    'input_channels' => 1,
+                                    'output_channels' => 2,
+                                    'work_channels' => 1,
+                                ]);
+                                $encode = encodePcmToL16($encode);
+                            } else {
+                                $encode = resampler($pcmData, $frequencyPacket, $info['frequency'], 1);
+                            }
                             break;
                         default:
                             $encode = $rtpc->payloadRaw;
@@ -504,7 +576,7 @@ class MediaChannel
                     }
 
                     // Calcular incremento de timestamp baseado na frequência e tipo de payload
-                    $timestampIncrement = $calculateTimestampIncrement($currentFrequency, $info['pt']);
+                    $timestampIncrement = $calculateTimestampIncrement($currentFrequency, $info['pt'], $targetId);
 
                     // Incrementar timestamp do destino
                     if ($destChannel['timestamp'] === 0) {
@@ -539,10 +611,23 @@ class MediaChannel
 
     public function addMember(array $peer): void
     {
-        $opus = new opusChannel(48000, 1);
 
 
-        $peer['opus'] = $opus;
+        if ($peer['config'] ?? ['stereo'] ?? false) {
+            $channels = $peer['config']['stereo'] ?? false;
+        } else {
+            $channels = $this->options['stereo'] ?? false;
+        }
+        if ($channels === false) $nc = 1;
+        else $nc = 2;
+
+
+        if (empty($peer['config']['stereo'])) $nc = 1;
+        $peer['opus'] = new opusChannel(48000, $nc);
+
+        // $peer['LPCM_MONO'] = new LPCM(1, 16);
+
+        // $peer['LPCM_STEREO'] = new LPCM(2, 16);
 
 
         $rate = $peer['frequency'];
@@ -552,22 +637,28 @@ class MediaChannel
             if (!empty($peer['config'][(int)$peer['pt']])) {
                 if (!empty($peer['config']['maxaveragebitrate'])) {
                     $rate = 'Max. Average Bitrate: ' . $peer['config']['maxaveragebitrate'] . ' ';
-                    $opus->setBitrate((int)$peer['config']['maxaveragebitrate']);
+                    $peer['opus']->setBitrate((int)$peer['config']['maxaveragebitrate']);
                 } elseif (!empty($peer['config']['maxplaybackrate'])) {
                     $rate = 'Max. Playback Rate: ' . $peer['config']['maxplaybackrate'] . ' ';
-                    $opus->setBitrate((int)$peer['config']['maxplaybackrate']);
-                } else $opus->setBitrate(64000);
+                    $peer['opus']->setBitrate((int)$peer['config']['maxplaybackrate']);
+                }
 
 
                 $config = $peer['config'];
-                 $opus->setDTX(true);
-                $opus->setVBR(true);
-                $opus->setComplexity(1);
-                $opus->setSignalVoice(true);
+                if (!empty($config['userdtx'])) $peer['opus']->setDTX(true);
+                if (!empty($config['cbr'])) $peer['opus']->setVBR(true);
+                $peer['opus']->setComplexity(2);
+                $peer['opus']->setSignalVoice(true);
+                $peer['opus']->setDTX(true);
+
+                $peer['opus']->setVBR(true);
 
 
             }
         }
+        $peer['opus']->setBitrate($peer['config']['maxplaybackrate'] ?? 24000);
+        //$peer['opus']->setBitrate((int)$peer['config']['maxplaybackrate']??24000);
+
         print cli::cl('bold_green', $rate . " " . $id . " MEMBER ADDED IN CALL " . $peer['codec'] . ' PT ' . $peer['pt'] . ' ' . $peer['frequency'] . ' kHz');
         // criar rtpChannel
         $peer['rtpChannel'] = new rtpChannel((int)$peer['pt'], $peer['frequency'], 20, $this->generateDeterministicSsrc($id));
@@ -603,7 +694,6 @@ class MediaChannel
             $this->isVoiceActive = false;
         }
         if ($wasActive !== $this->isVoiceActive) {
-            cli::pcl("VAD: $idFrom " . ($this->isVoiceActive ? 'voice' : 'silence'), 'yellow');
             if (is_callable($this->onVadChangeCallable)) {
                 go($this->onVadChangeCallable, $this->isVoiceActive, $energy, $extra[0]);
             }
@@ -613,6 +703,11 @@ class MediaChannel
         } else {
             $this->audioMetrics['silence_time'] += 0.02;
         }
+    }
+
+    public function getAudioMetrics()
+    {
+        return $this->audioMetrics;
     }
 
     private function checkVadTimeouts(): bool
@@ -800,6 +895,7 @@ class MediaChannel
         return 101;
     }
 
+    public array $ptCodecsChannels = [];
 
     public function registerPtCodecs(array $ptCodecs): void
     {
@@ -831,6 +927,8 @@ class MediaChannel
             $parts = explode('/', $codec);
             $codecName = $parts[0] ?? $pt;
             $frequency = (int)($parts[1] ?? 8000);
+            $channels = (int)($parts[2] ?? 1);
+            $this->ptCodecsChannels[$pt] = $channels;
 
             $this->ptCodecs[$pt] = $codecName;
 
@@ -892,6 +990,15 @@ class MediaChannel
             $isEnd = ($flags & 0x80) !== 0; // Flag E (End of Event)
             $volume = $flags & 0x3F; // 6 bits de volume
             $duration = $data['duration'];
+
+
+            if ($duration < 200) {
+                $callback = $this->onDtmfCallable;
+                if (is_callable($callback)) {
+                    //(mixed $digit, $peer, int $event, MediaChannel $mediaChannel)
+                    go($callback, $event, $peer, $event, $this);
+                }
+            }
 
 
             // Criar chave única para este evento específico
@@ -995,10 +1102,6 @@ class MediaChannel
             }
 
             // Disparar callback de DTMF
-            $callback = $this->onDtmfCallable;
-            if (is_callable($callback)) {
-                go($callback, $event, $peer);
-            }
 
             // Limpar cache antigo (> 5 segundos)
             $currentTime = microtime(true);

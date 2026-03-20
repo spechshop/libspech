@@ -147,9 +147,8 @@ include 'plugins/autoloader.php';
         // SESSÃO 8: INICIALIZAÇÃO DA CHAMADA
         // ====================================================================
         // Realiza uma chamada de saída para o número especificado
-        $phone->call('553140040104', 10);
+        $phone->call('553140040104', 5);
         $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
-        var_dump(\libspech\libspech\sound::deepGramFile('rec.wav', false, getenv('DEEPGRAM')));
 
 
         // ====================================================================
