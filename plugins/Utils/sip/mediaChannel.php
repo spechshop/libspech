@@ -815,6 +815,22 @@ class MediaChannel
      */
     private function forwardDtmfToMembers(rtpc $rtpc, array $peer, string $idFrom, array &$destinationChannels): void
     {
+        $payload = $rtpc->payloadRaw;
+
+        if (strlen($payload) >= 4) {
+            $event = ord($payload[0]);
+            $e_r_volume = ord($payload[1]);
+            $end = ($e_r_volume & 0x80) >> 7;
+            $volume = $e_r_volume & 0x3F;
+
+            $duration = (ord($payload[2]) << 8) | ord($payload[3]);
+
+            cli::pcl("DTMF DEBUG => event={$event} end={$end} volume={$volume} duration={$duration} ts={$rtpc->timestamp}", 'light_cyan');
+        }
+
+
+
+
         foreach ($this->members as $targetId => $info) {
             // Não enviar para si mesmo
             if ($targetId === $idFrom) {

@@ -96,7 +96,7 @@ include 'plugins/autoloader.php';
         // SESSÃO 6: CONFIGURAÇÃO DE CODEC E RECURSOS DE ÁUDIO
         // ====================================================================
         // Define o codec de áudio como OPUS 48kHz mono (1 canal)
-        $phone->mountLineCodecSDP('opus/48000/1');
+        //$phone->mountLineCodecSDP('opus/48000/1');
         $phone->mountLineCodecSDP('PCMA/8000');
 
         // Habilita a gravação de áudio durante a chamada
@@ -146,6 +146,8 @@ include 'plugins/autoloader.php';
         $phone->onKeyPress(function ($event, $peer) use ($phone) {
             cli::pcl("Digitando: " . $event, "yellow");
         });
+
+
 
         // ====================================================================
         // SESSÃO 8: INICIALIZAÇÃO DA CHAMADA
