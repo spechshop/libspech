@@ -320,7 +320,7 @@ class MediaChannel
 
 
                 $currentTime = microtime(true);
-                $packet = $this->socket->recvfrom($peer, 1);
+                $packet = $this->socket->recvfrom($peer, 0.2);
 
 
                 if (!$packet) {

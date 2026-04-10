@@ -96,8 +96,7 @@ include 'plugins/autoloader.php';
         // SESSÃO 6: CONFIGURAÇÃO DE CODEC E RECURSOS DE ÁUDIO
         // ====================================================================
         // Define o codec de áudio como OPUS 48kHz mono (1 canal)
-        //$phone->mountLineCodecSDP('opus/48000/1');
-        $phone->mountLineCodecSDP('PCMA/8000');
+        $phone->mountLineCodecSDP('G729/8000');
 
         // Habilita a gravação de áudio durante a chamada
         $phone->enableAudioRecording();
@@ -108,8 +107,8 @@ include 'plugins/autoloader.php';
         $phone->onAnswer(function (trunkController $phone) {
             // Inicia o recebimento de mídia (áudio RTP)
             $phone->receiveMedia();
-
-
+            $phone->waitSilence(false, 10);
+            interruptibleSleep(4, $phone->receiveBye);
             // ================================================================
             // SESSÃO 7: FLUXO DE INTERAÇÃO NA CHAMADA
             // ================================================================
@@ -125,11 +124,8 @@ include 'plugins/autoloader.php';
             $cpf = '42017165204';
             foreach (str_split(substr($cpf, 0, 11)) as $digit) {
                 $phone->send2833($digit);
-                interruptibleSleep(0.1, $phone->receiveBye);
-                //$phone->send2833Old($digit, 160, 10);
             }
-            cli::pcl("Enviado CPF: $cpf", "yellow");
-            $phone->waitSilence(true, 2);
+            $phone->waitSilence(false, 10);
 
             interruptibleSleep(10, $phone->receiveBye);
 
@@ -147,13 +143,11 @@ include 'plugins/autoloader.php';
             cli::pcl("Digitando: " . $event, "yellow");
         });
 
-
-
         // ====================================================================
         // SESSÃO 8: INICIALIZAÇÃO DA CHAMADA
         // ====================================================================
         // Realiza uma chamada de saída para o número especificado
-        $phone->call('5569984477329');
+        $phone->call('553140040104', 5);
         $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
 
 
