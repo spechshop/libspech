@@ -640,7 +640,7 @@ class trunkController
             : 20;
 
         // Duração total padrão do PJSIP: 200ms
-        $durationMs = 200;
+        $durationMs = 80;
 
         $stepSamples = (int)round(($eventClockRate * $ptimeMs) / 1000);
         if ($stepSamples <= 0) {
@@ -1503,6 +1503,10 @@ class trunkController
 
 
                 $packetCodecName = $channel->resolveCodecNameFromPt($rtpc->payloadType);
+                if (empty($packetCodecName)) return false;
+                if ($packetCodecName == 'telephone-event') {
+                    return false;
+                }
 
 
 
@@ -1533,67 +1537,74 @@ class trunkController
                         break;
                     default:
                         cli::pcl("Codec não suportado: {$packetCodecName}");
+                        return false;
                         break;
                 };
-                if ($this->waitingSilence) {
 
-                    $time = microtime(true);
-                    $diff = $time - $this->waitingSilenceStart;
-                    if ($this->waitingSilenceType) {
-                        if ($diff >= $this->waitingSilenceTime) {
-                            $this->waitingSilence = false;
-                            $this->waitingSilenceType = true;
-                            $this->waitingSilenceStart = 0;
-                            $this->waitingSilenceTime = 1.0;
-                        }
-                        $volume = $this->volumeAverage($pcmData);
-                        if ($volume >= 1.1) {
-                            $this->waitingSilenceStart = microtime(true);
-                        }
-                    } else {
-                        if ($diff >= $this->waitingSilenceTime) {
-                            $this->waitingSilence = false;
-                            $this->waitingSilenceType = true;
-                            $this->waitingSilenceStart = 0;
-                            $this->waitingSilenceTime = 1.0;
-                        }
+                    if ($this->waitingSilence) {
+
+                        $time = microtime(true);
+                        $diff = $time - $this->waitingSilenceStart;
+                        if ($this->waitingSilenceType) {
+                            if ($diff >= $this->waitingSilenceTime) {
+                                $this->waitingSilence = false;
+                                $this->waitingSilenceType = true;
+                                $this->waitingSilenceStart = 0;
+                                $this->waitingSilenceTime = 1.0;
+                            }
+                            $volume = $this->volumeAverage($pcmData);
+
+                            if ($volume >= 1.1) {
+                                $this->waitingSilenceStart = microtime(true);
+                            }
+                        } else {
+                            if ($diff >= $this->waitingSilenceTime) {
+                                $this->waitingSilence = false;
+                                $this->waitingSilenceType = true;
+                                $this->waitingSilenceStart = 0;
+                                $this->waitingSilenceTime = 1.0;
+                            }
 
 
-                        $volume = $this->volumeAverage($pcmData);
-                        if ($volume >= 1.1) {
-                            $this->waitingSilence = false;
-                            $this->waitingSilenceType = true;
-                            $this->waitingSilenceStart = 0;
-                            $this->waitingSilenceTime = 1.0;
+                            $volume = $this->volumeAverage($pcmData);
+
+
+                            if ($volume >= 1.1) {
+                                $this->waitingSilence = false;
+                                $this->waitingSilenceType = true;
+                                $this->waitingSilenceStart = 0;
+                                $this->waitingSilenceTime = 1.0;
+                            }
                         }
                     }
-                }
 
 
-                if ($channel->recordingEnabled) {
-                    if (!array_key_exists($ssrc, $this->bufferWriteSound)) $this->bufferWriteSound[$ssrc] = [];
-                    if (!array_key_exists($frequencyPacket, $this->bufferWriteSound[$ssrc])) $this->bufferWriteSound[$ssrc][$frequencyPacket] = [];
-                    if (!array_key_exists($packetCodecName, $this->bufferWriteSound[$ssrc][$frequencyPacket])) $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] = '';
+                    if ($channel->recordingEnabled) {
+                        if (!array_key_exists($ssrc, $this->bufferWriteSound)) $this->bufferWriteSound[$ssrc] = [];
+                        if (!array_key_exists($frequencyPacket, $this->bufferWriteSound[$ssrc])) $this->bufferWriteSound[$ssrc][$frequencyPacket] = [];
+                        if (!array_key_exists($packetCodecName, $this->bufferWriteSound[$ssrc][$frequencyPacket])) $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] = '';
 
 
                         $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] .= $pcmData;
 
 
-                }
-                if (is_callable($this->onReceivePcmCallback)) {
-                    $closePcm = ($this->onReceivePcmCallback)(...);
-                    go($closePcm, $pcmData, $peer, $this, $packetCodecName, $frequencyPacket);
-                }
-                if (is_callable($this->audioFileHandle)) {
-                    $closure = ($this->audioFileHandle)(...);
-                    go($closure, $pcmData, $peer, $this);
-                }
-                if ($this->vadEnabled) {
-                    if ($pcmData !== false) {
-                        $idFrom = $peer['address'] . ':' . $peer['port'];
-                        $this->processVAD($pcmData, $idFrom);
                     }
-                }
+                    if (is_callable($this->onReceivePcmCallback)) {
+                        $closePcm = ($this->onReceivePcmCallback)(...);
+                        go($closePcm, $pcmData, $peer, $this, $packetCodecName, $frequencyPacket);
+                    }
+                    if (is_callable($this->audioFileHandle)) {
+                        $closure = ($this->audioFileHandle)(...);
+                        go($closure, $pcmData, $peer, $this);
+                    }
+                    if ($this->vadEnabled) {
+                        if ($pcmData !== false) {
+                            $idFrom = $peer['address'] . ':' . $peer['port'];
+                            $this->processVAD($pcmData, $idFrom);
+                        }
+                    }
+
+
             });
             $this->mediaChannel->start();
             $this->mediaChannel?->unblock();
