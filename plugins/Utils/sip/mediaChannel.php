@@ -425,7 +425,6 @@ class MediaChannel
 
 
                 if (strtolower($codec) === 'telephone-event') {
-                    cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
                     // Fazer forward dos pacotes DTMF para todos os membros
                     $this->forwardDtmfToMembers($rtpc, $peer, $idFrom, $destinationChannels);
 
