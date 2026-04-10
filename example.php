@@ -56,7 +56,7 @@ include 'plugins/autoloader.php';
 
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $host);
-
+        //$phone->setCallerId('5569984477328');
         // ====================================================================
         // SESSÃO 4: REGISTRO SIP
         // ====================================================================
@@ -96,7 +96,8 @@ include 'plugins/autoloader.php';
         // SESSÃO 6: CONFIGURAÇÃO DE CODEC E RECURSOS DE ÁUDIO
         // ====================================================================
         // Define o codec de áudio como OPUS 48kHz mono (1 canal)
-        $phone->mountLineCodecSDP('PCMU/8000');
+        //$phone->mountLineCodecSDP('opus/48000/1');
+        $phone->mountLineCodecSDP('PCMA/8000');
 
         // Habilita a gravação de áudio durante a chamada
         $phone->enableAudioRecording();
@@ -107,8 +108,8 @@ include 'plugins/autoloader.php';
         $phone->onAnswer(function (trunkController $phone) {
             // Inicia o recebimento de mídia (áudio RTP)
             $phone->receiveMedia();
-            $phone->waitSilence(false, 10);
-            interruptibleSleep(4, $phone->receiveBye);
+
+
             // ================================================================
             // SESSÃO 7: FLUXO DE INTERAÇÃO NA CHAMADA
             // ================================================================
@@ -119,14 +120,16 @@ include 'plugins/autoloader.php';
             // Envia DTMF (tom de teclado) - caractere '*' com duração de 160ms
 
 
-
-            interruptibleSleep(10, $phone->receiveBye);
+            $phone->send2833('*');
+            interruptibleSleep(3, $phone->receiveBye);
             $cpf = '42017165204';
             foreach (str_split(substr($cpf, 0, 11)) as $digit) {
-                cli::pcl(time()." Digitando: " . $digit, "yellow");
                 $phone->send2833($digit);
+                interruptibleSleep(0.1, $phone->receiveBye);
+                //$phone->send2833Old($digit, 160, 10);
             }
-            $phone->waitSilence(false, 10);
+            cli::pcl("Enviado CPF: $cpf", "yellow");
+            $phone->waitSilence(true, 2);
 
             interruptibleSleep(10, $phone->receiveBye);
 
@@ -144,11 +147,13 @@ include 'plugins/autoloader.php';
             cli::pcl("Digitando: " . $event, "yellow");
         });
 
+
+
         // ====================================================================
         // SESSÃO 8: INICIALIZAÇÃO DA CHAMADA
         // ====================================================================
         // Realiza uma chamada de saída para o número especificado
-        $phone->call('553140040104');
+        $phone->call('5569984477329');
         $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
 
 
