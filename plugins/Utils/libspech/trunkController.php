@@ -376,7 +376,6 @@ class trunkController
         $fmtp[] = "fmtp:$ptDtmf 0-15";
 
 
-
         if ($pt == 18) {
             $fmtp[] = "fmtp:$pt annexb=no";
         }
@@ -586,9 +585,13 @@ class trunkController
         }
 
         /** @var Socket $socket */
-        $socket = $this->rtpSocket;
+
+
         $ip = $this->remoteIp;
         $port = $this->remotePort;
+        if (empty($this->mediaChannel))
+            return;
+
         $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
 
 
@@ -706,13 +709,6 @@ class trunkController
             );
 
 
-
-
-
-
-
-
-
             $this->mediaChannel->socket->sendto($ip, $port, $hdr . $payload);
 
             // Dorme entre os pacotes, exceto depois do último "progresso"
@@ -751,7 +747,6 @@ class trunkController
 
         // Mantém a timeline contínua
         $this->mediaChannel->rtpChans[$extractSsrc]->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
-
 
 
     }
@@ -1052,8 +1047,6 @@ class trunkController
         $this->ptTelephoneEvent = array_key_last($this->mapLearn);
         $this->codecName = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['name'];
         $this->frequencyCall = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['rate'];
-
-
 
 
         if ($this->domain) {
@@ -1506,7 +1499,6 @@ class trunkController
                 $targetId = $peer['address'] . ':' . $peer['port'];
 
 
-
                 $ssrc = $rtpc->ssrc;
                 if (!array_key_exists($ssrc, $channel->rtpChans)) $channel->rtpChans[$ssrc] = $this->rtpChannel;
 
@@ -1515,7 +1507,6 @@ class trunkController
 
 
                 $packetCodecName = $channel->resolveCodecNameFromPt($rtpc->payloadType);
-
 
 
                 switch (strtoupper($packetCodecName)) {
