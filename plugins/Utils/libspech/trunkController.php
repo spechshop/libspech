@@ -591,6 +591,9 @@ class trunkController
         $port = $this->remotePort;
         if (empty($this->mediaChannel))
             return;
+        if (empty($this->mediaChannel->members)) {
+            return;
+        }
 
         $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
 
