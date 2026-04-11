@@ -344,6 +344,7 @@ class trunkController
 
                     $this->ptsRegistered[$i] = $i;
                     $pt = $i;
+                    if ($name === 'opus') $fmtp[] = "fmtp:$pt maxplaybackrate=24000;sprop-maxcapturerate=24000;maxaveragebitrate=64000;useinbandfec=1";
                     break;
 
                 }
@@ -373,7 +374,7 @@ class trunkController
         $fmtp[] = "rtpmap:$ptDtmf telephone-event/" . $defaultRate;
 
         $fmtp[] = "fmtp:$ptDtmf 0-15";
-        if ($name === 'opus') $fmtp[] = "fmtp:$ptDtmf maxplaybackrate=24000;sprop-maxcapturerate=24000;maxaveragebitrate=64000;useinbandfec=1";
+
 
 
         if ($pt == 18) {
@@ -588,6 +589,8 @@ class trunkController
         $socket = $this->rtpSocket;
         $ip = $this->remoteIp;
         $port = $this->remotePort;
+        $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
+
 
         $event = match (strtoupper($digit)) {
             '0' => 0,
@@ -659,8 +662,8 @@ class trunkController
         }
 
         // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
-        $eventTs = (int)$this->timestamp;
-        $ssrc = (int)$this->ssrc;
+        $eventTs = (int)$this->mediaChannel->rtpChans[$extractSsrc]->timestamp;
+        $ssrc = (int)$extractSsrc;
 
 
         // Pacotes de progresso do evento
@@ -697,10 +700,18 @@ class trunkController
                 'CCnNN',
                 $b1,
                 $b2,
-                $this->sequenceNumber++ & 0xFFFF,
+                $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
                 $eventTs & 0xFFFFFFFF,
                 $ssrc & 0xFFFFFFFF
             );
+
+
+
+
+
+
+
+
 
             $this->mediaChannel->socket->sendto($ip, $port, $hdr . $payload);
 
@@ -724,12 +735,12 @@ class trunkController
                 'CCnNN',
                 0x80,
                 $ptTelephoneEvent & 0x7F,
-                $this->sequenceNumber++ & 0xFFFF,
+                $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
                 $eventTs & 0xFFFFFFFF,
                 $ssrc & 0xFFFFFFFF
             );
 
-            $socket->sendto($ip, $port, $hdr . $payloadEnd);
+            $this->mediaChannel->socket->sendto($ip, $port, $hdr . $payloadEnd);
 
             if ($r < $endRetransmits - 1) {
                 Coroutine::sleep($ptimeMs / 1000);
@@ -739,7 +750,8 @@ class trunkController
         }
 
         // Mantém a timeline contínua
-        $this->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
+        $this->mediaChannel->rtpChans[$extractSsrc]->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
+
 
 
     }
