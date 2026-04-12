@@ -579,178 +579,181 @@ class trunkController
 
     public function send2833(string $digit): void
     {
-        if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
-            cli::pcl("[2833] socket/destino não inicializados.", "bold_red");
-            return;
-        }
-
-        /** @var Socket $socket */
-
-
-        $ip = $this->remoteIp;
-        $port = $this->remotePort;
-        if (empty($this->mediaChannel))
-            return;
-        if (empty($this->mediaChannel->members)) {
-            return;
-        }
-
-        $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
-
-
-        $event = match (strtoupper($digit)) {
-            '0' => 0,
-            '1' => 1,
-            '2' => 2,
-            '3' => 3,
-            '4' => 4,
-            '5' => 5,
-            '6' => 6,
-            '7' => 7,
-            '8' => 8,
-            '9' => 9,
-            '*' => 10,
-            '#' => 11,
-            'A' => 12,
-            'B' => 13,
-            'C' => 14,
-            'D' => 15,
-            default => null,
-        };
-
-        if ($event === null) {
-            cli::pcl("[DTMF] Dígito inválido: {$digit}", "bold_red");
-            return;
-        }
-
-        // MicroSIP usa PJSIP; o default do PJSIP é:
-        // - volume = 10
-        // - duração total = 1600 timestamps (200ms em telephone-event/8000)
-        // - retransmissão do pacote final com E-bit = 3 vezes
-        // - primeiro pacote com marker bit = 1
-        // - timestamp do evento fixo durante todo o dígito
-        $volume = 10;
-        $endRetransmits = 3;
-
-        // PT negociado no SDP (normalmente 101)
-        $ptTelephoneEvent = property_exists($this, 'ptTelephoneEvent')
-            ? (int)$this->ptTelephoneEvent
-            : 101;
-
-        // Clock do telephone-event.
-        // Para bater com o padrão clássico do PJSIP/MicroSIP, 8000 é o default.
-        $eventClockRate = property_exists($this, 'telephoneEventClockRate') && (int)$this->telephoneEventClockRate > 0
-            ? (int)$this->telephoneEventClockRate
-            : 8000;
-
-        // Packetização típica do PJSIP: 20ms por frame
-        $ptimeMs = property_exists($this, 'telephoneEventPtimeMs') && (int)$this->telephoneEventPtimeMs > 0
-            ? (int)$this->telephoneEventPtimeMs
-            : 20;
-
-        // Duração total padrão do PJSIP: 200ms
-        $durationMs = 200;
-
-        $stepSamples = (int)round(($eventClockRate * $ptimeMs) / 1000);
-        if ($stepSamples <= 0) {
-            $stepSamples = 160; // fallback clássico 20ms @ 8k
-        }
-
-        $finalDurationSamples = (int)round(($eventClockRate * $durationMs) / 1000);
-        if ($finalDurationSamples <= 0) {
-            $finalDurationSamples = 1600;
-        }
-
-        $steps = (int)ceil($finalDurationSamples / $stepSamples);
-
-        if ($steps < 1) {
-            $steps = 1;
-        }
-
-        // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
-        $eventTs = (int)$this->mediaChannel->rtpChans[$extractSsrc]->timestamp;
-        $ssrc = (int)$extractSsrc;
-
-
-        // Pacotes de progresso do evento
-        for ($i = 1; $i <= $steps; $i++) {
-            $duration = $i * $stepSamples;
-            if ($duration > $finalDurationSamples) {
-                $duration = $finalDurationSamples;
+        try{
+            if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
+                cli::pcl("[2833] socket/destino não inicializados.", "bold_red");
+                return;
             }
 
-            $isFirst = ($i === 1);
-            $isLast = ($duration >= $finalDurationSamples);
+            /** @var Socket $socket */
 
-            // Byte 2 do payload:
-            // bit 7 = E
-            // bits 0..5 = volume
-            $eVol = $volume & 0x3F;
-            if ($isLast) {
-                $eVol |= 0x80;
+
+            $ip = $this->remoteIp;
+            $port = $this->remotePort;
+            if (empty($this->mediaChannel))
+                return;
+            if (empty($this->mediaChannel->members)) {
+                return;
             }
 
-            $payload = pack(
+            $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
+
+
+            $event = match (strtoupper($digit)) {
+                '0' => 0,
+                '1' => 1,
+                '2' => 2,
+                '3' => 3,
+                '4' => 4,
+                '5' => 5,
+                '6' => 6,
+                '7' => 7,
+                '8' => 8,
+                '9' => 9,
+                '*' => 10,
+                '#' => 11,
+                'A' => 12,
+                'B' => 13,
+                'C' => 14,
+                'D' => 15,
+                default => null,
+            };
+
+            if ($event === null) {
+                cli::pcl("[DTMF] Dígito inválido: {$digit}", "bold_red");
+                return;
+            }
+
+            // MicroSIP usa PJSIP; o default do PJSIP é:
+            // - volume = 10
+            // - duração total = 1600 timestamps (200ms em telephone-event/8000)
+            // - retransmissão do pacote final com E-bit = 3 vezes
+            // - primeiro pacote com marker bit = 1
+            // - timestamp do evento fixo durante todo o dígito
+            $volume = 10;
+            $endRetransmits = 3;
+
+            // PT negociado no SDP (normalmente 101)
+            $ptTelephoneEvent = property_exists($this, 'ptTelephoneEvent')
+                ? (int)$this->ptTelephoneEvent
+                : 101;
+
+            // Clock do telephone-event.
+            // Para bater com o padrão clássico do PJSIP/MicroSIP, 8000 é o default.
+            $eventClockRate = property_exists($this, 'telephoneEventClockRate') && (int)$this->telephoneEventClockRate > 0
+                ? (int)$this->telephoneEventClockRate
+                : 8000;
+
+            // Packetização típica do PJSIP: 20ms por frame
+            $ptimeMs = property_exists($this, 'telephoneEventPtimeMs') && (int)$this->telephoneEventPtimeMs > 0
+                ? (int)$this->telephoneEventPtimeMs
+                : 20;
+
+            // Duração total padrão do PJSIP: 200ms
+            $durationMs = 200;
+
+            $stepSamples = (int)round(($eventClockRate * $ptimeMs) / 1000);
+            if ($stepSamples <= 0) {
+                $stepSamples = 160; // fallback clássico 20ms @ 8k
+            }
+
+            $finalDurationSamples = (int)round(($eventClockRate * $durationMs) / 1000);
+            if ($finalDurationSamples <= 0) {
+                $finalDurationSamples = 1600;
+            }
+
+            $steps = (int)ceil($finalDurationSamples / $stepSamples);
+
+            if ($steps < 1) {
+                $steps = 1;
+            }
+
+            // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
+            $eventTs = (int)$this->mediaChannel->rtpChans[$extractSsrc]->timestamp;
+            $ssrc = (int)$extractSsrc;
+
+
+            // Pacotes de progresso do evento
+            for ($i = 1; $i <= $steps; $i++) {
+                $duration = $i * $stepSamples;
+                if ($duration > $finalDurationSamples) {
+                    $duration = $finalDurationSamples;
+                }
+
+                $isFirst = ($i === 1);
+                $isLast = ($duration >= $finalDurationSamples);
+
+                // Byte 2 do payload:
+                // bit 7 = E
+                // bits 0..5 = volume
+                $eVol = $volume & 0x3F;
+                if ($isLast) {
+                    $eVol |= 0x80;
+                }
+
+                $payload = pack(
+                    'CCCC',
+                    $event,
+                    $eVol,
+                    ($duration >> 8) & 0xFF,
+                    $duration & 0xFF
+                );
+
+                // Marker bit somente no primeiro pacote
+                $b1 = 0x80;
+                $b2 = ($isFirst ? 0x80 : 0x00) | ($ptTelephoneEvent & 0x7F);
+
+                $hdr = pack(
+                    'CCnNN',
+                    $b1,
+                    $b2,
+                    $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
+                    $eventTs & 0xFFFFFFFF,
+                    $ssrc & 0xFFFFFFFF
+                );
+
+
+                $this->mediaChannel->socket->sendto($ip, $port, $hdr . $payload);
+
+                // Dorme entre os pacotes, exceto depois do último "progresso"
+                if (!$isLast) {
+                    Coroutine::sleep($ptimeMs / 1000);
+                }
+            }
+
+            // Retransmite o último pacote com E-bit 3 vezes
+            $payloadEnd = pack(
                 'CCCC',
                 $event,
-                $eVol,
-                ($duration >> 8) & 0xFF,
-                $duration & 0xFF
+                0x80 | ($volume & 0x3F),
+                ($finalDurationSamples >> 8) & 0xFF,
+                $finalDurationSamples & 0xFF
             );
 
-            // Marker bit somente no primeiro pacote
-            $b1 = 0x80;
-            $b2 = ($isFirst ? 0x80 : 0x00) | ($ptTelephoneEvent & 0x7F);
+            for ($r = 0; $r < $endRetransmits; $r++) {
+                $hdr = pack(
+                    'CCnNN',
+                    0x80,
+                    $ptTelephoneEvent & 0x7F,
+                    $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
+                    $eventTs & 0xFFFFFFFF,
+                    $ssrc & 0xFFFFFFFF
+                );
 
-            $hdr = pack(
-                'CCnNN',
-                $b1,
-                $b2,
-                $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
-                $eventTs & 0xFFFFFFFF,
-                $ssrc & 0xFFFFFFFF
-            );
+                $this->mediaChannel->socket->sendto($ip, $port, $hdr . $payloadEnd);
+
+                if ($r < $endRetransmits - 1) {
+                    Coroutine::sleep($ptimeMs / 1000);
 
 
-            $this->mediaChannel->socket->sendto($ip, $port, $hdr . $payload);
-
-            // Dorme entre os pacotes, exceto depois do último "progresso"
-            if (!$isLast) {
-                Coroutine::sleep($ptimeMs / 1000);
+                }
             }
+
+            // Mantém a timeline contínua
+            $this->mediaChannel->rtpChans[$extractSsrc]->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
+        } catch (\Throwable $e) {
+            return;
         }
-
-        // Retransmite o último pacote com E-bit 3 vezes
-        $payloadEnd = pack(
-            'CCCC',
-            $event,
-            0x80 | ($volume & 0x3F),
-            ($finalDurationSamples >> 8) & 0xFF,
-            $finalDurationSamples & 0xFF
-        );
-
-        for ($r = 0; $r < $endRetransmits; $r++) {
-            $hdr = pack(
-                'CCnNN',
-                0x80,
-                $ptTelephoneEvent & 0x7F,
-                $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
-                $eventTs & 0xFFFFFFFF,
-                $ssrc & 0xFFFFFFFF
-            );
-
-            $this->mediaChannel->socket->sendto($ip, $port, $hdr . $payloadEnd);
-
-            if ($r < $endRetransmits - 1) {
-                Coroutine::sleep($ptimeMs / 1000);
-
-
-            }
-        }
-
-        // Mantém a timeline contínua
-        $this->mediaChannel->rtpChans[$extractSsrc]->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
-
 
     }
 
