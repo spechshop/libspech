@@ -1098,7 +1098,7 @@ class trunkController
                 "User-Agent" => [$this->userAgent],
                 "Call-ID" => [$this->callId],
                 "Allow" => ["INVITE,ACK,BYE,CANCEL,OPTIONS,NOTIFY,MESSAGE,REFER"],
-                "Contact" => ["<sip:{$this->username}@{$this->localIp}:{$this->socketPortListen}>"],
+                "Contact" => ["<sip:{$this->username}@{$this->socket->getsockname()['address']}:{$this->socketPortListen}>"],
                 "CSeq" => [$this->csq . " INVITE"],
                 "Max-Forwards" => ["70"],
                 "Content-Type" => ["application/sdp"],
