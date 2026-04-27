@@ -9,6 +9,7 @@ use libspech\Sip\AudioQualityDetector;
 use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
+use function libspech\Sip\monoToStereo;
 use function libspech\Sip\volumeAverage;
 
 
@@ -566,12 +567,13 @@ class MediaChannel
                         case 'L16':
                             if ($this->ptCodecsChannels[$info['pt']] > 1) {
                                 // Converte mono para estéreo e resample para a frequência do destino
-                                $encode = resample($pcmData, $frequencyPacket, $info['frequency'], [
-                                    'input_channels' => 1,
-                                    'output_channels' => 2,
-                                    'work_channels' => 1,
-                                ]);
-                                $encode = encodePcmToL16($encode);
+                               //$encode = resample($pcmData, $frequencyPacket, $info['frequency'], [
+                               //    'input_channels' => 1,
+                               //    'output_channels' => 2,
+                               //    'work_channels' => 1,
+                               //]);
+                                $encode = monoToStereo($pcmData);
+                                $encode = resampler($encode, $frequencyPacket, $info['frequency'], 1);
                             } else {
                                 $encode = resampler($pcmData, $frequencyPacket, $info['frequency'], 1);
                             }
