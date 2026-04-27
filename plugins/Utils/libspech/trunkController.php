@@ -172,6 +172,7 @@ class trunkController
     private bool $closing = false;
     private int $cid;
     private array $idTimers = [];
+    public ?array $lastPacket;
 
 
     /**
@@ -950,6 +951,7 @@ class trunkController
                 continue;
             } else {
                 $receive = sip::parse($res);
+                $this->lastPacket = $receive;
 
                 if ($receive["method"] == "NOTIFY") {
                     $this->callActive = false;
@@ -958,6 +960,10 @@ class trunkController
                     return false;
                 }
                 if ($receive["method"] == "BYE") {
+                    $modelOk = renderMessages::respondOptions($receive['headers']);
+                    $this->socket->sendto($this->host, $this->port, $modelOk);
+
+
                     $this->receiveBye = true;
                     $this->callActive = false;
                     $this->unblockCoroutine();
