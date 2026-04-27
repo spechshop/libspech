@@ -797,6 +797,32 @@ class trunkController
             }
             $receive = sip::parse($packet);
             $this->currentMethod = $receive["method"];
+            $this->lastPacket = $receive;
+
+            $abortCodes = [
+                '480',
+                'CANCEL',
+                'BYE',
+                '486',
+                '487',
+                '488',
+                '500',
+                '600',
+                '603',
+            ];
+            if (in_array($receive["method"], $abortCodes)) {
+                $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
+                $this->socket->close();
+                $this->error = true;
+                if (is_callable($this->onFailedCallback)) {
+                    return go($this->onFailedCallback, $receive['methodForParser']);
+                }
+
+                continue;
+            }
+
+
+
             if ($receive["method"] == "OPTIONS") {
                 $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
             }

@@ -29,7 +29,7 @@ include (is_dir('libspech' ? 'libspech/' : ''))."plugins/autoloader.php";;
         $phone->send2833('9');
     });
     $phone->onFailed(function ($message) {
-        return false;
+        cli::pcl("Chamada falhou: $message", "bold_red");
     });
     $phone->onHangup(function () {
         cli::pcl("Chamada encerrada", "bold_red");
