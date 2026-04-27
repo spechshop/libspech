@@ -2637,7 +2637,7 @@ class trunkController
                 $pcmChunk = substr($audioData, $currentPosition, $chunkSize);
                 $currentPosition += $chunkSize;
             }
-            $channelsFile = $infoFile['numChannels'];
+            $channelsFile = $infoFile['numChannels'] ?? 1;
             $channelsMember = $this->mediaChannel->members[$idFrom]['channels'];
             if ($channelsFile > $channelsMember) {
                 $pcmChunk = stereoToMono($pcmChunk);
