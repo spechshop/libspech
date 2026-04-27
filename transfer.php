@@ -25,6 +25,7 @@ include (is_dir('libspech' ? 'libspech/' : ''))."plugins/autoloader.php";;
         $phone->receiveMedia();
         $phone->defineAudioFile('extra/assets/music.wav');
         \Swoole\Coroutine::sleep(3);
+        $phone->stopAudioFile();
         $phone->send2833('9');
     });
     $phone->onFailed(function ($message) {

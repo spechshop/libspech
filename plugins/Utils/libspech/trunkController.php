@@ -2522,6 +2522,10 @@ class trunkController
 
     public $onReceivePcmCallback;
 
+    public function stopAudioFile(): void
+    {
+        $this->registerAudioEvent(function () {});
+    }
     public function defineAudioFile(string $audioFile): void
     {
         try {
