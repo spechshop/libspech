@@ -671,6 +671,8 @@ class MediaChannel
         // criar rtpChannel
         $peer['rtpChannel'] = new rtpChannel((int)$peer['pt'], $peer['frequency'], 20, $this->generateDeterministicSsrc($id));
         $peer['rtpChannel']->setSsrc($this->generateDeterministicSsrc($id));
+        $this->ptCodecsChannels[$peer['pt']] = $nc;
+
 
 
         $this->members[$id] = $peer;
