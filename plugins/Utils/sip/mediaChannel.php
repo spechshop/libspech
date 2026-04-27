@@ -371,7 +371,10 @@ class MediaChannel
                 $this->audioMetrics['total_packets']++;
 
                 $rtpc = new rtpc($packet);
+
+
                 $pt = $rtpc->getCodec();
+
                 $ssrc = $this->generateDeterministicSsrc($idFrom . $pt);
 
                 if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
@@ -382,6 +385,7 @@ class MediaChannel
                 }
 
                 $codec = $this->resolveCodecNameFromPt($pt) ?? $pt;
+
 
                 if (!array_key_exists($ssrc, $this->rtpChans)) {
                     $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->ptCodecsFrequency[$codec] ?? 8000, 20, $ssrc);
@@ -825,8 +829,6 @@ class MediaChannel
             $volume = $e_r_volume & 0x3F;
 
             $duration = (ord($payload[2]) << 8) | ord($payload[3]);
-
-            cli::pcl("DTMF DEBUG => event={$event} end={$end} volume={$volume} duration={$duration} ts={$rtpc->timestamp}", 'light_cyan');
         }
 
 

@@ -172,7 +172,8 @@ class trunkController
     private bool $closing = false;
     private int $cid;
     private array $idTimers = [];
-    public ?array $lastPacket;
+    public ?array $lastPacket=[];
+    public mixed $sdpReceived=[];
 
 
     /**
@@ -597,7 +598,10 @@ class trunkController
                 return;
             }
 
+
+
             $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
+
 
 
             $event = match (strtoupper($digit)) {
@@ -916,6 +920,9 @@ class trunkController
         $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
         $this->audioRemoteIp = $remoteAddressAudioDestination;
         $this->audioRemotePort = (int)$remotePortAudioDestination;
+        $this->sdpReceived = $receive["sdp"];
+
+
 
 
         if (is_callable($this->onAnswerCallback)) {
@@ -1041,13 +1048,13 @@ class trunkController
 
         $sdp = [
             "v" => ["0"],
-            "o" => ["{$this->ssrc} 0 0 IN IP4 {$this->localIp}"],
+            "o" => ["{$this->ssrc} 0 0 IN IP4 {$this->socket->getsockname()['address']}"],
             "s" => [$this->userAgent],
-            "c" => ["IN IP4 {$this->localIp}"],
+            "c" => ["IN IP4 {$this->socket->getsockname()['address']}"],
             "t" => ["0 0"],
-            "m" => ["audio {$this->rtpSocket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn))],
+            "m" => ["audio {$this->socket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn))],
             "a" => [
-                'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->localIp}",
+                'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->rtpSocket->getsockname()['address']}",
                 ...$this->codecRtpMap,
                 'ptime:20',
                 'sendrecv',
@@ -1454,7 +1461,7 @@ class trunkController
             $rtpSocket = $this->rtpSocket;
 
 
-            cli::pcl("Proxy de áudio iniciado na porta " . $this->localIp . ":" . $rtpSocket->getsockname()['port']);
+            cli::pcl("Proxy de áudio iniciado na porta " . $this->socket->getsockname()['address'] . ":" . $rtpSocket->getsockname()['port']);
             $this->lastSpeakTime = microtime(true);
             $this->speakWaitSequence = [];
             $this->waitingEnd = 0;
@@ -1482,6 +1489,22 @@ class trunkController
                 ])),
             ];
             $this->mediaChannel->registerPtCodecs($this->mediaChannel->codecMapper);
+            $audioAttributes = [];
+            foreach ($this->sdpReceived['a'] as $value) {
+                $commons = explode(' ', $value);
+                foreach ($commons as $common) {
+                    $parts = explode(':', $common);
+                    if ($parts[0] == 'ssrc') {
+                        $audioAttributes['ssrc'] = $parts[1];
+
+                    }
+                }
+            }
+
+
+
+
+
             $this->mediaChannel->addMember([
                 'address' => $this->audioRemoteIp,
                 'port' => $this->audioRemotePort,
@@ -1489,11 +1512,11 @@ class trunkController
                 'pt' => $this->ptUse,
                 'timestamp' => time(),
                 'config' => [],
-                'ssrc' => $this->ssrc,
+                'ssrc' => $audioAttributes['ssrc'] ?? $this->ssrc,
                 'frequency' => $this->frequencyCall,
                 'channels' => $this->defaultChannels,
             ]);
-            $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $this->ssrc);
+            $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $audioAttributes['ssrc'] ?? $this->ssrc);
             $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
             $opus = new \opusChannel($this->frequencyCall, $this->defaultChannels);
             $opus->setBitrate($this->frequencyCall);
@@ -2523,6 +2546,7 @@ class trunkController
             $infoFile['bitDepth']
         );
 
+
         $dataOffset = $tags[$idDataTag]['data'];
 
         // 🔥 Lê o WAV inteiro em memória
@@ -2583,6 +2607,12 @@ class trunkController
                 $pcmChunk = substr($audioData, $currentPosition, $chunkSize);
                 $currentPosition += $chunkSize;
             }
+            $channelsFile = $infoFile['numChannels'];
+            $channelsMember = $this->mediaChannel->members[$idFrom]['channels'];
+            if ($channelsFile > $channelsMember) {
+                $pcmChunk = stereoToMono($pcmChunk);
+            }
+
 
             // ----------------------------
             // Codec processing

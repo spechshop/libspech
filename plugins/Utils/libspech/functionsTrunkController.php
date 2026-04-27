@@ -430,3 +430,53 @@ function randf(int|float $min, int|float $max): float
         $max
     );
 }
+
+/**
+ * Converte áudio mono para stereo (duplicando o canal)
+ *
+ * @param string $pcmData Buffer PCM 16-bit mono LE
+ * @return string PCM 16-bit stereo LE
+ */
+function monoToStereo(string $pcmData): string
+{
+    if (strlen($pcmData) < 2) {
+        return $pcmData;
+    }
+
+    $len = strlen($pcmData);
+    $stereo = '';
+
+    for ($i = 0; $i < $len; $i += 2) {
+        $sample = substr($pcmData, $i, 2);
+        $stereo .= $sample . $sample; // L e R iguais
+    }
+
+    return $stereo;
+}
+
+/**
+ * Converte áudio stereo para mono (média dos canais L e R)
+ *
+ * @param string $pcmData Buffer PCM 16-bit stereo LE
+ * @return string PCM 16-bit mono LE
+ */
+function stereoToMono(string $pcmData): string
+{
+    if (strlen($pcmData) < 4) {
+        return $pcmData;
+    }
+
+    $len = strlen($pcmData);
+    $mono = '';
+
+    for ($i = 0; $i < $len; $i += 4) {
+        $left = unpack('s', substr($pcmData, $i, 2))[1];
+        $right = unpack('s', substr($pcmData, $i + 2, 2))[1];
+
+        $avg = (int)(($left + $right) / 2);
+        $mono .= pack('s', $avg);
+    }
+
+    return $mono;
+}
+
