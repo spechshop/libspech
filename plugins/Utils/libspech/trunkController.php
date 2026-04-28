@@ -601,6 +601,9 @@ class trunkController
 
 
             $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
+            if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
+                var_dump($this->mediaChannel->rtpChans);
+            }
 
 
 
@@ -707,6 +710,9 @@ class trunkController
                 // Marker bit somente no primeiro pacote
                 $b1 = 0x80;
                 $b2 = ($isFirst ? 0x80 : 0x00) | ($ptTelephoneEvent & 0x7F);
+                if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
+                    var_dump($this->mediaChannel->rtpChans);
+                }
 
                 $hdr = pack(
                     'CCnNN',
@@ -854,6 +860,8 @@ class trunkController
             if (!array_key_exists("Call-ID", $receive["headers"])) {
                 if (array_key_exists("i", $receive["headers"])) {
                     $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
+                } else {
+                    cli::pcl(sip::renderSolution($receive), "bold_red");
                 }
             }
             if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
@@ -1008,6 +1016,8 @@ class trunkController
             if (!array_key_exists("Call-ID", $receive["headers"])) {
                 if (array_key_exists("i", $receive["headers"])) {
                     $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
+                } else {
+                    cli::pcl(sip::renderSolution($receive), "bold_red");
                 }
             }
             if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
