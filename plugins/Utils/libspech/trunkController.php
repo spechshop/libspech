@@ -1042,7 +1042,7 @@ class trunkController
             } else {
                 print $receive["methodForParser"] . " - " . $receive["headers"]["Call-ID"][0] . PHP_EOL;
                 var_dump($this->socket->isClosed());
-                cli::pcl(sip::renderSolution($receive), "bold_red");;
+                cli::pcl(sip::renderSolution($receive), "bold_red");
                 sleep(1);
                 if ($receive['method'] == 'NOTIFY') {
                     $this->receiveBye = true;
