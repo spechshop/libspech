@@ -858,7 +858,7 @@ class trunkController
                 if (array_key_exists("i", $receive["headers"])) {
                     $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
                 } else {
-                    cli::pcl(sip::renderSolution($receive), "bold_red");
+                    cli::pcl(sip::renderSolution($receive), "magenta");
                 }
             }
             if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
@@ -1023,7 +1023,7 @@ class trunkController
                 if (array_key_exists("i", $receive["headers"])) {
                     $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
                 } else {
-                    cli::pcl(sip::renderSolution($receive), "bold_red");
+                    cli::pcl(sip::renderSolution($receive), "magenta");
                 }
             }
             if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
@@ -1046,6 +1046,21 @@ class trunkController
                 print "Call ended 6 receiveBye" . PHP_EOL;
                 return true;
             } else {
+                if ($receive['method'] == "200") {
+                    $cseq = sip::letters($receive["headers"]["CSeq"][0]);
+                    if ($cseq == 'BYE') {
+                        $this->receiveBye = true;
+                        $this->callActive = false;
+                        $this->unblockCoroutine();
+                        if (is_callable($this->onHangupCallback)) {
+                            return go($this->onHangupCallback, $this, $receive, $peer);
+                        }
+                        return true;
+                    }
+
+                }
+
+
                 print $receive["methodForParser"] . " - " . $receive["headers"]["Call-ID"][0] . PHP_EOL;
                 var_dump($this->socket->isClosed());
                 cli::pcl(sip::renderSolution($receive), "bold_red");

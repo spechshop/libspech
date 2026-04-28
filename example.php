@@ -19,6 +19,7 @@ ini_set('memory_limit', '1024M');
 
 // Importa as classes necessárias do sistema
 use libspech\Cli\cli;
+use libspech\Sip\sip;
 use libspech\Sip\trunkController;
 use function libspech\Sip\interruptibleSleep;
 
@@ -27,6 +28,7 @@ use function libspech\Sip\interruptibleSleep;
 
 // Carrega o autoloader para importar todas as dependências do projeto
 include 'plugins/autoloader.php';
+var_dump( sip::letters('555 LETRA'));
 
 // ============================================================================
 // SESSÃO 2: INICIALIZAÇÃO DO AMBIENTE DE COROTINA
