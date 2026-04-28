@@ -823,8 +823,7 @@ class trunkController
                 if (is_callable($this->onFailedCallback)) {
                     return go($this->onFailedCallback, $receive['methodForParser']);
                 }
-
-                continue;
+                return false;
             }
 
 
@@ -854,8 +853,6 @@ class trunkController
                 $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
                 $this->audioRemoteIp = $remoteAddressAudioDestination;
                 $this->audioRemotePort = (int)$remotePortAudioDestination;
-
-
             }
             if (!array_key_exists("Call-ID", $receive["headers"])) {
                 if (array_key_exists("i", $receive["headers"])) {
@@ -948,6 +945,9 @@ class trunkController
         }
         $this->callActive = true;
         $this->headers200 = $receive;
+        cli::pcl("received: $receive[methodForParser]", 'bold_blue');
+
+
         $ackModel = $this->ackModel($receive["headers"]);
         $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
         $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
@@ -955,8 +955,6 @@ class trunkController
         $this->audioRemoteIp = $remoteAddressAudioDestination;
         $this->audioRemotePort = (int)$remotePortAudioDestination;
         $this->sdpReceived = $receive["sdp"];
-
-
 
 
         if (is_callable($this->onAnswerCallback)) {
