@@ -945,11 +945,19 @@ class trunkController
         }
         $this->callActive = true;
         $this->headers200 = $receive;
-        cli::pcl("received: $receive[methodForParser]", 'bold_blue');
+        cli::pcl("received: $receive[methodForParser]", 'bold_yellow');
+        cli::pcl(sip::renderSolution($receive), 'bold_yellow');
+        cli::pcl($this->callId, 'bold_yellow');
 
 
         $ackModel = $this->ackModel($receive["headers"]);
         $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
+
+
+
+
+
+
         $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
         $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
         $this->audioRemoteIp = $remoteAddressAudioDestination;
