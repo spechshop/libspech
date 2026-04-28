@@ -172,8 +172,8 @@ class trunkController
     private bool $closing = false;
     private int $cid;
     private array $idTimers = [];
-    public ?array $lastPacket=[];
-    public mixed $sdpReceived=[];
+    public ?array $lastPacket = [];
+    public mixed $sdpReceived = [];
 
 
     /**
@@ -581,7 +581,7 @@ class trunkController
 
     public function send2833(string $digit): void
     {
-        try{
+        try {
             if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
                 cli::pcl("[2833] socket/destino não inicializados.", "bold_red");
                 return;
@@ -599,12 +599,10 @@ class trunkController
             }
 
 
-
             $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
             if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
                 var_dump($this->mediaChannel->rtpChans);
             }
-
 
 
             $event = match (strtoupper($digit)) {
@@ -827,7 +825,6 @@ class trunkController
             }
 
 
-
             if ($receive["method"] == "OPTIONS") {
                 $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
             }
@@ -945,17 +942,16 @@ class trunkController
         }
         $this->callActive = true;
         $this->headers200 = $receive;
-        cli::pcl("received: $receive[methodForParser]", 'bold_yellow');
-        cli::pcl(sip::renderSolution($receive), 'bold_yellow');
-        cli::pcl($this->callId, 'bold_yellow');
 
 
         $ackModel = $this->ackModel($receive["headers"]);
-        $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
+        $ifr = sip::extractURI($receive['headers']['Contact'][0])['peer'];
+        $ipKey = $ifr['host'] . ":" . $ifr['port'];
 
 
-
-
+        $this->socket->sendto($ifr['host'], (int)$ifr['port'], sip::renderSolution($ackModel));
+        if ($ipKey !== $this->host . ":" . $this->port)
+            $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
 
 
         $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
@@ -993,6 +989,9 @@ class trunkController
             $res = $this->socket->recvfrom($peer, 1);
             if (!$res) {
                 if ($this->socket->isClosed()) {
+                    if (is_callable($this->onHangupCallback)) {
+                        go($this->onHangupCallback, $this);
+                    }
                     return false;
                 }
                 continue;
@@ -1009,8 +1008,10 @@ class trunkController
                 if ($receive["method"] == "BYE") {
                     $modelOk = renderMessages::respondOptions($receive['headers']);
                     $this->socket->sendto($this->host, $this->port, $modelOk);
-
-
+                    $res = $this->socket->recvfrom($peer, 1);
+                    if (!$res) {
+                        cli::pcl("Erro ao finalizar a chamada", "red");
+                    }
                     $this->receiveBye = true;
                     $this->callActive = false;
                     $this->unblockCoroutine();
@@ -1042,6 +1043,7 @@ class trunkController
                 if (is_callable($this->onHangupCallback)) {
                     return go($this->onHangupCallback, $this, $receive, $peer);
                 }
+                return false;
             } elseif ($this->receiveBye) {
                 print "Call ended 6 receiveBye" . PHP_EOL;
                 return true;
@@ -1557,9 +1559,6 @@ class trunkController
                     }
                 }
             }
-
-
-
 
 
             $this->mediaChannel->addMember([
@@ -2581,8 +2580,10 @@ class trunkController
 
     public function stopAudioFile(): void
     {
-        $this->registerAudioEvent(function () {});
+        $this->registerAudioEvent(function () {
+        });
     }
+
     public function defineAudioFile(string $audioFile): void
     {
         try {
