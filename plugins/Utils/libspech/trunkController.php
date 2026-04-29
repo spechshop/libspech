@@ -1070,6 +1070,20 @@ class trunkController
                         }
                         return true;
                     }
+                    elseif ($receive['method'] == "INVITE") {
+                        $this->callActive = true;
+                        $this->headers200 = $receive;
+                        $this->sdpReceived = $receive["sdp"];
+
+
+                        $ackModel = $this->ackModel($receive["headers"]);
+                        $ifr = sip::extractURI($receive['headers']['Contact'][0])['peer'];
+                        $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
+                        $this->socket->sendto($ifr['host'], (int)$ifr['port'], sip::renderSolution($ackModel));
+
+
+                        continue;
+                    }
 
                 }
 
