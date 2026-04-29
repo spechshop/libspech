@@ -1070,7 +1070,7 @@ class trunkController
                         }
                         return true;
                     }
-                    elseif ($receive['method'] == "INVITE") {
+                    elseif ($cseq == "INVITE") {
                         $this->callActive = true;
                         $this->headers200 = $receive;
                         $this->sdpReceived = $receive["sdp"];
