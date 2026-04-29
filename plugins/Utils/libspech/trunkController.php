@@ -1089,8 +1089,7 @@ class trunkController
 
 
 
-                //var_dump($this->socket->isClosed());
-                //cli::pcl(sip::renderSolution($receive), "bold_red");
+
                 sleep(1);
                 if ($receive['method'] == 'NOTIFY') {
                     $this->receiveBye = true;
