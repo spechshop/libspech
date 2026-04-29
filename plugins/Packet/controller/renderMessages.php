@@ -242,6 +242,7 @@ class renderMessages
         $uriContact['peer']['host'] = network::getLocalIp();
         $uriContact['peer']['port'] = $respondPort;
         $Ce = str_replace(['<', '>'], '', sip::renderURI($uriContact));
+        $uriFrom = sip::extractUri($headers['From'][0]);
 
         return [
             "method" => "OPTIONS",
@@ -259,8 +260,8 @@ class renderMessages
                 "To" => [sip::renderURI([
                     'user' => sip::extractURI($headers['From'][0])['user'],
                     'peer' => [
-                        'host' => $uriContact['peer']['host'],
-                        'port' => $uriContact['peer']['port']
+                        'host' => $uriFrom['peer']['host'],
+                        'port' => $uriFrom['peer']['port']
                     ]
                 ])],
                 "Max-Forwards" => ["70"],
