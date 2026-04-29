@@ -12,6 +12,7 @@ use libspech\Rtp\MediaChannel;
 use libspech\Rtp\rtpc;
 use libspech\Rtp\rtpChannel;
 use Random\RandomException;
+use SocketMutable;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
 use Swoole\Timer;
@@ -23,7 +24,7 @@ class trunkController
     public mixed $password;
     public mixed $host;
     public mixed $port;
-    public \Swoole\Coroutine\Socket $socket;
+    public SocketMutable $socket;
     public int $expires;
     public string $localIp;
     public string $callId;
@@ -216,8 +217,8 @@ class trunkController
 
         $this->ssrc = random_int(0, 0xffffffff);
         $this->callId = bin2hex(secure_random_bytes(8));
-        $this->socket = new Socket(AF_INET, SOCK_DGRAM, SOL_UDP);
-        $this->rtpSocket = new Socket(AF_INET, SOCK_DGRAM, SOL_UDP);
+        $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
+        $this->rtpSocket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
 
 
         $this->audioReceivePort = network::getFreePort('udp');
@@ -778,6 +779,9 @@ class trunkController
         $timeRing = time();
         for (; ;) {
             if ($this->closing || $this->socket->isClosed()) {
+                if (is_callable($this->onFailedCallback)) {
+                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                }
                 return false;
             }
             if (time() - $timeRing > $maxRings) {
@@ -785,16 +789,23 @@ class trunkController
                 if (is_callable($this->onFailedCallback)) {
                     return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
                 }
+                return false;
             }
             if ($this->error) {
+                if (is_callable($this->onFailedCallback)) {
+                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                }
                 return false;
             }
             /** @var ? $peer */
-            $packet = $this->socket->recvfrom($peer, 2);
+            $packet = $this->socket->recvfrom($peer, 10);
 
 
             if ($packet === false || $packet === "") {
                 if ($this->socket->isClosed()) {
+                    if (is_callable($this->onFailedCallback)) {
+                        return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                    }
                     return false;
                 }
                 continue;
@@ -949,9 +960,10 @@ class trunkController
         $ipKey = $ifr['host'] . ":" . $ifr['port'];
 
 
+        $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
         $this->socket->sendto($ifr['host'], (int)$ifr['port'], sip::renderSolution($ackModel));
-        if ($ipKey !== $this->host . ":" . $this->port)
-            $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
+
+
 
 
         $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
@@ -986,7 +998,7 @@ class trunkController
                 return false;
             }
 
-            $res = $this->socket->recvfrom($peer, 1);
+            $res = $this->socket->recvfrom($peer, 5);
             if (!$res) {
                 if ($this->socket->isClosed()) {
                     if (is_callable($this->onHangupCallback)) {
@@ -998,7 +1010,6 @@ class trunkController
             } else {
                 $receive = sip::parse($res);
                 $this->lastPacket = $receive;
-
                 if ($receive["method"] == "NOTIFY") {
                     $this->callActive = false;
                     $this->receiveBye = true;
@@ -1008,12 +1019,11 @@ class trunkController
                 if ($receive["method"] == "BYE") {
                     $modelOk = renderMessages::respondOptions($receive['headers']);
                     $this->socket->sendto($this->host, $this->port, $modelOk);
-                    $res = $this->socket->recvfrom($peer, 1);
-                    if (!$res) {
-                        cli::pcl("Erro ao finalizar a chamada", "red");
-                    }
                     $this->receiveBye = true;
                     $this->callActive = false;
+                    $this->mediaChannel->close();
+
+
                     $this->unblockCoroutine();
                     if (is_callable($this->onHangupCallback)) {
                         return go($this->onHangupCallback, $this, $receive, $peer);
@@ -1044,7 +1054,8 @@ class trunkController
                     return go($this->onHangupCallback, $this, $receive, $peer);
                 }
                 return false;
-            } elseif ($this->receiveBye) {
+            }
+            elseif ($this->receiveBye) {
                 print "Call ended 6 receiveBye" . PHP_EOL;
                 return true;
             } else {
@@ -1944,6 +1955,28 @@ class trunkController
             ],
         ];
     }
+    public function cancel(): void
+    {
+        for ($i = 0; $i < 3; $i++) {
+            $this->socket->sendto($this->host, $this->port, sip::renderSolution($this->getModelCancel()));
+            $res = $this->socket->recvfrom($peer, 3);
+            if ($res) {
+                $this->receiveBye = true;
+                $this->callActive = false;
+                break;
+            }
+        }
+        return;
+
+    }
+    public function getBufferWriteSound(): array
+    {
+        return $this->bufferWriteSound;
+    }
+    public function getBufferWriteSoundBySsrc(int $ssrc): array
+    {
+        return $this->bufferWriteSound[$ssrc] ?? [];
+    }
 
     public function close(): void
     {
@@ -2042,12 +2075,23 @@ class trunkController
 
     public function bye(): void
     {
-        try {
-            if ($this->headers200 && isset($this->headers200['headers']) && !$this->socket->isClosed()) {
-                $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
+        if (empty($this->headers200)) {
+             $this->cancel();
+            return;
+        }
+         for ($n=3;$n--;) {
+            $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
+            $res = $this->socket->recvfrom($peer, 3);
+            if ($res) {
+                $this->receiveBye = true;
+                $this->callActive = false;
+                return;
             }
-        } catch (\Throwable $e) {
-            // Ignora erros
+        }
+        if (!$this->receiveBye) {
+            $this->receiveBye = true;
+            $this->callActive = false;
+            cli::pcl("erro ao finalizar: {$this->host} {$this->port}");
         }
     }
 

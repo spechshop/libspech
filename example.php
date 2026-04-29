@@ -28,7 +28,8 @@ use function libspech\Sip\interruptibleSleep;
 
 // Carrega o autoloader para importar todas as dependências do projeto
 include 'plugins/autoloader.php';
-var_dump( sip::letters('555 LETRA'));
+
+
 
 // ============================================================================
 // SESSÃO 2: INICIALIZAÇÃO DO AMBIENTE DE COROTINA
@@ -82,7 +83,7 @@ var_dump( sip::letters('555 LETRA'));
 
         $phone->onFailed(function ($message) use ($phone) {
             cli::pcl("Chamada falhou: $message", "red");
-            $phone->bye();
+            $phone->cancel();
         });
 
         $phone->onHangup(function (trunkController $phone) {
@@ -125,18 +126,18 @@ var_dump( sip::letters('555 LETRA'));
 
 
 
-            interruptibleSleep(7, $phone->receiveBye);
+            interruptibleSleep(5, $phone->receiveBye);
             $phone->send2833('*');
 
 
             $cpf = '42017165204';
-            interruptibleSleep(4, $phone->receiveBye);
+            interruptibleSleep(10, $phone->receiveBye);
             foreach (str_split(substr($cpf, 0, 11)) as $digit) {
                 $phone->send2833($digit);
             }
             $phone->waitSilence(false, 10);
 
-            interruptibleSleep(10, $phone->receiveBye);
+            interruptibleSleep(20, $phone->receiveBye);
 
 
             $phone->bye();
