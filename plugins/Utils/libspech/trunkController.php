@@ -1011,13 +1011,13 @@ class trunkController
 
         $sdp = [
             "v" => ["0"],
-            "o" => ["{$this->ssrc} 0 0 IN IP4 {$this->socket->getsockname()['address']}"],
+            "o" => ["{$this->ssrc} 0 0 IN IP4 {$this->localIp}"],
             "s" => [$this->userAgent],
-            "c" => ["IN IP4 {$this->socket->getsockname()['address']}"],
+            "c" => ["IN IP4 {$this->localIp}"],
             "t" => ["0 0"],
-            "m" => ["audio {$this->audioReceivePort} RTP/AVP " . implode(' ', array_keys($this->mapLearn))],
+            "m" => ["audio {$this->rtpSocket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn))],
             "a" => [
-                'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->rtpSocket->getsockname()['address']}",
+                'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->localIp}",
                 ...$this->codecRtpMap,
                 'ptime:20',
                 'sendrecv',
@@ -1056,7 +1056,7 @@ class trunkController
             "method" => "INVITE",
             "methodForParser" => "INVITE sip:{$to}@{$mf} SIP/2.0",
             "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->socket->getsockname()['address']}:{$this->socketPortListen};branch=z9hG4bK64d" .
+                "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=z9hG4bK64d" .
                     bin2hex(secure_random_bytes(8) ?? time()) .
                     ";rport"
                 ],
@@ -1074,7 +1074,7 @@ class trunkController
                 "User-Agent" => [$this->userAgent],
                 "Call-ID" => [$this->callId],
                 "Allow" => ["INVITE,ACK,BYE,CANCEL,OPTIONS,NOTIFY,MESSAGE,REFER"],
-                "Contact" => ["<sip:{$this->username}@{$this->socket->getsockname()['address']}:{$this->socketPortListen}>"],
+                "Contact" => ["<sip:{$this->username}@{$this->localIp}:{$this->socketPortListen}>"],
                 "CSeq" => [$this->csq . " INVITE"],
                 "Max-Forwards" => ["70"],
                 "Content-Type" => ["application/sdp"],
@@ -1082,7 +1082,7 @@ class trunkController
                 "P-Preferred-Identity" => ['"' . $this->callerId . '" ' . sip::renderURI([
                         'user' => !empty($this->callerId) ? $this->callerId : $this->username,
                         'peer' => [
-                            'host' => $this->socket->getsockname()['address'],
+                            'host' => $this->localIp,
                             'port' => $this->socketPortListen,
                         ],
                     ])],

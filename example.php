@@ -77,7 +77,7 @@ include 'plugins/autoloader.php';
         $phone->onRinging(function () use (&$phone) {
             cli::pcl("Chamada TOCANDO", "yellow");
             //\Swoole\Coroutine::sleep(5);
-            $phone->cancel();
+            //$phone->cancel();
         });
 
         // Callback executado quando a chamada é desligada (hangup/bye)
@@ -101,7 +101,7 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // Define o codec de áudio como OPUS 48kHz mono (1 canal)
         //$phone->mountLineCodecSDP('G729/8000');
-        $phone->mountLineCodecSDP('PCMU/8000');
+        $phone->mountLineCodecSDP('PCMA/8000');
 
         // Habilita a gravação de áudio durante a chamada
         $phone->enableAudioRecording();
