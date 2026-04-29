@@ -1957,16 +1957,8 @@ class trunkController
     }
     public function cancel(): void
     {
-        for ($i = 0; $i < 3; $i++) {
-            $this->socket->sendto($this->host, $this->port, sip::renderSolution($this->getModelCancel()));
-            $res = $this->socket->recvfrom($peer, 3);
-            if ($res) {
-                $this->receiveBye = true;
-                $this->callActive = false;
-                break;
-            }
-        }
-        return;
+        $this->socket->sendto($this->host, $this->port, sip::renderSolution($this->getModelCancel()));
+
 
     }
     public function getBufferWriteSound(): array
@@ -2079,20 +2071,7 @@ class trunkController
              $this->cancel();
             return;
         }
-         for ($n=3;$n--;) {
-            $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
-            $res = $this->socket->recvfrom($peer, 3);
-            if ($res) {
-                $this->receiveBye = true;
-                $this->callActive = false;
-                return;
-            }
-        }
-        if (!$this->receiveBye) {
-            $this->receiveBye = true;
-            $this->callActive = false;
-            cli::pcl("erro ao finalizar: {$this->host} {$this->port}");
-        }
+        $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
     }
 
     public function addListener(mixed $receiveIp, string $receivePort): void
