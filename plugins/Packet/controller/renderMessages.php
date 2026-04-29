@@ -241,7 +241,7 @@ class renderMessages
         $uriContact = sip::extractUri($headers['Contact'][0]);
         $uriContact['peer']['host'] = network::getLocalIp();
         $uriContact['peer']['port'] = $respondPort;
-        $Ce = str_replace(['<', '>'], '', $headers['Contact'][0]);
+        $Ce = str_replace(['<', '>'], '', sip::renderURI($uriContact));
 
         return [
             "method" => "OPTIONS",
