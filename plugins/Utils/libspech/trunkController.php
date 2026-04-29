@@ -2224,7 +2224,7 @@ class trunkController
             $fpp = $this->port;
             $toLine = "<sip:{$this->username}@{$this->domain}>";
         } else {
-            $fpee = $this->localIp;
+            $fpee = $this->socket->getsockname()['address'];
             $fpp = $this->socketPortListen;
             $registerLine = "{$this->host}";
             $toLine = "<sip:{$this->username}@{$this->host}>";
@@ -2233,7 +2233,7 @@ class trunkController
             "method" => "REGISTER",
             "methodForParser" => "REGISTER sip:{$registerLine} SIP/2.0",
             "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))],
+                "Via" => ["SIP/2.0/UDP {$this->socket->getsockname()['address']}:{$this->socketPortListen};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))],
                 "From" => [sip::renderURI([
                     "user" => $this->username,
                     "peer" => [
