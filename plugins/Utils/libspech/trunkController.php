@@ -1054,7 +1054,7 @@ class trunkController
             "method" => "INVITE",
             "methodForParser" => "INVITE sip:{$to}@{$mf} SIP/2.0",
             "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=z9hG4bK64d" .
+                "Via" => ["SIP/2.0/UDP {$this->socket->getsockname()['address']}:{$this->socketPortListen};branch=z9hG4bK64d" .
                     bin2hex(secure_random_bytes(8) ?? time()) .
                     ";rport"
                 ],
@@ -1080,7 +1080,7 @@ class trunkController
                 "P-Preferred-Identity" => ['"' . $this->callerId . '" ' . sip::renderURI([
                         'user' => !empty($this->callerId) ? $this->callerId : $this->username,
                         'peer' => [
-                            'host' => $this->localIp,
+                            'host' => $this->socket->getsockname()['address'],
                             'port' => $this->socketPortListen,
                         ],
                     ])],
