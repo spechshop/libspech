@@ -249,12 +249,12 @@ class trunkController
 
 
         $options=sip::renderSolution($this->modelOptions());
-        cli::pcl($options);
+
         $this->socket->sendto($this->host, $this->port, $options);
         $this->userAgent = 'SPECHSHOP LIB';
 
         /** @var ? $peer */
-        $this->socket->recvfrom($peer, 10);
+        $this->socket->recvfrom($peer, 1);
         $this->mediaChannel = false;
 
 
