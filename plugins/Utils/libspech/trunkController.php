@@ -248,7 +248,9 @@ class trunkController
         // send options
 
 
-        $this->socket->sendto($this->host, $this->port, sip::renderSolution($this->modelOptions()));
+        $options=sip::renderSolution($this->modelOptions());
+        cli::pcl($options);
+        $this->socket->sendto($this->host, $this->port, $options);
         $this->userAgent = 'SPECHSHOP LIB';
 
         /** @var ? $peer */
