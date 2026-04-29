@@ -1015,7 +1015,7 @@ class trunkController
             "s" => [$this->userAgent],
             "c" => ["IN IP4 {$this->socket->getsockname()['address']}"],
             "t" => ["0 0"],
-            "m" => ["audio {$this->socket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn))],
+            "m" => ["audio {$this->audioReceivePort} RTP/AVP " . implode(' ', array_keys($this->mapLearn))],
             "a" => [
                 'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->rtpSocket->getsockname()['address']}",
                 ...$this->codecRtpMap,
