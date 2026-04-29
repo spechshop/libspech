@@ -25,8 +25,10 @@ include (is_dir('libspech' ? 'libspech/' : ''))."plugins/autoloader.php";;
         $phone->receiveMedia();
         $phone->defineAudioFile('extra/assets/music.wav');
         \Swoole\Coroutine::sleep(3);
-        $phone->stopAudioFile();
+        //$phone->stopAudioFile();
         $phone->send2833('9');
+        \Swoole\Coroutine::sleep(10);
+        $phone->bye();
     });
     $phone->onFailed(function ($message) {
         cli::pcl("Chamada falhou: $message", "bold_red");
