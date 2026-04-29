@@ -226,7 +226,7 @@ class trunkController
 
 
         cli::pcl("Audio Receive Port: {$this->audioReceivePort}");
-        $this->localIp = $this->socket->getsockname()["address"];
+        $this->localIp = network::getLocalIp();
 
 
         $this->socket->bind($this->localIp, network::getFreePort('udp'));
