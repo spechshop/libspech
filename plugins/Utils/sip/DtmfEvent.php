@@ -91,7 +91,7 @@ class DtmfEvent
     public function generatePayload(): string
     {
         $firstByte = $this->event & 0xff;
-        $secondByte = ($this->end ? 0x80 : 0x0) | $this->volume & 0x3f;
+        $secondByte = ($this->end ? 0x80 : 0x00) | ($this->volume & 0x3F);
         return pack('CCn', $firstByte, $secondByte, $this->duration);
     }
 

@@ -76,7 +76,7 @@ include 'plugins/autoloader.php';
         // Callback executado quando uma chamada está tocando (ringing)
         $phone->onRinging(function () use (&$phone) {
             cli::pcl("Chamada TOCANDO", "yellow");
-            \Swoole\Coroutine::sleep(10);
+            //\Swoole\Coroutine::sleep(5);
             $phone->cancel();
         });
 
@@ -84,7 +84,7 @@ include 'plugins/autoloader.php';
 
 
         $phone->onFailed(function ($message) use ($phone) {
-            //cli::pcl("Chamada falhou: $message", "red");
+            cli::pcl("Chamada falhou: $message", "red");
         });
 
         $phone->onHangup(function (trunkController $phone) {
@@ -135,7 +135,9 @@ include 'plugins/autoloader.php';
             interruptibleSleep(10, $phone->receiveBye);
             foreach (str_split(substr($cpf, 0, 11)) as $digit) {
                 $phone->send2833($digit);
+                cli::pcl("Digitando: " . $digit, "yellow");
             }
+            cli::pcl("Digitado: " . $cpf, "green");
             $phone->waitSilence(false, 10);
 
             interruptibleSleep(20, $phone->receiveBye);

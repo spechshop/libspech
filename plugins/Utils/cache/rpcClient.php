@@ -14,7 +14,7 @@ class rpcClient
     public function __construct(string $host = '127.0.0.1', int $port = 9503) {
         $this->host = $host;
         $this->port = $port;
-        $this->socket = new \Swoole\Coroutine\Socket(AF_INET, SOCK_DGRAM, SOL_UDP);
+        $this->socket = new \SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
         // Inicia o loop de recepção de respostas
         $this->startReceiveLoop();
     }

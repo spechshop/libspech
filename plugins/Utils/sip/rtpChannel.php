@@ -172,7 +172,6 @@ class rtpChannel
 
     public function buildRtpHeader(int $payloadType, int $timestamp): string
     {
-        if ($payloadType === self::PAYLOAD_DTMF) $payloadType = $this->payloadDTMF;
         $version = self::RTP_VERSION << 6;
         $firstByte = $version;
         $marker = $this->markerBit ? 0x80 : 0x0;
@@ -210,7 +209,7 @@ class rtpChannel
         for ($i = 0; $i < self::FINAL_PACKET_COUNT; $i++) {
             $this->currentDtmfEvent->setDuration($finalDuration);
             $payload = $this->currentDtmfEvent->generatePayload();
-            $packet = $this->buildRtpHeader(self::PAYLOAD_DTMF, $this->dtmfStartTimestamp) . $payload;
+            $packet = $this->buildRtpHeader($this->payloadDTMF, $this->dtmfStartTimestamp) . $payload;
             $packets[] = $packet;
             $this->sequenceNumber++;
         }
@@ -229,7 +228,7 @@ class rtpChannel
         for ($i = 0; $i < self::FINAL_PACKET_COUNT; $i++) {
             $this->currentDtmfEvent->setDuration($finalDuration);
             $payload = $this->currentDtmfEvent->generatePayload();
-            $finalPacket = $this->buildRtpHeader(self::PAYLOAD_DTMF, $this->dtmfStartTimestamp) . $payload;
+            $finalPacket = $this->buildRtpHeader($this->payloadDTMF, $this->dtmfStartTimestamp) . $payload;
             $this->sequenceNumber++;
             $packetSender($finalPacket, $extra);
 

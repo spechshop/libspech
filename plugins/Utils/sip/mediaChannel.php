@@ -57,7 +57,7 @@ class MediaChannel
         $this->adaptiveBuffer->disable();
     }
 
-    public Socket $socket;
+    public \SocketMutable $socket;
 
 
     /**
@@ -196,7 +196,7 @@ class MediaChannel
         $this->qualityReports = [];
         $this->adaptationCheckInterval = 50;
         $this->packetsProcessed = 0;
-        $this->eventSock = new Socket(AF_INET, SOCK_DGRAM, SOL_UDP);
+        $this->eventSock = new \SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
         $this->rtpChans = [];
     }
 

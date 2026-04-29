@@ -161,8 +161,6 @@ class trunkController
     public \Closure $onBuildAudio;
     public rtpChannel $rtpChannel;
     public array $inviteHeaders = [];
-    private array $alawTable = [];
-    private array $ulawTable = [];
     private bool $proxyMediaActive = false;
     private ?string $currentProxyId = null;
     private $userAgent;
@@ -417,48 +415,6 @@ class trunkController
         $this->globalInfo[$key] = $value;
     }
 
-    public function decodePcmuToPcm(string $input): string
-    {
-        if ($input === "") {
-            return "";
-        }
-        if (empty($this->ulawTable)) {
-            $this->initLawTables();
-        }
-        $pcm = "";
-        $len = strlen($input);
-        for ($i = 0; $i < $len; $i++) {
-            $val = $this->ulawTable[ord($input[$i])];
-            $pcm .= pack("v", $val);
-        }
-        return $pcm;
-    }
-
-    private function initLawTables(): void
-    {
-        if (!empty($this->alawTable)) {
-            return;
-        }
-        for ($i = 0; $i < 256; $i++) {
-            $a = $i ^ 0x55;
-            $t = ($a & 0xf) << 4;
-            $seg = ($a & 0x70) >> 4;
-            if ($seg >= 1) {
-                $t += 0x100;
-                $t <<= $seg - 1;
-            } else {
-                $t += 8;
-            }
-            $this->alawTable[$i] = $a & 0x80 ? $t : -$t;
-        }
-        for ($i = 0; $i < 256; $i++) {
-            $i2 = ~$i & 0xff;
-            $t = (($i2 & 0xf) << 3) + 132;
-            $t <<= ($i2 & 0x70) >> 4;
-            $this->ulawTable[$i] = $i2 & 0x80 ? 132 - $t : $t - 132;
-        }
-    }
-
     public function record(string $file): void
     {
         $this->allowBuffer = true;
@@ -500,84 +456,6 @@ class trunkController
         $rms = sqrt($soma / $numSamples);
         $normalized = $rms / $maxValue;
         return max(1, min(100, round($normalized * 100, 2)));
-    }
-
-    public function send2833Old($digit, int $durationMs = 200, int $volume = 10): void
-    {
-        // Requer socket/destino inicializados por sendSilence()
-        if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
-            cli::pcl("[2833] socket/destino não inicializados.", "bold_red");
-            return;
-        }
-
-        /** @var Socket $socket */
-        $socket = $this->rtpSocket;
-        $ip = $this->remoteIp;
-        $port = $this->remotePort;
-
-        // Debug: Log DTMF send
-        cli::pcl("[DTMF] Enviando dígito '{$digit}' (duração: {$durationMs}ms, volume: {$volume})", "bold_yellow");
-
-        // Mapeia o dígito → event id (RFC 2833)
-        $event = match (strtoupper($digit)) {
-            '0' => 0,
-            '1' => 1,
-            '2' => 2,
-            '3' => 3,
-            '4' => 4,
-            '5' => 5,
-            '6' => 6,
-            '7' => 7,
-            '8' => 8,
-            '9' => 9,
-            '*' => 10,
-            '#' => 11,
-            'A' => 12,
-            'B' => 13,
-            'C' => 14,
-            'D' => 15,
-            default => 0
-        };
-
-        // PT de telephone-event (negociado no SDP; comum: 101)
-        $ptTelephoneEvent = property_exists($this, 'ptTelephoneEvent') ? (int)$this->ptTelephoneEvent : 101;
-
-        // RFC 2833: o timestamp dos pacotes do mesmo evento deve permanecer CONSTANTE
-        $eventTs = $this->timestamp;        // timestamp de início do evento
-        $stepMs = 20;                       // envia em passos de 20ms
-        $stepSmpl = 160;                     // 20ms @ 8kHz
-        $totalSteps = max(3, (int)ceil($durationMs / $stepMs)); // mínimo 3 (start, cont, end)
-        $finalDurationSmpl = $totalSteps * $stepSmpl;
-
-        // START (marker bit = 1)
-        $durationSmpl = $stepSmpl; // cumulativo
-        $payload = pack('CCCC', $event, $volume, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
-        $hdr = pack('CCnNN', 0x80, 0x80 | $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
-        $socket->sendto($ip, $port, $hdr . $payload);
-        Coroutine::sleep($stepMs / 1000);
-
-        // CONTINUE frames (se houver)
-        for ($i = 2; $i <= $totalSteps - 1; $i++) {
-            $durationSmpl = $i * $stepSmpl;  // cumulativo
-            $payload = pack('CCCC', $event, $volume, ($durationSmpl >> 8) & 0xFF, $durationSmpl & 0xFF);
-            $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
-            $socket->sendto($ip, $port, $hdr . $payload);
-            Coroutine::sleep($stepMs / 1000);
-        }
-
-        // END (E bit = 1) — envia 3 vezes p/ confiabilidade
-        $payloadEnd = pack('CCCC', $event, 0x80 | ($volume & 0x3F), ($finalDurationSmpl >> 8) & 0xFF, $finalDurationSmpl & 0xFF);
-        for ($r = 0; $r < 3; $r++) {
-            $hdr = pack('CCnNN', 0x80, $ptTelephoneEvent, $this->sequenceNumber++, $eventTs, $this->ssrc);
-            $socket->sendto($ip, $port, $hdr . $payloadEnd);
-            Coroutine::sleep($stepMs / 1000);
-        }
-
-        // Avança o timestamp global pelo tempo gasto no evento (mantém timeline contínua)
-        $this->timestamp = $eventTs + $finalDurationSmpl;
-
-        // Debug: Log DTMF completion
-        cli::pcl("[DTMF] Dígito '{$digit}' enviado com sucesso (event={$event}, steps={$totalSteps})", "bold_green");
     }
 
     public function send2833(string $digit): void
@@ -691,19 +569,15 @@ class trunkController
                 $isLast = ($duration >= $finalDurationSamples);
 
                 // Byte 2 do payload:
-                // bit 7 = E
+                // bit 7 = E (não setar aqui; os pacotes End são enviados separadamente)
                 // bits 0..5 = volume
                 $eVol = $volume & 0x3F;
-                if ($isLast) {
-                    $eVol |= 0x80;
-                }
 
                 $payload = pack(
-                    'CCCC',
+                    'CCn',
                     $event,
                     $eVol,
-                    ($duration >> 8) & 0xFF,
-                    $duration & 0xFF
+                    $duration
                 );
 
                 // Marker bit somente no primeiro pacote
@@ -733,11 +607,10 @@ class trunkController
 
             // Retransmite o último pacote com E-bit 3 vezes
             $payloadEnd = pack(
-                'CCCC',
+                'CCn',
                 $event,
                 0x80 | ($volume & 0x3F),
-                ($finalDurationSamples >> 8) & 0xFF,
-                $finalDurationSamples & 0xFF
+                $finalDurationSamples
             );
 
             for ($r = 0; $r < $endRetransmits; $r++) {
@@ -754,8 +627,6 @@ class trunkController
 
                 if ($r < $endRetransmits - 1) {
                     Coroutine::sleep($ptimeMs / 1000);
-
-
                 }
             }
 
@@ -811,6 +682,9 @@ class trunkController
                 continue;
             }
             $receive = sip::parse($packet);
+            if (empty($receive['method'])) {
+                continue;
+            }
             $this->currentMethod = $receive["method"];
             $this->lastPacket = $receive;
 
@@ -866,6 +740,7 @@ class trunkController
                 if (array_key_exists("i", $receive["headers"])) {
                     $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
                 } else {
+                    var_dump($packet);
                     cli::pcl(sip::renderSolution($receive), "magenta");
                 }
             }
@@ -1010,6 +885,9 @@ class trunkController
             } else {
                 $receive = sip::parse($res);
                 $this->lastPacket = $receive;
+                if (empty($receive['method'])) {
+                    continue;
+                }
                 if ($receive["method"] == "NOTIFY") {
                     $this->callActive = false;
                     $this->receiveBye = true;
@@ -2382,41 +2260,6 @@ class trunkController
         Coroutine::writeFile($caminho, $audio);
     }
 
-    public function mixPcmArray(array $chunks): string
-    {
-        if (count($chunks) < 2) {
-            if (isset($chunks[0]) && $chunks[0] instanceof StringObject) {
-                return $chunks[0]->toString();
-            }
-            return $chunks[0] ?? "";
-        }
-        $stringChunks = [];
-        foreach ($chunks as $chunk) {
-            if ($chunk instanceof StringObject) {
-                $stringChunks[] = $chunk->toString();
-            } else {
-                $stringChunks[] = $chunk;
-            }
-        }
-        $minLen = min(array_map("strlen", $stringChunks));
-        $minLen -= $minLen % 2;
-        $result = new StringObject("");
-        for ($i = 0; $i < $minLen; $i += 2) {
-            $mix = 0;
-            foreach ($stringChunks as $buf) {
-                $s = unpack("s", substr($buf, $i, 2))[1];
-                $mix += $s;
-            }
-            if ($mix > 32767) {
-                $mix = 32767;
-            } elseif ($mix < -32768) {
-                $mix = -32768;
-            }
-            $result->append(pack("s", $mix));
-        }
-        return $result->toString();
-    }
-
     public function registerByeRecovery(array $byeClient, array $destination, $socketPreserve): void
     {
         $this->byeRecovery = [
@@ -2845,56 +2688,6 @@ class trunkController
     {
         $fakeData = str_repeat(chr(0), $durationSec * 8000);
         file_put_contents($path, waveHead(strlen($fakeData), 8000, 1, 1) . $fakeData);
-    }
-
-    /**
-     * Envia DTMF via RFC 2833 usando a tabela com 3 pacotes.
-     */
-    private function sendDtmfRfc2833(string $digit, Socket $rtpSocket, string $remoteIp, int $remotePort, int $ssrc): void
-    {
-        $model = $this->getModelDTMF2833Table($digit);
-        foreach ($model as $packet) {
-            $binary = $this->generateDtmfPacket($packet["digit"], $packet["end"], $packet["volume"], $packet["duration"]);
-            $rtpSocket->sendto($remoteIp, $remotePort, $binary);
-            sleep(0.02);
-        }
-    }
-
-    private function getModelDTMF2833Table(string $digit): array
-    {
-        $durationPerPacket = 160;
-        $totalDuration = $durationPerPacket * 3;
-        $packets = [];
-        for ($i = 1; $i <= 2; $i++) {
-            $packets[] = [
-                "digit" => $digit,
-                "end" => false,
-                "volume" => 0x0,
-                "duration" => $i * $durationPerPacket,
-            ];
-        }
-        $packets[] = [
-            "digit" => $digit,
-            "end" => true,
-            "volume" => 0x0,
-            "duration" => $totalDuration,
-        ];
-        return $packets;
-    }
-
-    /**
-     * Gera um pacote RTP DTMF conforme RFC 2833.
-     */
-    public function generateDtmfPacket(string $dtmf, bool $endOfEvent = false, int $volume = 0x0, int $duration = 400): string
-    {
-        $payloadType = 101;
-        $ssrc = $this->ssrc;
-        $rtpHeader = pack("CCnNN", 0x80, $payloadType, $this->sequenceNumber++, $this->timestamp, $ssrc);
-        $this->timestamp += 160;
-        $event = is_numeric($dtmf) ? (int)$dtmf : ord($dtmf);
-        $eventInfo = ($endOfEvent ? 0x80 : 0x0) | $volume & 0x3f;
-        $dtmfPayload = pack("CCn", $event, $eventInfo, $duration);
-        return $rtpHeader . $dtmfPayload;
     }
 
     private function registerAudioEvent(Closure $param)
