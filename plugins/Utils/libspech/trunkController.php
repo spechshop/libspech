@@ -646,6 +646,277 @@ class trunkController
 
 
     public mixed $route=false;
+
+    /**
+     * Aguarda respostas ao INVITE sem enviar novo INVITE
+     *
+     * Usado quando o INVITE já foi enviado por outro socket (ex: 5060)
+     * e apenas aguarda as respostas roteadas para este trunkController
+     *
+     * @param string $to Número chamado
+     * @param int $maxRings Timeout em segundos
+     * @return bool
+     */
+    public function waitRoutedDialog(string $to, $maxRings = 120): bool
+    {
+        $authSent = false;
+        $level = 0;
+
+        // Não enviar INVITE - ele já foi enviado pelo socket 5060
+        // Apenas aguardar respostas
+        $timeRing = time();
+        for (; ;) {
+            if ($this->closing || $this->socket->isClosed()) {
+                if (is_callable($this->onFailedCallback)) {
+                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                }
+                return false;
+            }
+            if (time() - $timeRing > $maxRings) {
+                $this->error = true;
+                if (is_callable($this->onFailedCallback)) {
+                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                }
+                return false;
+            }
+            if ($this->error) {
+                if (is_callable($this->onFailedCallback)) {
+                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                }
+                return false;
+            }
+            /** @var ? $peer */
+            $packet = $this->socket->recvfrom($peer, 10);
+
+
+            if ($packet === false || $packet === "") {
+                if ($this->socket->isClosed()) {
+                    if (is_callable($this->onFailedCallback)) {
+                        return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                    }
+                    return false;
+                }
+                continue;
+            }
+            $receive = sip::parse($packet);
+            if (empty($receive['method'])) {
+                continue;
+            }
+            $this->currentMethod = $receive["method"];
+            $this->lastPacket = $receive;
+            if (array_key_exists('Record-Route', $receive["headers"]))
+                $this->route = $receive["headers"]["Record-Route"][0];
+
+            $abortCodes = [
+                '480',
+                'CANCEL',
+                'BYE',
+                '486',
+                '487',
+                '488',
+                '500',
+                '600',
+                '603',
+            ];
+            if (in_array($receive["method"], $abortCodes)) {
+                $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
+                $this->socket->close();
+                $this->error = true;
+                if (is_callable($this->onFailedCallback)) {
+                    return go($this->onFailedCallback, $receive['methodForParser']);
+                }
+                return false;
+            }
+
+            if (in_array($receive["method"], $this->progressCodes)) {
+                if (is_callable($this->onRingingCallback)) {
+                    go($this->onRingingCallback, $this);
+                    $this->onRingingCallback = null;
+                }
+            }
+
+
+            if ($receive["method"] == "OPTIONS") {
+                $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
+            }
+            if (array_key_exists('sdp', $receive)) {
+                $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
+                $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
+                $this->audioRemoteIp = $remoteAddressAudioDestination;
+                $this->audioRemotePort = (int)$remotePortAudioDestination;
+                if (array_key_exists('sdp', $receive) and !$this->callableRingInvoked) {
+                    if ($receive['method'] > 180 && $receive['method'] < 200) {
+                        if (is_callable($this->onRingingCallback)) {
+                            go($this->onRingingCallback, $this);
+                        }
+                    }
+                    if ($receive['method'] > 180 && $receive['method'] < 200) {
+                        if (is_callable($this->onRingingCallback)) {
+                            $this->onRingingCallback = null;
+                        }
+                    }
+                    $this->callableRingInvoked = true;
+                }
+                $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
+                $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
+                $this->audioRemoteIp = $remoteAddressAudioDestination;
+                $this->audioRemotePort = (int)$remotePortAudioDestination;
+            }
+            if (!array_key_exists("Call-ID", $receive["headers"])) {
+                if (array_key_exists("i", $receive["headers"])) {
+                    $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
+                } else {
+                    var_dump($packet);
+                    cli::pcl(sip::renderSolution($receive), "magenta");
+                }
+            }
+            if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
+                continue;
+            }
+
+            // Para waitRoutedDialog, não suportamos autenticação
+            // pois o INVITE autenticado já deve ter sido enviado pelo 5060
+            $needAuth = $this->checkAuthHeaders($receive["headers"]);
+            if ($needAuth && !$authSent) {
+                $this->error = true;
+                if (is_callable($this->onFailedCallback)) {
+                    return go($this->onFailedCallback, "Auth necessária mas INVITE já foi enviado pelo 5060");
+                }
+                return false;
+            }
+
+            if (in_array($receive["method"], $this->successCodes)) {
+                if (array_key_exists('sdp', $receive)) {
+                    break;
+                }
+            }
+            if (in_array($receive["method"], $this->failureCodes)) {
+                break;
+            }
+        }
+        if (!is_array($receive)) {
+            $this->error = true;
+            print "Falhou pois não recebeu resposta depois do INVITE" . PHP_EOL;
+            if (is_callable($this->onFailedCallback)) {
+                return go($this->onFailedCallback, $receive['methodForParser']);
+            }
+        }
+        if (!is_array($receive)) {
+            $this->error = true;
+            if (is_callable($this->onFailedCallback)) {
+                return go($this->onFailedCallback, $receive['methodForParser']);
+            }
+        }
+        if (!array_key_exists("headers", $receive)) {
+            $this->error = true;
+            if (is_callable($this->onFailedCallback)) {
+                return go($this->onFailedCallback, $receive['methodForParser']);
+            }
+        }
+        if (!array_key_exists("sdp", $receive)) {
+            $this->error = true;
+            if (is_callable($this->onFailedCallback)) {
+                return go($this->onFailedCallback, $receive['methodForParser']);
+            }
+        }
+        if (in_array($receive['method'], $this->failureCodes)) {
+            $this->error = true;
+            if (is_callable($this->onFailedCallback)) {
+                return go($this->onFailedCallback, $receive['methodForParser']);
+            } else {
+                return false;
+            }
+        }
+        $this->callActive = true;
+        $this->headers200 = $receive;
+
+
+        $ackModel = $this->ackModel($receive["headers"]);
+        $ifr = sip::extractURI($receive['headers']['Contact'][0])['peer'];
+        $ipKey = $ifr['host'] . ":" . $ifr['port'];
+
+
+        $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
+        $this->socket->sendto($ifr['host'], (int)$ifr['port'], sip::renderSolution($ackModel));
+
+
+
+
+        $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
+        $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
+        $this->audioRemoteIp = $remoteAddressAudioDestination;
+        $this->audioRemotePort = (int)$remotePortAudioDestination;
+        $this->sdpReceived = $receive["sdp"];
+
+
+        if (is_callable($this->onAnswerCallback)) {
+            go($this->onAnswerCallback, $this);
+        }
+        for (; ;) {
+            if ($this->closing || $this->receiveBye) {
+                return false;
+            }
+            if ($this->error) {
+                if (is_callable($this->onHangupCallback)) {
+                    go($this->onHangupCallback, $this);
+                }
+                return false;
+            }
+            if ($this->receiveBye) {
+                if (is_callable($this->onHangupCallback)) {
+                    go($this->onHangupCallback, $this);
+                }
+                return false;
+            }
+
+            // Verificar se o socket foi fechado
+            if ($this->socket->isClosed()) {
+                return false;
+            }
+
+            /** @var ? $peer */
+            $packet = $this->socket->recvfrom($peer, 10);
+
+            if ($packet === false || $packet === "") {
+                continue;
+            }
+
+            $receive = sip::parse($packet);
+
+            if (empty($receive['method'])) {
+                continue;
+            }
+
+            if (!array_key_exists("Call-ID", $receive["headers"])) {
+                if (array_key_exists("i", $receive["headers"])) {
+                    $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
+                } else {
+                    continue;
+                }
+            }
+
+            if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
+                continue;
+            }
+
+            $this->lastPacket = $receive;
+
+            if ($receive["method"] == "BYE") {
+                $this->receiveBye = true;
+                // Salvar peer do BYE para que onHangup possa responder 200 OK
+                $this->saveGlobalInfo('lastPeer', $peer);
+                if (is_callable($this->onHangupCallback)) {
+                    go($this->onHangupCallback, $this);
+                }
+                return false;
+            }
+
+            if ($receive["method"] == "OPTIONS") {
+                $this->socket->sendto($peer['address'], $peer['port'], renderMessages::respondOptions($receive["headers"]));
+            }
+        }
+    }
+
     public function call(string $to, $maxRings = 120): bool
     {
 
