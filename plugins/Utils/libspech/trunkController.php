@@ -714,6 +714,13 @@ class trunkController
                 return false;
             }
 
+            if (in_array($receive["method"], $this->progressCodes)) {
+                if (is_callable($this->onRingingCallback)) {
+                    go($this->onRingingCallback, $this);
+                    $this->onRingingCallback = null;
+                }
+            }
+
 
             if ($receive["method"] == "OPTIONS") {
                 $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
@@ -786,9 +793,13 @@ class trunkController
                 $authSent = true;
                 continue;
             }
-            if (in_array($receive["method"], $this->progressCodes)) {
-                $level++;
-            }
+
+
+
+
+
+
+
             if (in_array($receive["method"], $this->successCodes)) {
                 if (array_key_exists('sdp', $receive)) {
                     break;
