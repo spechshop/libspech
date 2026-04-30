@@ -170,7 +170,7 @@ class trunkController
     private string|int|null $ptUse;
     private array $sdp;
     public $bcgChannel;
-    private bool $closing = false;
+    public bool $closing = false;
     private int $cid;
     private array $idTimers = [];
     public ?array $lastPacket = [];
