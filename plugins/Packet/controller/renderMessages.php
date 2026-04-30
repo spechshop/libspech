@@ -178,6 +178,10 @@ class renderMessages
     {
         return self::baseResponse($headers, "503", $message);
     }
+    public static function eCode(mixed $headers, $message = "Tente novamente", mixed $code="500"): string
+    {
+        return self::baseResponse($headers, "$code", $message);
+    }
 
     public static function e491RequestPending(mixed $headers, $message = "Request Pending"): string
     {
