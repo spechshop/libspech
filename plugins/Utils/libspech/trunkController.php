@@ -176,6 +176,12 @@ class trunkController
     public ?array $lastPacket = [];
     public mixed $sdpReceived = [];
 
+    public bool $cancelSent = false;
+    public bool $cancelOkReceived = false;
+    public bool $inviteAcceptedAfterCancel = false;
+    public bool $byeSent = false;
+    public bool $answerCallbackInvoked = false;
+
 
     /**
      * @throws RandomException
@@ -647,6 +653,22 @@ class trunkController
 
     public mixed $route=false;
 
+    private function getCSeqMethod(array $message): string
+    {
+        $cseqHeader = $message['headers']['CSeq'][0] ?? '';
+        return sip::letters($cseqHeader);
+    }
+
+    public function buildOkForRequest(array $request): string
+    {
+        return renderMessages::respond200OK($request['headers']);
+    }
+
+    public function sendOkForRequest(array $request, array $peer): bool
+    {
+        return (bool)$this->socket->sendto($peer['address'], $peer['port'], $this->buildOkForRequest($request));
+    }
+
     /**
      * Aguarda respostas ao INVITE sem enviar novo INVITE
      *
@@ -659,264 +681,198 @@ class trunkController
      */
     public function waitRoutedDialog(string $to, $maxRings = 120): bool
     {
-        $authSent = false;
-        $level = 0;
-
-        // Não enviar INVITE - ele já foi enviado pelo socket 5060
-        // Apenas aguardar respostas
         $timeRing = time();
-        for (; ;) {
+
+        for (;;) {
             if ($this->closing || $this->socket->isClosed()) {
-                if (is_callable($this->onFailedCallback)) {
-                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                if (!$this->callActive && !$this->answerCallbackInvoked && is_callable($this->onFailedCallback)) {
+                    go($this->onFailedCallback, "Socket fechado antes de resposta");
                 }
                 return false;
             }
+
             if (time() - $timeRing > $maxRings) {
                 $this->error = true;
-                if (is_callable($this->onFailedCallback)) {
-                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                if (!$this->callActive && is_callable($this->onFailedCallback)) {
+                    go($this->onFailedCallback, "Timeout após {$maxRings}s sem resposta");
                 }
                 return false;
             }
+
             if ($this->error) {
-                if (is_callable($this->onFailedCallback)) {
-                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
-                }
                 return false;
             }
-            /** @var ? $peer */
+
+            /** @var ?array $peer */
             $packet = $this->socket->recvfrom($peer, 10);
 
-
             if ($packet === false || $packet === "") {
-                if ($this->socket->isClosed()) {
+                continue;
+            }
+
+            $receive = sip::parse($packet);
+            if (empty($receive['method'])) {
+                continue;
+            }
+
+            // Normalize compact Call-ID header
+            if (!array_key_exists("Call-ID", $receive["headers"])) {
+                if (array_key_exists("i", $receive["headers"])) {
+                    $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
+                } else {
+                    continue;
+                }
+            }
+
+            // Filter by Call-ID
+            $msgCallId = $receive["headers"]["Call-ID"][0];
+            if ($msgCallId !== $this->callId) {
+                $callerCallId = $this->globalInfo['callerCallId'] ?? null;
+                if ($callerCallId === null || $msgCallId !== $callerCallId) {
+                    continue;
+                }
+            }
+
+            $this->currentMethod = $receive["method"];
+            $this->lastPacket    = $receive;
+
+            if (array_key_exists('Record-Route', $receive["headers"])) {
+                $this->route = $receive["headers"]["Record-Route"][0];
+            }
+
+            $method = $receive["method"];
+
+            // ── Incoming requests ─────────────────────────────────────────────
+
+            if ($method === "OPTIONS") {
+                $this->sendOkForRequest($receive, $peer);
+                continue;
+            }
+
+            if ($method === "CANCEL") {
+                $this->sendOkForRequest($receive, $peer);
+                $this->cancelOkReceived = true;
+                if (!$this->callActive) {
+                    $this->error = true;
                     if (is_callable($this->onFailedCallback)) {
-                        return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                        go($this->onFailedCallback, "CANCEL recebido da outra parte");
                     }
                     return false;
                 }
                 continue;
             }
-            $receive = sip::parse($packet);
-            if (empty($receive['method'])) {
-                continue;
-            }
-            $this->currentMethod = $receive["method"];
-            $this->lastPacket = $receive;
-            if (array_key_exists('Record-Route', $receive["headers"]))
-                $this->route = $receive["headers"]["Record-Route"][0];
 
-            $abortCodes = [
-                '480',
-                'CANCEL',
-                'BYE',
-                '486',
-                '487',
-                '488',
-                '500',
-                '600',
-                '603',
-            ];
-            if (in_array($receive["method"], $abortCodes)) {
-                $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
-                $this->socket->close();
-                $this->error = true;
-                if (is_callable($this->onFailedCallback)) {
-                    return go($this->onFailedCallback, $receive['methodForParser']);
-                }
-                return false;
-            }
-
-            if (in_array($receive["method"], $this->progressCodes)) {
-                if (is_callable($this->onRingingCallback)) {
-                    go($this->onRingingCallback, $this);
-                    $this->onRingingCallback = null;
-                }
-            }
-
-
-            if ($receive["method"] == "OPTIONS") {
-                $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
-            }
-            if (array_key_exists('sdp', $receive)) {
-                $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
-                $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
-                $this->audioRemoteIp = $remoteAddressAudioDestination;
-                $this->audioRemotePort = (int)$remotePortAudioDestination;
-                if (array_key_exists('sdp', $receive) and !$this->callableRingInvoked) {
-                    if ($receive['method'] > 180 && $receive['method'] < 200) {
-                        if (is_callable($this->onRingingCallback)) {
-                            go($this->onRingingCallback, $this);
-                        }
-                    }
-                    if ($receive['method'] > 180 && $receive['method'] < 200) {
-                        if (is_callable($this->onRingingCallback)) {
-                            $this->onRingingCallback = null;
-                        }
-                    }
-                    $this->callableRingInvoked = true;
-                }
-                $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
-                $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
-                $this->audioRemoteIp = $remoteAddressAudioDestination;
-                $this->audioRemotePort = (int)$remotePortAudioDestination;
-            }
-            if (!array_key_exists("Call-ID", $receive["headers"])) {
-                if (array_key_exists("i", $receive["headers"])) {
-                    $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
-                } else {
-                    var_dump($packet);
-                    cli::pcl(sip::renderSolution($receive), "magenta");
-                }
-            }
-            if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
-                continue;
-            }
-
-            // Para waitRoutedDialog, não suportamos autenticação
-            // pois o INVITE autenticado já deve ter sido enviado pelo 5060
-            $needAuth = $this->checkAuthHeaders($receive["headers"]);
-            if ($needAuth && !$authSent) {
-                $this->error = true;
-                if (is_callable($this->onFailedCallback)) {
-                    return go($this->onFailedCallback, "Auth necessária mas INVITE já foi enviado pelo 5060");
-                }
-                return false;
-            }
-
-            if (in_array($receive["method"], $this->successCodes)) {
-                if (array_key_exists('sdp', $receive)) {
-                    break;
-                }
-            }
-            if (in_array($receive["method"], $this->failureCodes)) {
-                break;
-            }
-        }
-        if (!is_array($receive)) {
-            $this->error = true;
-            print "Falhou pois não recebeu resposta depois do INVITE" . PHP_EOL;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            }
-        }
-        if (!is_array($receive)) {
-            $this->error = true;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            }
-        }
-        if (!array_key_exists("headers", $receive)) {
-            $this->error = true;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            }
-        }
-        if (!array_key_exists("sdp", $receive)) {
-            $this->error = true;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            }
-        }
-        if (in_array($receive['method'], $this->failureCodes)) {
-            $this->error = true;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            } else {
-                return false;
-            }
-        }
-        $this->callActive = true;
-        $this->headers200 = $receive;
-
-
-        $ackModel = $this->ackModel($receive["headers"]);
-        $ifr = sip::extractURI($receive['headers']['Contact'][0])['peer'];
-        $ipKey = $ifr['host'] . ":" . $ifr['port'];
-
-
-        $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
-        $this->socket->sendto($ifr['host'], (int)$ifr['port'], sip::renderSolution($ackModel));
-
-
-
-
-        $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
-        $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
-        $this->audioRemoteIp = $remoteAddressAudioDestination;
-        $this->audioRemotePort = (int)$remotePortAudioDestination;
-        $this->sdpReceived = $receive["sdp"];
-
-
-        if (is_callable($this->onAnswerCallback)) {
-            go($this->onAnswerCallback, $this);
-        }
-        for (; ;) {
-            if ($this->closing || $this->receiveBye) {
-                return false;
-            }
-            if ($this->error) {
-                if (is_callable($this->onHangupCallback)) {
-                    go($this->onHangupCallback, $this);
-                }
-                return false;
-            }
-            if ($this->receiveBye) {
-                if (is_callable($this->onHangupCallback)) {
-                    go($this->onHangupCallback, $this);
-                }
-                return false;
-            }
-
-            // Verificar se o socket foi fechado
-            if ($this->socket->isClosed()) {
-                return false;
-            }
-
-            /** @var ? $peer */
-            $packet = $this->socket->recvfrom($peer, 10);
-
-            if ($packet === false || $packet === "") {
-                continue;
-            }
-
-            $receive = sip::parse($packet);
-
-            if (empty($receive['method'])) {
-                continue;
-            }
-
-            if (!array_key_exists("Call-ID", $receive["headers"])) {
-                if (array_key_exists("i", $receive["headers"])) {
-                    $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
-                } else {
-                    continue;
-                }
-            }
-
-            if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
-                // Aceitar também o Call-ID da perna da discadora/celular (armazenado em globalInfo)
-                $callerCallId = $this->globalInfo['callerCallId'] ?? null;
-                if ($callerCallId === null || $receive["headers"]["Call-ID"][0] !== $callerCallId) {
-                    continue;
-                }
-            }
-
-            $this->lastPacket = $receive;
-
-            if ($receive["method"] == "BYE") {
+            if ($method === "BYE") {
                 $this->receiveBye = true;
-                // Salvar peer do BYE para que onHangup possa responder 200 OK
                 $this->saveGlobalInfo('lastPeer', $peer);
+                $this->sendOkForRequest($receive, $peer);
                 if (is_callable($this->onHangupCallback)) {
                     go($this->onHangupCallback, $this);
                 }
                 return false;
             }
 
-            if ($receive["method"] == "OPTIONS") {
-                $this->socket->sendto($peer['address'], $peer['port'], renderMessages::respondOptions($receive["headers"]));
+            // ── Numeric response codes ────────────────────────────────────────
+
+            // 1xx Progress
+            if (in_array($method, $this->progressCodes)) {
+                if (!$this->callableRingInvoked && is_callable($this->onRingingCallback)) {
+                    go($this->onRingingCallback, $this);
+                    $this->onRingingCallback    = null;
+                    $this->callableRingInvoked  = true;
+                }
+                if (array_key_exists('sdp', $receive)) {
+                    $this->audioRemoteIp   = explode(" ", $receive["sdp"]["c"][0])[2];
+                    $this->audioRemotePort = (int)explode(" ", $receive["sdp"]["m"][0])[1];
+                }
+                continue;
+            }
+
+            // 487 Request Terminated — send ACK, fire onFailed
+            if ($method === '487') {
+                $ackModel = $this->ackModel($receive["headers"]);
+                if (!empty($ackModel)) {
+                    $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
+                }
+                $this->error = true;
+                if (is_callable($this->onFailedCallback)) {
+                    go($this->onFailedCallback, "487 Request Terminated");
+                }
+                return false;
+            }
+
+            // Other 4xx/5xx/6xx failure codes
+            $numericMethod = (int)$method;
+            if ($numericMethod >= 400 && $numericMethod < 700) {
+                $this->error = true;
+                if (is_callable($this->onFailedCallback)) {
+                    go($this->onFailedCallback, $receive['methodForParser'] ?? $method);
+                }
+                return false;
+            }
+
+            // 2xx Success — classify by CSeq method
+            if (in_array($method, $this->successCodes)) {
+                $cseqMethod = $this->getCSeqMethod($receive);
+
+                if ($cseqMethod === 'CANCEL') {
+                    $this->cancelOkReceived = true;
+                    continue;
+                }
+
+                if ($cseqMethod === 'BYE') {
+                    return true;
+                }
+
+                if ($cseqMethod === 'OPTIONS') {
+                    continue;
+                }
+
+                if ($cseqMethod === 'INVITE') {
+                    // Always send ACK for 200 OK INVITE
+                    $ackModel = $this->ackModel($receive["headers"]);
+                    if (!empty($ackModel)) {
+                        $ifr = sip::extractURI($receive['headers']['Contact'][0])['peer'];
+                        $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
+                        $this->socket->sendto($ifr['host'], (int)$ifr['port'], sip::renderSolution($ackModel));
+                    }
+
+                    // Update audio destination from SDP
+                    if (array_key_exists('sdp', $receive)) {
+                        $this->audioRemoteIp   = explode(" ", $receive["sdp"]["c"][0])[2];
+                        $this->audioRemotePort = (int)explode(" ", $receive["sdp"]["m"][0])[1];
+                        $this->sdpReceived     = $receive["sdp"];
+                    }
+
+                    $this->headers200 = $receive;
+
+                    // CANCEL/200 OK crossing: we sent CANCEL but answer arrived first
+                    if ($this->cancelSent) {
+                        $this->inviteAcceptedAfterCancel = true;
+                        Coroutine::sleep(0.05);
+                        try { $this->bye(); } catch (\Throwable) {}
+                        return false;
+                    }
+
+                    if (!array_key_exists('sdp', $receive)) {
+                        // 200 OK without SDP — wait for re-INVITE
+                        continue;
+                    }
+
+                    // Confirm dialog
+                    $this->callActive = true;
+
+                    if (!$this->answerCallbackInvoked && is_callable($this->onAnswerCallback)) {
+                        $this->answerCallbackInvoked = true;
+                        go($this->onAnswerCallback, $this);
+                    }
+
+                    $timeRing = time();
+                    continue;
+                }
+
+                // Unknown CSeq method in 2xx — ignore
+                continue;
             }
         }
     }
@@ -2155,6 +2111,7 @@ class trunkController
     }
     public function cancel(): void
     {
+        $this->cancelSent = true;
         $this->socket->sendto($this->host, $this->port, sip::renderSolution($this->getModelCancel()));
     }
     public function getBufferWriteSound(): array
