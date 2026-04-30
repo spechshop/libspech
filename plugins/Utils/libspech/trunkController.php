@@ -215,13 +215,10 @@ class trunkController
 
         $this->ssrc = random_int(0, 0xffffffff);
         $this->callId = bin2hex(secure_random_bytes(8));
-        $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
+
+
         $this->rtpSocket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
-
-
         $this->audioReceivePort = network::getFreePort('udp');
-
-
         $this->rtpSocket->bind('0.0.0.0', $this->audioReceivePort);
 
 
@@ -229,9 +226,13 @@ class trunkController
         $this->localIp = network::getLocalIp();
 
 
-        $this->socket->bind('0.0.0.0', network::getFreePort('udp'));
-        $this->socket->connect($this->host, $this->port);
-        $this->socketPortListen = $this->socket->getsockname()["port"];
+
+        $this->socketPortListen = network::getFreePort('udp');
+        $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
+        $this->socket->bind('0.0.0.0', $this->socketPortListen);
+
+
+
 
 
         $this->socketsList[] = $this->socket;
@@ -1961,7 +1962,7 @@ class trunkController
     public function bye(): void
     {
         if (empty($this->headers200)) {
-             $this->cancel();
+            $this->cancel();
             return;
         }
         $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
