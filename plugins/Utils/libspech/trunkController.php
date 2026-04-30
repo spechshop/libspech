@@ -876,7 +876,7 @@ class trunkController
                 return false;
             }
 
-            $res = $this->socket->recvfrom($peer, 5);
+            $res = $this->socket->recvfrom($peer, 1);
             if (!$res) {
                 if ($this->socket->isClosed()) {
                     if (is_callable($this->onHangupCallback)) {
@@ -928,6 +928,8 @@ class trunkController
                 return false;
             }
             if ($receive["method"] == "BYE") {
+                $modelOk = renderMessages::respondOptions($receive['headers']);
+                $this->socket->sendto($this->host, $this->port, $modelOk);
                 $this->receiveBye = true;
                 $this->callActive = false;
                 $this->unblockCoroutine();
@@ -967,11 +969,6 @@ class trunkController
                     }
 
                 }
-
-
-
-
-                sleep(1);
                 if ($receive['method'] == 'NOTIFY') {
                     $this->receiveBye = true;
                     if (is_callable($this->onHangupCallback)) {

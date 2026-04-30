@@ -5,6 +5,7 @@ namespace libspech\Sip;
 use libspech\Cache\cache;
 use libspech\Cli\cli;
 use libspech\Network\network;
+use Swoole\Coroutine;
 
 #[AllowDynamicProperties]
 class sip
@@ -267,7 +268,7 @@ class sip
         $trunks = json_decode(file_get_contents('trunks.json'), true);
 
         if (!is_array($trunks)) {
-            sleep(1);
+            Coroutine::sleep(0.1);
             $trunks = cache::get('trunks');
             if (!is_array($trunks)) {
                 return null;
