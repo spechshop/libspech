@@ -645,7 +645,7 @@ class trunkController
 
 
 
-    public array|bool $route=false;
+    public mixed $route=false;
     public function call(string $to, $maxRings = 120): bool
     {
 
@@ -907,6 +907,8 @@ class trunkController
                 $this->lastPacket = $receive;
                 if (array_key_exists('Record-Route', $receive["headers"]))
                     $this->route = $receive["headers"]["Record-Route"][0];
+
+
                 if (empty($receive['method'])) {
                     continue;
                 }
@@ -1865,7 +1867,7 @@ class trunkController
             ],
         ];
         if ($this->route)
-            $model["headers"]["Record-Route"] = [$this->route];
+            $model["headers"]["Record-Route"][0] = $this->route;
         return $model;
 
     }
