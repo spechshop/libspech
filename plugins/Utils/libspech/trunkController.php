@@ -58,6 +58,8 @@ class trunkController
         204,
     ];
     public array $failureCodes = [
+        'CANCEL',
+        'BYE',
         403,
         484,
         404,
