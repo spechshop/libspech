@@ -703,7 +703,7 @@ class trunkController
                 '603',
             ];
             if (in_array($receive["method"], $abortCodes)) {
-                $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
+                $this->socket->sendto($peer['adress'], $peer['port'], renderMessages::respondOptions($receive["headers"]));
                 $this->socket->close();
                 $this->error = true;
                 if (is_callable($this->onFailedCallback)) {
@@ -714,7 +714,7 @@ class trunkController
 
 
             if ($receive["method"] == "OPTIONS") {
-                $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
+                $this->socket->sendto($peer['adress'], $peer['port'], renderMessages::respondOptions($receive["headers"]));
             }
             if (array_key_exists('sdp', $receive)) {
                 $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2];
