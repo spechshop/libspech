@@ -896,7 +896,11 @@ class trunkController
             }
 
             if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
-                continue;
+                // Aceitar também o Call-ID da perna da discadora/celular (armazenado em globalInfo)
+                $callerCallId = $this->globalInfo['callerCallId'] ?? null;
+                if ($callerCallId === null || $receive["headers"]["Call-ID"][0] !== $callerCallId) {
+                    continue;
+                }
             }
 
             $this->lastPacket = $receive;
