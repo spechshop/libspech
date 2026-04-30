@@ -1872,8 +1872,6 @@ class trunkController
     public function cancel(): void
     {
         $this->socket->sendto($this->host, $this->port, sip::renderSolution($this->getModelCancel()));
-
-
     }
     public function getBufferWriteSound(): array
     {
