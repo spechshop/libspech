@@ -229,7 +229,7 @@ class trunkController
         $this->localIp = network::getLocalIp();
 
 
-        $this->socket->bind($this->localIp, network::getFreePort('udp'));
+        $this->socket->bind('0.0.0.0', network::getFreePort('udp'));
         $this->socket->connect($this->host, $this->port);
         $this->socketPortListen = $this->socket->getsockname()["port"];
 
