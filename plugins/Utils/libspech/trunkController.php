@@ -1080,6 +1080,13 @@ class trunkController
 
 
             if (in_array($receive["method"], $this->successCodes)) {
+                // Diferencia 200 OK de CANCEL (CSeq=CANCEL, sem SDP) de 200 OK de INVITE (CSeq=INVITE, com SDP).
+                // 200 OK de CANCEL nao encerra o INVITE: aguardar 487 Request Terminated ou 200 OK do INVITE.
+                $cseqHeader = $receive["headers"]["CSeq"][0] ?? '';
+                $cseqMethod = sip::letters($cseqHeader);
+                if ($cseqMethod === 'CANCEL') {
+                    continue;
+                }
                 if (array_key_exists('sdp', $receive)) {
                     break;
                 }
