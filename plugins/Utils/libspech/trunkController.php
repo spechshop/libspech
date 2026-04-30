@@ -644,6 +644,8 @@ class trunkController
     }
 
 
+
+    public array|bool $route=false;
     public function call(string $to, $maxRings = 120): bool
     {
 
@@ -692,6 +694,8 @@ class trunkController
             }
             $this->currentMethod = $receive["method"];
             $this->lastPacket = $receive;
+            if (array_key_exists('Record-Route', $receive["headers"]))
+                $this->route = $receive["headers"]["Record-Route"][0];
 
             $abortCodes = [
                 '480',
@@ -901,6 +905,8 @@ class trunkController
             } else {
                 $receive = sip::parse($res);
                 $this->lastPacket = $receive;
+                if (array_key_exists('Record-Route', $receive["headers"]))
+                    $this->route = $receive["headers"]["Record-Route"][0];
                 if (empty($receive['method'])) {
                     continue;
                 }
@@ -1838,7 +1844,7 @@ class trunkController
         if ($called) {
             $this->calledNumber = $called;
         }
-        return [
+        $model= [
             "method" => "CANCEL",
             "methodForParser" => "CANCEL sip:{$this->calledNumber}@{$this->host} SIP/2.0",
             "headers" => [
@@ -1858,6 +1864,10 @@ class trunkController
                 "CSeq" => [$this->csq . " CANCEL"],
             ],
         ];
+        if ($this->route)
+            $model["headers"]["Record-Route"] = [$this->route];
+        return $model;
+
     }
     public function cancel(): void
     {
