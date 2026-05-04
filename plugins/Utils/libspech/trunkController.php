@@ -165,10 +165,10 @@ class trunkController
     public array $inviteHeaders = [];
     private bool $proxyMediaActive = false;
     private ?string $currentProxyId = null;
-    private $userAgent;
+    public $userAgent;
     private string|int|null $ptTelephoneEvent;
     private string|int|null $ptUse;
-    private array $sdp;
+    public array $sdp;
     public $bcgChannel;
     public bool $closing = false;
     private int $cid;
@@ -201,6 +201,7 @@ class trunkController
         $this->onRingingCallback = null;
         $this->audioFileHandle = null;
         $this->cid = Coroutine::getCid();
+        $this->onDtmfCallable = fn($digit) => $digit;
 
         if (str_contains($host, "http")) {
             $caseUrl = parse_url($host);
