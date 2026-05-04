@@ -166,7 +166,7 @@ class renderMessages
 
     public static function respond486Busy(mixed $backupHeaders, $message = "Busy Here"): string
     {
-        return self::baseResponse($backupHeaders, "403", "Busy Here");
+        return self::baseResponse($backupHeaders, "486", $message);
     }
 
     public static function respond487RequestTerminated(mixed $backupHeaders)

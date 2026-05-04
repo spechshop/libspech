@@ -246,6 +246,7 @@ class trunkController
 
         $this->socketsList[] = $this->socket;
         $this->socketsList[] = $this->rtpSocket;
+        $this->onDtmfCallable = fn($digit) => $digit;
 
 
         $this->lastTime = time();
@@ -407,6 +408,15 @@ class trunkController
     {
         $callId = $this->callId;
         cli::pcl("CALL ID {$callId} foi criado");
+    }
+
+    public function setupForIncoming(int $ptUse, string $codecName, int $frequencyCall, array $sdpReceived = []): void
+    {
+        $this->ptUse = $ptUse;
+        $this->codecName = $codecName;
+        $this->frequencyCall = $frequencyCall;
+        $this->sdpReceived = array_merge(['a' => [], 'm' => [], 'c' => []], $sdpReceived);
+        $this->mapLearn[$ptUse] = ["rtpmap:{$ptUse} {$codecName}/{$frequencyCall}"];
     }
 
     public function removeMember(string $username): void
