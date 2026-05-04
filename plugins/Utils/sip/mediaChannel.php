@@ -181,7 +181,7 @@ class MediaChannel
     public array $rtpChans = [];
     public Socket $eventSock;
 
-    public function __construct(Socket &$socket, string $callId)
+    public function __construct(Socket|\SocketMutable &$socket, string $callId)
     {
 
         $this->socket = $socket;
