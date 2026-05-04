@@ -322,15 +322,13 @@ class MediaChannel
 
                 $currentTime = microtime(true);
                 $peer = ['address' => '0.0.0.0', 'port' => 0];
-                $packet = $this->socket->recvfrom($peer, 0.1);
+                $packet = $this->socket->recvfrom($peer, 0.2);
 
 
                 if (!$packet) {
                     // timeout de 3s
 
                     if (($currentTime - $lastPacketTime) > $this->connectTimeout) {
-                        $calculate = ($currentTime - $lastPacketTime);
-
                         // encerrar
                         $this->unblock();
                         $this->socket->close();
@@ -344,7 +342,6 @@ class MediaChannel
                     }
 
 
-                    $expectedMember = false;
                     $expectedMember = array_key_first($this->members) ?? false;
                     if (!$expectedMember) {
                         // cli::pcl("TIMEOUT: no members to send silence to", 'bold_red');
@@ -359,7 +356,8 @@ class MediaChannel
                         $calculate = number_format($calculate, 3);
                     }
                     $buffer = $this->members[$expectedMember]['rtpChannel']->buildAudioPacket(str_repeat("\x00", 160));
-                    $this->socket->sendto($this->members[$expectedMember]['address'], $this->members[$expectedMember]['port'], $buffer);
+                    $this->socket->sendto($this->members[$expectedMember]['address'], $this->members[$expectedMember]['port']+1, $buffer);
+                    //cli::pcl("TIMEOUT: no packets received for $calculate seconds, sending silence to {$expectedMember}", 'bold_red');
 
                     continue;
                 } else {
@@ -496,7 +494,7 @@ class MediaChannel
                     }
 
 
-                    if (!$pcmData) return $this->close() ?? '';
+                    if (!$pcmData) continue 2;
                     //   else var_dump($rtpc);
 
 

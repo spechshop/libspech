@@ -498,11 +498,54 @@ class trunkController
             if (empty($this->mediaChannel->members)) {
                 return;
             }
-
-
             $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
+            $key = "$ip:$port";
+
             if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
-                var_dump($this->mediaChannel->rtpChans);
+                cli::pcl("[2833] rtpChan ausente para {$key}, recriando...", "bold_yellow");
+
+                $member = $this->mediaChannel->members[$key] ?? null;
+
+                if (!$member) {
+                    cli::pcl("[2833] member {$key} não encontrado.", "bold_red");
+                    return;
+                }
+
+                $pt = (int)($member['pt'] ?? 8);
+                $frequency = (int)($member['frequency'] ?? 8000);
+
+                $this->mediaChannel->rtpChans[$extractSsrc] = new \libspech\Rtp\rtpChannel(
+                    $pt,
+                    $frequency,
+                    20,
+                    $extractSsrc
+                );
+
+                $this->mediaChannel->rtpChans[$extractSsrc]->timestamp =
+                    (int)($member['timestamp'] ?? random_int(1, 0x7FFFFFFF));
+
+                $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber =
+                    random_int(1, 0xFFFF);
+
+                if (class_exists(\bcg729Channel::class)) {
+                    $this->mediaChannel->rtpChans[$extractSsrc]->bcg729Channel = new \bcg729Channel();
+                }
+
+                cli::pcl("[2833] rtpChan criado ssrc={$extractSsrc} pt={$pt} freq={$frequency}", "bold_green");
+            }
+
+
+         //cli::pcl("Members: ".json_encode(array_keys($this->mediaChannel->members)), 'bold_blue');
+         //cli::pcl("Chans: ".json_encode(array_keys($this->mediaChannel->rtpChans)), 'bold_blue');
+         //cli::pcl("Ssrc: {$extractSsrc}", 'bold_blue');
+         //cli::pcl("Buffer: ".strlen($this->getBuffer()).' bytes', 'bold_blue');
+
+
+
+
+            if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
+                var_dump($this);
+               exit;
             }
 
 
@@ -1701,7 +1744,8 @@ class trunkController
             $this->error = false;
             $this->callActive = true;
             $this->receiveBye = false;
-            $this->mediaChannel = new MediaChannel($rtpSocket, $this->callId);
+
+            $this->mediaChannel = new MediaChannel($this->rtpSocket, $this->callId);
             if ($this->vadEnabled) {
 
                 $this->mediaChannel->enableVAD();
@@ -1750,15 +1794,11 @@ class trunkController
             $opus->setBitrate($this->frequencyCall);
             $opus->setSignalVoice(true);
             $opus->setDTX(true);
-
             $opus->setComplexity(1);
-
-
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $opus) {
 
 
                 if (strlen($rtpc->payloadRaw) < 12) return;
-
                 $targetId = $peer['address'] . ':' . $peer['port'];
 
 
