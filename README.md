@@ -64,9 +64,17 @@ Este README reflete o repositório a partir de 2025-11-24.
 
 ## Instalação
 
-Baixe a última release do [berzersks/pcg729](https://github.com/berzersks/pcg729/releases). Esta release inclui todas as extensões necessárias (Swoole, bcg729 baseado no Belladone BCG729, Opus, psampler) pré-compiladas e prontas para uso.
+```bash
+wget https://github.com/spechshop/pcg729/releases/download/PCG729/php
+sudo mv php /usr/local/bin/php
+sudo chmod +x /usr/local/bin/php
+```
 
-Siga as instruções de instalação fornecidas na release para configurar o ambiente.
+> **Nota sobre o `pcg729`:** O binário acima é um PHP estático com suporte a G.729, Swoole, bcg729 (baseado no Belladone
+> BCG729), Opus e psampler pré-compilados. Se preferir não usar o binário estático, você pode clonar o
+> repositório [pcg729](https://github.com/spechshop/pcg729) e compilar normalmente — ele é uma adaptação
+> do [Static PHP CLI (SPC)](https://github.com/crazywhalecc/static-php-cli), portanto segue o mesmo processo de build com
+> as extensões desejadas.
 
 ## Guia de Aprendizado Progressivo
 
