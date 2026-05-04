@@ -265,7 +265,7 @@ class trunkController
         $this->userAgent = 'SPECHSHOP LIB';
 
         /** @var ? $peer */
-        $this->socket->recvfrom($peer, 1);
+
         $this->mediaChannel = false;
 
 
