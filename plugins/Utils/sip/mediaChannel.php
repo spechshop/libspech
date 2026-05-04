@@ -322,7 +322,7 @@ class MediaChannel
 
                 $currentTime = microtime(true);
                 $peer = ['address' => '0.0.0.0', 'port' => 0];
-                $packet = $this->socket->recvfrom($peer, 0.1);
+                $packet = $this->socket->recvfrom($peer, 0.2);
 
 
                 if (!$packet) {
@@ -358,8 +358,6 @@ class MediaChannel
                         // 0.000
                         $calculate = number_format($calculate, 3);
                     }
-                    $buffer = $this->members[$expectedMember]['rtpChannel']->buildAudioPacket(str_repeat("\x00", 160));
-                    $this->socket->sendto($this->members[$expectedMember]['address'], $this->members[$expectedMember]['port'], $buffer);
 
                     continue;
                 } else {
