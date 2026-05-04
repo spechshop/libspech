@@ -359,7 +359,7 @@ class MediaChannel
                         $calculate = number_format($calculate, 3);
                     }
                     $buffer = $this->members[$expectedMember]['rtpChannel']->buildAudioPacket(str_repeat("\x00", 160));
-                    $this->socket->sendto($this->members[$expectedMember]['address'], $this->members[$expectedMember]['port'], $buffer);
+                    //$this->socket->sendto($this->members[$expectedMember]['address'], $this->members[$expectedMember]['port'], $buffer);
 
                     continue;
                 } else {
