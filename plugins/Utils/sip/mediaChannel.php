@@ -13,9 +13,6 @@ use function libspech\Sip\monoToStereo;
 use function libspech\Sip\volumeAverage;
 
 
-
-
-
 class MediaChannel
 {
     public bool $active = true;
@@ -309,7 +306,6 @@ class MediaChannel
 
                 if ($member) {
                     return $this->members[$member]['rtpChannel']->samplesPerPacket;
-
                 }
 
 
