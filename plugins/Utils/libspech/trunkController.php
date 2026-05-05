@@ -1802,6 +1802,7 @@ class trunkController
                 $targetId = $peer['address'] . ':' . $peer['port'];
 
 
+
                 $ssrc = $rtpc->ssrc;
                 if (!array_key_exists($ssrc, $channel->rtpChans)) $channel->rtpChans[$ssrc] = $this->rtpChannel;
 
