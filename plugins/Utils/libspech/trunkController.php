@@ -480,6 +480,7 @@ class trunkController
         return max(1, min(100, round($normalized * 100, 2)));
     }
 
+
     public function send2833(string $digit): void
     {
         try {
@@ -489,6 +490,8 @@ class trunkController
             }
 
             /** @var Socket $socket */
+            //var_dump(array_keys($this->mediaChannel->members));
+            //cli::pcl("Remote IP: {$this->remoteIp} Porta: {$this->remotePort}");
 
 
             $ip = $this->remoteIp;
@@ -1816,10 +1819,13 @@ class trunkController
                     case 'L16':
                         $pcmData = decodeL16ToPcm($rtpc->payloadRaw);
                         break;
+                    case 'TELEPHONE-EVENT':
+                        return;
                     default:
                         cli::pcl("Codec não suportado: {$packetCodecName}");
                         break;
                 };
+                if (empty($pcmData)) return;
                 if ($this->waitingSilence) {
 
                     $time = microtime(true);
@@ -1857,6 +1863,7 @@ class trunkController
                         }
                     }
                 }
+
 
 
                 if ($channel->recordingEnabled) {

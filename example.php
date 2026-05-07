@@ -153,7 +153,7 @@ include 'plugins/autoloader.php';
 
         // Callback executado quando uma tecla DTMF é pressionada remotamente
         $phone->onKeyPress(function ($event, $peer) use ($phone) {
-            cli::pcl("Digitando: " . $event, "yellow");
+            //cli::pcl("Digitando: " . $event, "yellow");
         });
 
         // ====================================================================
