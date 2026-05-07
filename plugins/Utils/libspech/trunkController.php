@@ -501,40 +501,21 @@ class trunkController
             $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
             $key = "$ip:$port";
 
-
             if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
-
-
-                cli::pcl("[2833] rtpChan ausente para {$key}, recriando...", "bold_yellow");
-
-                $member = $this->mediaChannel->members[$key] ?? null;
-
-                if (!$member) {
-                    cli::pcl("[2833] member {$key} não encontrado.", "bold_red");
-                    return;
+                if (!empty($this->mediaChannel->rtpChans)) {
+                    $extractSsrc = array_key_first($this->mediaChannel->rtpChans);
+                } else {
+                    $member = $this->mediaChannel->members[$key] ?? null;
+                    if (!$member) return;
+                    $pt = (int)($member['pt'] ?? 8);
+                    $frequency = (int)($member['frequency'] ?? 8000);
+                    $this->mediaChannel->rtpChans[$extractSsrc] = new \libspech\Rtp\rtpChannel($pt, $frequency, 20, $extractSsrc);
+                    $this->mediaChannel->rtpChans[$extractSsrc]->timestamp = (int)($member['timestamp'] ?? random_int(1, 0x7FFFFFFF));
+                    $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber = random_int(1, 0xFFFF);
+                    if (class_exists(\bcg729Channel::class)) {
+                        $this->mediaChannel->rtpChans[$extractSsrc]->bcg729Channel = new \bcg729Channel();
+                    }
                 }
-
-                $pt = (int)($member['pt'] ?? 8);
-                $frequency = (int)($member['frequency'] ?? 8000);
-
-                $this->mediaChannel->rtpChans[$extractSsrc] = new \libspech\Rtp\rtpChannel(
-                    $pt,
-                    $frequency,
-                    20,
-                    $extractSsrc
-                );
-
-                $this->mediaChannel->rtpChans[$extractSsrc]->timestamp =
-                    (int)($member['timestamp'] ?? random_int(1, 0x7FFFFFFF));
-
-                $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber =
-                    random_int(1, 0xFFFF);
-
-                if (class_exists(\bcg729Channel::class)) {
-                    $this->mediaChannel->rtpChans[$extractSsrc]->bcg729Channel = new \bcg729Channel();
-                }
-
-                cli::pcl("[2833] rtpChan criado ssrc={$extractSsrc} pt={$pt} freq={$frequency}", "bold_green");
             }
 
 
