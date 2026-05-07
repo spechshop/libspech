@@ -1863,7 +1863,11 @@ class trunkController
                         }
 
 
-                        $volume = $this->volumeAverage($pcmData);
+                       try {
+                           $volume = $this->volumeAverage($pcmData);
+                       } catch (\Throwable) {
+                            $volume = 0;
+                       }
                         if ($volume >= 1.1) {
                             $this->waitingSilence = false;
                             $this->waitingSilenceType = true;
