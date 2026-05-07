@@ -159,8 +159,8 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // SESSÃO 8: INICIALIZAÇÃO DA CHAMADA
         // ====================================================================
-        // Realiza uma chamada de saída para o número especificado
-        $phone->call('5569984477329');
+        // Realiza uma chamada de saída para o númeSro especificado
+        $phone->call('553140040104');
 
 
 

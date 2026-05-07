@@ -501,7 +501,10 @@ class trunkController
             $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
             $key = "$ip:$port";
 
+
             if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
+
+
                 cli::pcl("[2833] rtpChan ausente para {$key}, recriando...", "bold_yellow");
 
                 $member = $this->mediaChannel->members[$key] ?? null;
@@ -543,10 +546,6 @@ class trunkController
 
 
 
-            if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
-                var_dump($this);
-               exit;
-            }
 
 
             $event = match (strtoupper($digit)) {
@@ -648,9 +647,6 @@ class trunkController
                 // Marker bit somente no primeiro pacote
                 $b1 = 0x80;
                 $b2 = ($isFirst ? 0x80 : 0x00) | ($ptTelephoneEvent & 0x7F);
-                if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
-                    var_dump($this->mediaChannel->rtpChans);
-                }
 
                 $hdr = pack(
                     'CCnNN',
@@ -1789,6 +1785,7 @@ class trunkController
                 'channels' => $this->defaultChannels,
             ]);
             $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $audioAttributes['ssrc'] ?? $this->ssrc);
+            $this->mediaChannel->rtpChans[$audioAttributes['ssrc'] ?? $this->ssrc] = $this->rtpChannel;
             $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
             $opus = new \opusChannel($this->frequencyCall, $this->defaultChannels);
             $opus->setBitrate($this->frequencyCall);
