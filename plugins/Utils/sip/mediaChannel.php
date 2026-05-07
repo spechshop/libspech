@@ -1010,15 +1010,6 @@ class MediaChannel
             $duration = $data['duration'];
 
 
-            if ($duration < 200) {
-                $callback = $this->onDtmfCallable;
-                if (is_callable($callback)) {
-                    //(mixed $digit, $peer, int $event, MediaChannel $mediaChannel)
-                    go($callback, $event, $peer, $event, $this);
-                }
-            }
-
-
             // Criar chave única para este evento específico
             $cacheKey = "{$ssrc}:{$timestamp}:{$event}";
 
@@ -1120,6 +1111,10 @@ class MediaChannel
             }
 
             // Disparar callback de DTMF
+            $callback = $this->onDtmfCallable;
+            if (is_callable($callback)) {
+                go($callback, $digit, $peer, $event, $this);
+            }
 
             // Limpar cache antigo (> 5 segundos)
             $currentTime = microtime(true);
