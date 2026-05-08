@@ -2516,7 +2516,7 @@ class trunkController
      * @see register() para lógica de autenticação Digest
      * @see SIGNALING_ARRAYS.md para documentação completa
      */
-    public function modelRegister(): array
+    public function modelRegister($expire = 120): array
     {
         $fpp = 5060;
         if ($this->domain) {
@@ -2549,7 +2549,7 @@ class trunkController
                 "CSeq" => [$this->csq . " REGISTER"],
                 "Contact" => ["<sip:{$this->username}@{$this->localIp}:{$this->socketPortListen}>"],
                 "User-Agent" => [$this->userAgent],
-                "Expires" => ["120"],
+                "Expires" => [$expire ?? "120"],
                 "Allow" => ["INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, INFO, UPDATE"],
                 "Content-Length" => ["0"],
             ],
