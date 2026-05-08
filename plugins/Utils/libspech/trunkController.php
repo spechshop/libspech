@@ -1907,7 +1907,7 @@ class trunkController
 
     public $onVadChangeCallable = null;
     public bool $isVoiceActive = false;
-    public bool $vadEnabled = true;
+    public bool $vadEnabled = false;
 
     // Novo sistema VAD com threshold adaptativo
     private float $vadMinEnergy = 2.0;

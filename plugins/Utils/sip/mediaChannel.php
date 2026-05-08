@@ -357,7 +357,7 @@ class MediaChannel
                         'bold_red'
                     );
 
-                    var_dump($this->members);
+
 
                     $this->unblock();
                     $this->socket->close();
@@ -502,7 +502,10 @@ class MediaChannel
                     }
 
 
-                    if (!$pcmData) return $this->close() ?? '';
+                    if (!$pcmData) {
+                        cli::pcl("DECODE ERROR: " . $e->getMessage(), 'red');
+                        return $this->close() ?? '';
+                    }
                     //   else var_dump($rtpc);
 
 
@@ -678,6 +681,8 @@ class MediaChannel
         $peer['rtpChannel'] = new rtpChannel((int)$peer['pt'], $peer['frequency'], 20, $this->generateDeterministicSsrc($id));
         $peer['rtpChannel']->setSsrc($this->generateDeterministicSsrc($id));
         $this->ptCodecsChannels[$peer['pt']] = $nc;
+        if (!array_key_exists('channels', $peer)) $peer['channels'] = $nc;
+
 
 
 
