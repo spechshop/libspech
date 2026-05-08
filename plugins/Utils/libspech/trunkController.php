@@ -1727,7 +1727,6 @@ class trunkController
 
             $this->mediaChannel = new MediaChannel($this->rtpSocket, $this->callId);
             if ($this->vadEnabled) {
-
                 $this->mediaChannel->enableVAD();
                 $this->mediaChannel->onVadChange(function ($isVoiceActive, $energy, $id) {
                     cli::pcl("{$id} Nivel de energia: {$energy}", !$isVoiceActive ? 'bold_red' : 'bold_green');
@@ -1768,6 +1767,9 @@ class trunkController
                 'frequency' => $this->frequencyCall,
                 'channels' => $this->defaultChannels,
             ]);
+
+
+
             $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $audioAttributes['ssrc'] ?? $this->ssrc);
             $this->mediaChannel->rtpChans[$audioAttributes['ssrc'] ?? $this->ssrc] = $this->rtpChannel;
             $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
@@ -1777,8 +1779,6 @@ class trunkController
             $opus->setDTX(true);
             $opus->setComplexity(1);
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $opus) {
-
-
                 if (strlen($rtpc->payloadRaw) < 12) return;
                 $targetId = $peer['address'] . ':' . $peer['port'];
 
@@ -1907,7 +1907,7 @@ class trunkController
 
     public $onVadChangeCallable = null;
     public bool $isVoiceActive = false;
-    public bool $vadEnabled = false;
+    public bool $vadEnabled = true;
 
     // Novo sistema VAD com threshold adaptativo
     private float $vadMinEnergy = 2.0;

@@ -127,7 +127,14 @@ include 'plugins/autoloader.php';
 
 
 
-            interruptibleSleep(5, $phone->receiveBye);
+            interruptibleSleep(3, $phone->receiveBye);
+            $buffer = $phone->getBuffer();
+            $bufferLen = $buffer->length();
+            if ($bufferLen > 0) {
+                $phone->bye();
+                cli::pcl("Buffer possui packets: " . $bufferLen, "red");
+                $phone->close();
+            }
             $phone->send2833('*');
 
 

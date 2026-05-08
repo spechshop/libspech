@@ -121,6 +121,8 @@ class MediaChannel
     private array $lastVadActivity = [];
     private int $vadTimeoutSeconds = 10;
     private float $vadRegistrationThreshold = 2.0;
+    private float $lastSilenceProbeAt = 0.0;
+    public float $silenceProbeInterval = 0.5;
 
 
     public function block($callback = null): void
@@ -322,40 +324,50 @@ class MediaChannel
 
 
                 if (!$packet) {
-                    // timeout de 3s
+                    $now = microtime(true);
+                    $elapsed = $now - $lastPacketTime;
 
-                    if (($currentTime - $lastPacketTime) > $this->connectTimeout) {
-                        $calculate = ($currentTime - $lastPacketTime);
+                    // 110 é timeout normal do recvfrom.
+                    // Não é motivo para fechar socket agora.
+                    $errCode = (int)($this->socket->errCode ?? 0);
 
-                        // encerrar
+                    if ($errCode !== 0 && !in_array($errCode, [110, 11, 35], true)) {
+                        cli::pcl("SOCKET ERROR: {$errCode} {$this->socket->errMsg}", 'bold_red');
+
                         $this->unblock();
                         $this->socket->close();
                         $this->eventSock->close();
+
                         if (is_callable($this->packetOnTimeoutCallable)) {
                             go($this->packetOnTimeoutCallable, $this->callId);
                         }
-                        //     cli::pcl("TIMEOUT: no packets received for $calculate seconds, exceed: " . $this->connectTimeout, 'bold_red');
-                        return;
 
+                        return;
                     }
 
-
-                    $expectedMember = false;
-                    $expectedMember = array_key_first($this->members) ?? false;
-                    if (!$expectedMember) {
-                        // cli::pcl("TIMEOUT: no members to send silence to", 'bold_red');
+                    // Enquanto ainda não passou o timeout final, tenta acordar os members.
+                    if ($elapsed <= $this->connectTimeout) {
+                        $this->sendSilenceProbeToMembers($now);
                         continue;
                     }
 
+                    // Agora sim: timeout real da chamada.
+                    cli::pcl(
+                        "TIMEOUT: no packets received for {$elapsed} seconds, exceed: {$this->connectTimeout}",
+                        'bold_red'
+                    );
 
-                    $end = microtime(true);
-                    $calculate = ($end - $currentTime) * 1000;
-                    if ($calculate < 0.01) {
-                        // 0.000
-                        $calculate = number_format($calculate, 3);
+                    var_dump($this->members);
+
+                    $this->unblock();
+                    $this->socket->close();
+                    $this->eventSock->close();
+
+                    if (is_callable($this->packetOnTimeoutCallable)) {
+                        go($this->packetOnTimeoutCallable, $this->callId);
                     }
 
-                    continue;
+                    return;
                 } else {
                     $lastPacketTime = microtime(true);
                 }
@@ -727,6 +739,81 @@ class MediaChannel
             }
         }
         return false;
+    }
+
+    private function sendSilenceProbeToMembers(float $currentTime): void
+    {
+        if (empty($this->members)) {
+            return;
+        }
+
+        if (($currentTime - $this->lastSilenceProbeAt) < $this->silenceProbeInterval) {
+            return;
+        }
+
+        $this->lastSilenceProbeAt = $currentTime;
+
+        foreach ($this->members as $member) {
+            if (empty($member['address']) || empty($member['port'])) {
+                continue;
+            }
+
+            if (!isset($member['rtpChannel'])) {
+                continue;
+            }
+
+            try {
+                $payload = $this->makeSilencePayloadForMember($member);
+                if ($payload === null) {
+                    continue;
+                }
+                $packet = $member['rtpChannel']->buildAudioPacket($payload);
+                $this->socket->sendto($member['address'], $member['port'], $packet);
+            } catch (\Throwable $e) {
+            }
+        }
+    }
+
+    private function makeSilencePayloadForMember(array $member): ?string
+    {
+        $codec = strtoupper($member['codec'] ?? 'PCMA');
+        $frequency = (int)($member['frequency'] ?? 8000);
+
+        switch ($codec) {
+            case 'PCMA':
+                $samples = (int)(($frequency / 1000) * 20);
+                return str_repeat("\xD5", $samples);
+
+            case 'PCMU':
+                $samples = (int)(($frequency / 1000) * 20);
+                return str_repeat("\xFF", $samples);
+
+            case 'L16':
+            case 'PCM':
+                $channels = $member['channels'] ?? 1;
+                $samples = (int)(($frequency / 1000) * 20) * $channels;
+                return str_repeat("\x00\x00", $samples);
+
+            case 'OPUS':
+                if (!isset($member['opus'])) {
+                    return null;
+                }
+                // 960 samples por canal = 20ms em 48000Hz
+                $pcm = str_repeat("\x00\x00", 960);
+                return $member['opus']->encode($pcm);
+
+            case 'G729':
+                if (!isset($member['bcg729Channel'])) {
+                    return null;
+                }
+                // Dois frames de 10ms (80 samples @ 8kHz cada)
+                $pcm10ms = str_repeat("\x00\x00", 80);
+                return $member['bcg729Channel']->encode($pcm10ms)
+                     . $member['bcg729Channel']->encode($pcm10ms);
+
+            default:
+                return null;
+        }
     }
 
     public function close(): void
