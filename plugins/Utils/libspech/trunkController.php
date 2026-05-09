@@ -1697,6 +1697,12 @@ class trunkController
         }
     }
 
+    public mixed $onPacketOnTimeoutMediaCallable=null;
+    public function onPacketOnTimeoutMedia(callable $callback): void
+    {
+        $this->onPacketOnTimeoutMediaCallable = $callback;
+    }
+
 
     public function receiveMedia(): void
     {
@@ -1726,6 +1732,8 @@ class trunkController
             $this->receiveBye = false;
 
             $this->mediaChannel = new MediaChannel($this->rtpSocket, $this->callId);
+            if (is_callable($this->onPacketOnTimeoutMediaCallable))
+                $this->mediaChannel->packetOnTimeout($this->onPacketOnTimeoutMediaCallable);
             if ($this->vadEnabled) {
                 $this->mediaChannel->enableVAD();
                 $this->mediaChannel->onVadChange(function ($isVoiceActive, $energy, $id) {
@@ -1778,6 +1786,7 @@ class trunkController
             $opus->setSignalVoice(true);
             $opus->setDTX(true);
             $opus->setComplexity(1);
+
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $opus) {
                 if (strlen($rtpc->payloadRaw) < 12) return;
                 $targetId = $peer['address'] . ':' . $peer['port'];
