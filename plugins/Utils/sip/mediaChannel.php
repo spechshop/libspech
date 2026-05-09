@@ -9,6 +9,7 @@ use libspech\Sip\AudioQualityDetector;
 use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
+use Throwable;
 use function libspech\Sip\monoToStereo;
 use function libspech\Sip\volumeAverage;
 
@@ -18,6 +19,10 @@ class MediaChannel
     public bool $active = true;
 
     public int $connectTimeout = 5;
+
+
+    // pcm 8khz silence
+    private string $syl = '';
 
     public function onReceive(callable $callback): void
     {
@@ -185,6 +190,9 @@ class MediaChannel
 
         $this->socket = $socket;
         $this->callId = $callId;
+        $this->syl = str_repeat("\0", 160);
+
+
         $this->channelEncode = new bcg729Channel();
         $this->channelDecode = new bcg729Channel();
         $this->adaptiveBuffer = new AdaptiveBuffer($this->callId);
@@ -498,18 +506,17 @@ class MediaChannel
                                 'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
                                 'OPUS' => $this->members[$targetId]['opus']->decode($rtpc->payloadRaw),
                                 'L16' => decodeL16ToPcm($rtpc->payloadRaw),
-                                default => false,
+                                default => resample($this->syl, 8000, $info['frequency'], [
+                                    'input_channels' => $this->ptCodecsChannels[$rtpc->getCodec()] ?? 1,
+                                ]),
                             };
-
                     } catch (Throwable $e) {
-
+                            cli::pcl("DECODE ERROR: " . $e->getMessage(), 'red');
+                            return $this->close() ?? '';
                     }
 
 
-                    if (!$pcmData) {
-                        cli::pcl("DECODE ERROR: " . $e->getMessage(), 'red');
-                        return $this->close() ?? '';
-                    }
+
                     //   else var_dump($rtpc);
 
 
