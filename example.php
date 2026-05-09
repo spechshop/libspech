@@ -108,6 +108,7 @@ include 'plugins/autoloader.php';
         $phone->defineAudioFile('silence_5m.wav');
 
 
+
         // Callback executado quando a chamada é recebida/respondida
         $phone->onAnswer(function (trunkController $phone) {
             // Inicia o recebimento de mídia (áudio RTP)
