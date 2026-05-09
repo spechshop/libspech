@@ -369,6 +369,10 @@ class MediaChannel
 
                     return;
                 } else {
+                    if ($peer['port'] === 5060) continue;
+
+
+
                     $lastPacketTime = microtime(true);
                 }
 
