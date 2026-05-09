@@ -742,6 +742,178 @@ class MediaChannel
         return $this->audioMetrics;
     }
 
+    public function send2833(string $digit): void
+    {
+        try {
+            if ($this->socket->isClosed()) {
+                return;
+            }
+
+            if (empty($this->members)) {
+                return;
+            }
+
+            $event = match (strtoupper($digit)) {
+                '0' => 0,
+                '1' => 1,
+                '2' => 2,
+                '3' => 3,
+                '4' => 4,
+                '5' => 5,
+                '6' => 6,
+                '7' => 7,
+                '8' => 8,
+                '9' => 9,
+                '*' => 10,
+                '#' => 11,
+                'A' => 12,
+                'B' => 13,
+                'C' => 14,
+                'D' => 15,
+                default => null,
+            };
+
+            if ($event === null) {
+                cli::pcl("[DTMF] Dígito inválido: {$digit}", "bold_red");
+                return;
+            }
+
+            // MicroSIP usa PJSIP; o default do PJSIP é:
+            // - volume = 10
+            // - duração total = 1600 timestamps (200ms em telephone-event/8000)
+            // - retransmissão do pacote final com E-bit = 3 vezes
+            // - primeiro pacote com marker bit = 1
+            // - timestamp do evento fixo durante todo o dígito
+            $volume = 10;
+            $endRetransmits = 3;
+            $eventClockRate = 8000;
+            $ptimeMs = 20;
+            $durationMs = 200;
+
+            $stepSamples = (int)round(($eventClockRate * $ptimeMs) / 1000);
+            if ($stepSamples <= 0) {
+                $stepSamples = 160;
+            }
+
+            $finalDurationSamples = (int)round(($eventClockRate * $durationMs) / 1000);
+            if ($finalDurationSamples <= 0) {
+                $finalDurationSamples = 1600;
+            }
+
+            $steps = (int)ceil($finalDurationSamples / $stepSamples);
+            if ($steps < 1) {
+                $steps = 1;
+            }
+
+            foreach ($this->members as $key => $member) {
+                $ip = $member['address'] ?? null;
+                $port = $member['port'] ?? null;
+                if (empty($ip) || empty($port)) {
+                    continue;
+                }
+
+                $extractSsrc = $member['ssrc'] ?? null;
+                if ($extractSsrc === null) {
+                    continue;
+                }
+
+                if (!array_key_exists($extractSsrc, $this->rtpChans)) {
+                    if (!empty($this->rtpChans)) {
+                        $extractSsrc = array_key_first($this->rtpChans);
+                    } else {
+                        $pt = (int)($member['pt'] ?? 8);
+                        $frequency = (int)($member['frequency'] ?? 8000);
+                        $this->rtpChans[$extractSsrc] = new rtpChannel($pt, $frequency, 20, $extractSsrc);
+                        $this->rtpChans[$extractSsrc]->timestamp = (int)($member['timestamp'] ?? random_int(1, 0x7FFFFFFF));
+                        $this->rtpChans[$extractSsrc]->sequenceNumber = random_int(1, 0xFFFF);
+                        if (class_exists(bcg729Channel::class)) {
+                            $this->rtpChans[$extractSsrc]->bcg729Channel = new bcg729Channel();
+                        }
+                    }
+                }
+
+                $ptTelephoneEvent = $this->findTelephoneEventPt((int)($member['frequency'] ?? 8000));
+
+                // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
+                $eventTs = (int)$this->rtpChans[$extractSsrc]->timestamp;
+                $ssrc = (int)$extractSsrc;
+
+                // Pacotes de progresso do evento
+                for ($i = 1; $i <= $steps; $i++) {
+                    $duration = $i * $stepSamples;
+                    if ($duration > $finalDurationSamples) {
+                        $duration = $finalDurationSamples;
+                    }
+
+                    $isFirst = ($i === 1);
+                    $isLast = ($duration >= $finalDurationSamples);
+
+                    // Byte 2 do payload:
+                    // bit 7 = E (não setar aqui; os pacotes End são enviados separadamente)
+                    // bits 0..5 = volume
+                    $eVol = $volume & 0x3F;
+
+                    $payload = pack(
+                        'CCn',
+                        $event,
+                        $eVol,
+                        $duration
+                    );
+
+                    // Marker bit somente no primeiro pacote
+                    $b1 = 0x80;
+                    $b2 = ($isFirst ? 0x80 : 0x00) | ($ptTelephoneEvent & 0x7F);
+
+                    $hdr = pack(
+                        'CCnNN',
+                        $b1,
+                        $b2,
+                        $this->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
+                        $eventTs & 0xFFFFFFFF,
+                        $ssrc & 0xFFFFFFFF
+                    );
+
+                    $this->socket->sendto($ip, $port, $hdr . $payload);
+
+                    // Dorme entre os pacotes, exceto depois do último "progresso"
+                    if (!$isLast) {
+                        Coroutine::sleep($ptimeMs / 1000);
+                    }
+                }
+
+                // Retransmite o último pacote com E-bit 3 vezes
+                $payloadEnd = pack(
+                    'CCn',
+                    $event,
+                    0x80 | ($volume & 0x3F),
+                    $finalDurationSamples
+                );
+
+                for ($r = 0; $r < $endRetransmits; $r++) {
+                    $hdr = pack(
+                        'CCnNN',
+                        0x80,
+                        $ptTelephoneEvent & 0x7F,
+                        $this->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
+                        $eventTs & 0xFFFFFFFF,
+                        $ssrc & 0xFFFFFFFF
+                    );
+
+                    $this->socket->sendto($ip, $port, $hdr . $payloadEnd);
+
+                    if ($r < $endRetransmits - 1) {
+                        Coroutine::sleep($ptimeMs / 1000);
+                    }
+                }
+
+                // Mantém a timeline contínua
+                $this->rtpChans[$extractSsrc]->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
+            }
+        } catch (\Throwable $e) {
+            return;
+        }
+    }
+
     private function checkVadTimeouts(): bool
     {
         $currentTime = microtime(true);
