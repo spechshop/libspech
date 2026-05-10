@@ -288,6 +288,12 @@ class MediaChannel
     }
 
 
+    public mixed $onStartCallable = false;
+
+    public function onStart(callable $callable): void
+    {
+        $this->onStartCallable = $callable;
+    }
     public function start(): void
     {
         Coroutine::create(function () {
@@ -321,6 +327,9 @@ class MediaChannel
 
                 return (int)($frequency * 0.02); // 20ms
             };
+
+            if (is_callable($this->onStartCallable)) go($this->onStartCallable, $this->callId);
+
 
             $lastPacketTime = microtime(true);
             while (true) {
