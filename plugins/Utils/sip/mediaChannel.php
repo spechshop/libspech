@@ -190,7 +190,7 @@ class MediaChannel
 
         $this->socket = $socket;
         $this->callId = $callId;
-        $this->syl = str_repeat("\0", 160);
+        $this->syl = str_repeat("\0\0", 160);
 
 
         $this->channelEncode = new bcg729Channel();
