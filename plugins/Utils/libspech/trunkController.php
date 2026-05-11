@@ -60,6 +60,7 @@ class trunkController
     public array $failureCodes = [
         'CANCEL',
         'BYE',
+        400,
         403,
         484,
         404,
@@ -963,16 +964,20 @@ class trunkController
                 $this->route = $receive["headers"]["Record-Route"][0];
 
             $abortCodes = [
-                '480',
-                'CANCEL',
-                'BYE',
-                '486',
-                '487',
-                '488',
-                '500',
-                '600',
-                '603',
-            ];
+                    '480',
+                    'CANCEL',
+                    'BYE',
+                    '486',
+                    '487',
+                    '488',
+                    '500',
+                    '600',
+                    '603',
+                ]
+                    |> (fn($x) => array_merge($x, $this->failureCodes))
+                    |> array_unique(...);
+
+
             if (in_array($receive["method"], $abortCodes)) {
                 $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
                 $this->socket->close();

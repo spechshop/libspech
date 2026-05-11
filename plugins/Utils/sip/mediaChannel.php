@@ -294,6 +294,7 @@ class MediaChannel
     {
         $this->onStartCallable = $callable;
     }
+
     public function start(): void
     {
         Coroutine::create(function () {
@@ -335,13 +336,14 @@ class MediaChannel
             while (true) {
 
 
-                $currentTime = microtime(true);
+
                 $peer = ['address' => '0.0.0.0', 'port' => 0];
                 $packet = $this->socket->recvfrom($peer, 0.2);
+                $currentTime = microtime(true);
 
 
                 if (!$packet) {
-                    $now = microtime(true);
+                    $now = $currentTime;
                     $elapsed = $now - $lastPacketTime;
 
                     // 110 é timeout normal do recvfrom.
@@ -375,7 +377,6 @@ class MediaChannel
                     );
 
 
-
                     $this->unblock();
                     $this->socket->close();
                     $this->eventSock->close();
@@ -389,8 +390,7 @@ class MediaChannel
                     if ($peer['port'] === 5060) continue;
 
 
-
-                    $lastPacketTime = microtime(true);
+                    $lastPacketTime = $currentTime;
                 }
 
 
@@ -475,7 +475,6 @@ class MediaChannel
                 foreach ($this->members as $targetId => $info) {
 
 
-
                     if ($targetId === $idFrom) continue;
 
 
@@ -483,12 +482,13 @@ class MediaChannel
                     if (!isset($destinationChannels[$targetId])) {
                         $destSsrc = $this->generateDeterministicSsrc($targetId);
                         cli::pcl("$targetId -> SSRC DESTINATION GENERATED: $destSsrc", 'yellow');
+                        $rtpChannel = new rtpChannel($info['pt'], $info['frequency'] ?? 8000, 20, $destSsrc);
                         $destinationChannels[$targetId] = [
                             'ssrc' => $destSsrc,
-                            'timestamp' => 0,
+                            'timestamp' => $rtpChannel->timestamp ?? 0,
                             'lastFrequency' => $info['frequency'] ?? 8000,
-                            'sequenceNumber' => 0,
-                            'rtpChannel' => new rtpChannel($info['pt'], $info['frequency'] ?? 8000, 20, $destSsrc)
+                            'sequenceNumber' => $rtpChannel->sequenceNumber ?? 0,
+                            'rtpChannel' => $rtpChannel
                         ];
                     }
 
@@ -520,10 +520,8 @@ class MediaChannel
                                 ]),
                             };
                     } catch (Throwable $e) {
-                            cli::pcl("DECODE ERROR: " . $e->getMessage(), 'red');
-                            return $this->close() ?? '';
+                        continue;
                     }
-
 
 
                     //   else var_dump($rtpc);
@@ -596,11 +594,11 @@ class MediaChannel
                         case 'L16':
                             if ($this->ptCodecsChannels[$info['pt']] > 1) {
                                 // Converte mono para estéreo e resample para a frequência do destino
-                               //$encode = resample($pcmData, $frequencyPacket, $info['frequency'], [
-                               //    'input_channels' => 1,
-                               //    'output_channels' => 2,
-                               //    'work_channels' => 1,
-                               //]);
+                                //$encode = resample($pcmData, $frequencyPacket, $info['frequency'], [
+                                //    'input_channels' => 1,
+                                //    'output_channels' => 2,
+                                //    'work_channels' => 1,
+                                //]);
                                 $encode = monoToStereo($pcmData);
                                 $encode = resampler($encode, $frequencyPacket, $info['frequency'], 1);
                             } else {
@@ -634,6 +632,7 @@ class MediaChannel
                     $this->socket->sendto($info['address'], $info['port'], $newPacket);
 
                     if ($pcmData !== false) {
+                        if ($this->vadEnabled)
                         $this->processVAD($pcmData, $idFrom);
                     }
                 }
@@ -694,16 +693,14 @@ class MediaChannel
             }
         }
         $peer['opus']->setBitrate($peer['config']['maxplaybackrate'] ?? 24000);
-        //$peer['opus']->setBitrate((int)$peer['config']['maxplaybackrate']??24000);
+
+
 
         print cli::cl('bold_green', $rate . " " . $id . " MEMBER ADDED IN CALL " . $peer['codec'] . ' PT ' . $peer['pt'] . ' ' . $peer['frequency'] . ' kHz');
-        // criar rtpChannel
         $peer['rtpChannel'] = new rtpChannel((int)$peer['pt'], $peer['frequency'], 20, $this->generateDeterministicSsrc($id));
         $peer['rtpChannel']->setSsrc($this->generateDeterministicSsrc($id));
         $this->ptCodecsChannels[$peer['pt']] = $nc;
         if (!array_key_exists('channels', $peer)) $peer['channels'] = $nc;
-
-
 
 
         $this->members[$id] = $peer;
@@ -1006,7 +1003,7 @@ class MediaChannel
                 // Dois frames de 10ms (80 samples @ 8kHz cada)
                 $pcm10ms = str_repeat("\x00\x00", 80);
                 return $member['bcg729Channel']->encode($pcm10ms)
-                     . $member['bcg729Channel']->encode($pcm10ms);
+                    . $member['bcg729Channel']->encode($pcm10ms);
 
             default:
                 return null;
@@ -1112,8 +1109,6 @@ class MediaChannel
 
             $duration = (ord($payload[2]) << 8) | ord($payload[3]);
         }
-
-
 
 
         foreach ($this->members as $targetId => $info) {
