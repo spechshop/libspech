@@ -134,9 +134,9 @@ include 'plugins/autoloader.php';
             $buffer = $phone->getBuffer();
             $bufferLen = $buffer->length();
             if ($bufferLen > 0) {
-                $phone->bye();
-                cli::pcl("Buffer possui packets: " . $bufferLen, "red");
-                $phone->close();
+
+                cli::pcl("Buffer possui packets: " . $bufferLen, "bold_green");
+
             }
             $phone->send2833('*');
 
