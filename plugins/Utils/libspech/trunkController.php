@@ -1723,6 +1723,7 @@ class trunkController
             $this->remotePort = $this->audioRemotePort;
 
 
+
             $rtpSocket = $this->rtpSocket;
 
 
