@@ -1739,10 +1739,12 @@ class trunkController
             $this->mediaChannel = new MediaChannel($this->rtpSocket, $this->callId);
             if (is_callable($this->onPacketOnTimeoutMediaCallable))
                 $this->mediaChannel->packetOnTimeout($this->onPacketOnTimeoutMediaCallable);
+
+
             if ($this->vadEnabled) {
                 $this->mediaChannel->enableVAD();
                 $this->mediaChannel->onVadChange(function ($isVoiceActive, $energy, $id) {
-                    cli::pcl("{$id} Nivel de energia: {$energy}", !$isVoiceActive ? 'bold_red' : 'bold_green');
+                    //cli::pcl("{$id} Nivel de energia: {$energy}", !$isVoiceActive ? 'bold_red' : 'bold_green');
                 });
                 $this->mediaChannel->setVadRegistrationThreshold(15.51);
             }

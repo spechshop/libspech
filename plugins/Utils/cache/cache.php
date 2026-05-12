@@ -81,6 +81,21 @@ class cache
         return $GLOBALS;
     }
 
+    public static function exists(string $key): bool
+    {
+        return !empty($GLOBALS[$key]);
+    }
+
+
+
+
+    public static function subExists(string $key, string $subKey): bool
+    {
+        return !empty($GLOBALS[$key][$subKey]);
+
+    }
+
+
     public static function deleteConnection($username): void
     {
         $table = cache::global()['tableConnections'];

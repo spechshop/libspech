@@ -4,6 +4,7 @@ namespace libspech\Rtp;
 
 use bcg729Channel;
 use Closure;
+use libspech\Cache\cache;
 use libspech\Cli\cli;
 use libspech\Sip\AudioQualityDetector;
 use opusChannel;
@@ -284,7 +285,14 @@ class MediaChannel
         $ssrc = (int)hexdec($hex);
 
         // Garantir que está dentro do range de 32 bits
-        return $ssrc & 0xFFFFFFFF;
+        $result= $ssrc & 0xFFFFFFFF;
+        if (!cache::exists('ssrcs')) cache::set('ssrcs', []);
+      if (!in_array($result, cache::get('ssrcs'))) {
+          cache::join('ssrcs', $result);
+          cli::pcl("Foi gerado para $ipPort o SSRC: $result", 'yellow');
+      }
+
+        return $result;
     }
 
 
@@ -403,7 +411,7 @@ class MediaChannel
 
                 $pt = $rtpc->getCodec();
 
-                $ssrc = $this->generateDeterministicSsrc($idFrom . $pt);
+                $ssrc = $this->generateDeterministicSsrc($idFrom );
 
                 if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
                     $member = $this->members[$idFrom] ?? null;
