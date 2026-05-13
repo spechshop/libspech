@@ -473,10 +473,7 @@ class MediaChannel
 
 
                 $pt = $rtpc->getCodec();
-                if (!in_array($rtpc->ssrc, cache::get('ssrcs') ?? [])) {
-                    cli::pcl("SSRC {$rtpc->ssrc} FROM $idFrom CODEC: {$rtpc->getCodec()}", 'yellow');
-                    cache::join('ssrcs', $rtpc->ssrc);
-                }
+
 
 
 
@@ -514,22 +511,6 @@ class MediaChannel
                         'opus' => $this->members[$idFrom]['opus'] ?? null,
                         'frequency' => $this->resolveFrequencyFromPt($rtpc->getCodec()) ?? 8000,
                     ]);
-                    cli::pcl(
-                        "NEW MEMBER: {$idFrom} " .
-                        "v={$rtpc->version} " .
-                        "p={$rtpc->padding} " .
-                        "x={$rtpc->extension} " .
-                        "cc={$rtpc->cc} " .
-                        "m={$rtpc->marker} " .
-                        "pt={$rtpc->payloadType} " .
-                        "seq={$rtpc->sequence} " .
-                        "ts={$rtpc->timestamp} " .
-                        "ssrc={$rtpc->ssrc} " .
-                        "payload=" . strlen($rtpc->payloadRaw) . "b " .
-                        "raw=" . strlen($rtpc->rawPacket) . "b",
-                        'bold_green'
-                    );
-                    var_dump($this->socket);
                 }
 
 
