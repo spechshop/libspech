@@ -928,10 +928,8 @@ class trunkController
 
         $authSent = false;
         $level = 0;
-        if (!$this->isRegistered) {
-            cli::pcl("Não está registrado, impossível fazer chamada", "red");
-            return false;
-        }
+
+
 
 
 
