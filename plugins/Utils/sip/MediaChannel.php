@@ -421,6 +421,8 @@ class MediaChannel
 
 
 
+                        // disabled
+                         if (1>2)
                         if ($this->socket->getsockname()['port'] == $this->listenPort) {
                             $try = $this->socket->getsockname()['port'] - 1;
                             if (network::isPortAvailable($try, 'udp')) {
