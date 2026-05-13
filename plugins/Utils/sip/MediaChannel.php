@@ -285,11 +285,11 @@ class MediaChannel
         $ssrc = (int)hexdec($hex);
 
         // Garantir que está dentro do range de 32 bits
-        $result= $ssrc & 0xFFFFFFFF;
+        $result = $ssrc & 0xFFFFFFFF;
         if (!cache::exists('ssrcs')) cache::set('ssrcs', []);
         if (!in_array($result, cache::get('ssrcs'))) {
             cache::join('ssrcs', $result);
-            cli::pcl("Foi gerado para $ipPort o SSRC: ".$hex, 'yellow');
+            cli::pcl("Foi gerado para $ipPort o SSRC: " . $hex, 'yellow');
         }
 
         return $result;
@@ -302,6 +302,7 @@ class MediaChannel
     {
         $this->onStartCallable = $callable;
     }
+
     /**
      * Faz forward de pacotes DTMF (telephone-event) para todos os membros
      * Mantém o timestamp original do evento DTMF e ajusta o PT conforme necessário
@@ -334,10 +335,7 @@ class MediaChannel
             }
 
 
-
-
-            cli::pcl("DTMF: {$event} {$volume} {$duration} {$end} {$targetId}", 'bold_green');
-
+            //cli::pcl("DTMF: {$event} {$volume} {$duration} {$end} {$targetId}", 'bold_green');
 
 
             $frequencyMember = $this->ptCodecsFrequency[$info['codec']] ?? 8000;
@@ -380,29 +378,12 @@ class MediaChannel
                 }
             }
 
-            // Calcula o incremento de timestamp baseado na frequência e tamanho do pacote (20ms padrão)
-            $calculateTimestampIncrement = function (int $frequency, int $payloadType, $member = false): int {
-                $ptTypeChannels = $this->ptCodecsChannels[$payloadType] ?? 1;
-                // Para G729 (PT 18): 10 bytes = 10ms de áudio
-                if ($payloadType === 18) {
-                    return (int)($frequency * 0.01); // 10ms
-                }
-                // Para outros codecs: assumir 20ms
-
-                if ($member) {
-                    return $this->members[$member]['rtpChannel']->samplesPerPacket;
-                }
-
-
-                return (int)($frequency * 0.02); // 20ms
-            };
 
             if (is_callable($this->onStartCallable)) go($this->onStartCallable, $this->callId);
 
 
             $lastPacketTime = microtime(true);
             while (true) {
-
 
 
                 $peer = ['address' => '0.0.0.0', 'port' => 0];
@@ -471,8 +452,8 @@ class MediaChannel
 
                 $pt = $rtpc->getCodec();
 
-                $ssrc = $this->generateDeterministicSsrc($idFrom );
-                $ssrcOrigin = $this->generateDeterministicSsrc($idFrom );
+                $ssrc = $this->generateDeterministicSsrc($idFrom);
+                $ssrcOrigin = $this->generateDeterministicSsrc($idFrom);
 
                 if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
                     $member = $this->members[$idFrom] ?? null;
@@ -543,12 +524,6 @@ class MediaChannel
                     if ($targetId === $idFrom) continue;
 
 
-
-
-
-
-
-
                     $freqOriginPacket = (int)($this->members[$idFrom]['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000);
 
                     try {
@@ -576,7 +551,6 @@ class MediaChannel
 
                     $encode = null;
                     $frequencyMember = $info['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000;
-
 
 
                     switch (strtoupper($info['codec'])) {
@@ -725,7 +699,6 @@ class MediaChannel
             }
         }
         $peer['opus']->setBitrate($peer['config']['maxplaybackrate'] ?? 24000);
-
 
 
         print cli::cl('bold_green', $rate . " " . $id . " MEMBER ADDED IN CALL " . $peer['codec'] . ' PT ' . $peer['pt'] . ' ' . $peer['frequency'] . ' kHz');
@@ -961,7 +934,7 @@ class MediaChannel
 
         $this->lastSilenceProbeAt = $currentTime;
 
-        foreach ($this->members as $member) {
+        foreach ($this->members as $idMember => $member) {
             if (empty($member['address']) || empty($member['port'])) {
                 continue;
             }
@@ -975,7 +948,7 @@ class MediaChannel
                 if ($payload === null) {
                     continue;
                 }
-                $packet = $member['rtpChannel']->buildAudioPacket($payload);
+                $packet = $this->members[$idMember]['rtpChannel']->buildAudioPacket($payload);
                 $this->socket->sendto($member['address'], $member['port'], $packet);
             } catch (\Throwable $e) {
             }
