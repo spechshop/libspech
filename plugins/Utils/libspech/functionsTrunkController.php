@@ -367,52 +367,38 @@ function secure_random_bytes(int $length): string
 }
 
 
-/**
- * Sleep interrompível que verifica condições a cada 100ms
- * Permite que operações longas sejam interrompidas rapidamente
- *
- * @param int $ms Milissegundos para dormir
- * @param trunkController|null $phone Instância do telefone para verificar closing/error
- * @return bool Retorna true se completou, false se foi interrompido
- */
-function interruptibleSleep(float $seconds, &$abort): bool
+function interruptibleSleep(float $seconds, &$abort, float $stepSeconds = 0.050): bool
 {
-    // Converter para ms apenas para controle interno
-    $totalMs = $seconds * 1000;
-
-    // Step de verificação: mínimo absoluto 10ms (0.01s)
-    $stepMs = 50; // default: 50ms
-    if ($stepMs < 10) {
-        $stepMs = 10;
+    if ($seconds <= 0) {
+        return !$abort;
     }
 
-    // Se o total for menor que o step, reduz, mas nunca abaixo de 10ms
-    if ($totalMs < $stepMs) {
-        $stepMs = max(10, $totalMs);
-    }
+    $deadline = hrtime(true) + (int)round($seconds * 1_000_000_000);
 
-    $start = microtime(true);
+    // Swoole não aceita sleep menor que 1ms
+    $minSleepNs = 1_000_000; // 0.001s
+    $stepNs = max($minSleepNs, (int)round($stepSeconds * 1_000_000_000));
 
     while (true) {
-
         if ($abort) {
-            return false; // abortou
+            return false;
         }
 
-        // Tempo passado em ms
-        $elapsedMs = (microtime(true) - $start) * 1000;
+        $remainingNs = $deadline - hrtime(true);
 
-        if ($elapsedMs >= $totalMs) {
-            return true; // finalizou normal
+        if ($remainingNs <= 0) {
+            return true;
         }
 
-        // Quanto falta
-        $remainingMs = $totalMs - $elapsedMs;
+        // Se falta menos que 1ms, não chama sleep.
+        // Cede a execução por 1ms no máximo só se ainda fizer sentido.
+        if ($remainingNs < $minSleepNs) {
+            return true;
+        }
 
-        // Próximo sleep, respeitando mínimo 10ms sempre
-        $nextMs = max(10, min($stepMs, $remainingMs));
+        $sleepNs = min($stepNs, $remainingNs);
 
-        Coroutine::sleep($nextMs / 1000);
+        Coroutine::sleep($sleepNs / 1_000_000_000);
     }
 }
 

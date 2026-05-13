@@ -130,7 +130,7 @@ include 'plugins/autoloader.php';
 
 
 
-            interruptibleSleep(3, $phone->receiveBye);
+            $phone->waitSilence(false, 10);
             $buffer = $phone->getBuffer();
             $bufferLen = $buffer->length();
             if ($bufferLen > 0) {
@@ -138,11 +138,13 @@ include 'plugins/autoloader.php';
                 cli::pcl("Buffer possui packets: " . $bufferLen, "bold_green");
 
             }
+            interruptibleSleep(7, $phone->receiveBye);
+
             $phone->send2833('*');
 
 
             $cpf = '42017165204';
-            interruptibleSleep(10, $phone->receiveBye);
+            interruptibleSleep(3, $phone->receiveBye);
             foreach (str_split(substr($cpf, 0, 11)) as $digit) {
                 $phone->send2833($digit);
                 cli::pcl("Digitando: " . $digit, "yellow");
@@ -150,7 +152,7 @@ include 'plugins/autoloader.php';
             cli::pcl("Digitado: " . $cpf, "green");
             $phone->waitSilence(false, 10);
 
-            interruptibleSleep(20, $phone->receiveBye);
+            interruptibleSleep(10, $phone->receiveBye);
 
 
             $phone->bye();

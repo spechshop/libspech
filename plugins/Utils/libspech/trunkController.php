@@ -482,7 +482,10 @@ class trunkController
     }
 
 
-    public function send2833(string $digit): void
+    /**
+     * @deprecated Use send2833 instead
+     */
+    public function send2833Deprecated(string $digit): void
     {
         try {
             if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
@@ -684,6 +687,11 @@ class trunkController
 
     }
 
+    public function send2833(mixed $digit): void {
+        if ($this->mediaChannel instanceof MediaChannel) {
+            $this->mediaChannel->send2833($digit);
+        }
+    }
 
 
     public mixed $route=false;
@@ -2929,7 +2937,7 @@ class trunkController
 
             if (!$encode) return;
 
-            $packet = $phone->rtpChannel->buildAudioPacket($encode);
+            $packet = $this->mediaChannel->members[$idFrom]['rtpChannel']->buildAudioPacket($encode);
             $this->mediaChannel->socket->sendto($peer['address'], $peer['port'], $packet);
         });
     }

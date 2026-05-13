@@ -6,7 +6,7 @@ use bcg729Channel;
 use Closure;
 use libspech\Cache\cache;
 use libspech\Cli\cli;
-use libspech\Sip\AudioQualityDetector;
+
 use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
@@ -287,10 +287,10 @@ class MediaChannel
         // Garantir que está dentro do range de 32 bits
         $result= $ssrc & 0xFFFFFFFF;
         if (!cache::exists('ssrcs')) cache::set('ssrcs', []);
-      if (!in_array($result, cache::get('ssrcs'))) {
-          cache::join('ssrcs', $result);
-          cli::pcl("Foi gerado para $ipPort o SSRC: $result", 'yellow');
-      }
+        if (!in_array($result, cache::get('ssrcs'))) {
+            cache::join('ssrcs', $result);
+            cli::pcl("Foi gerado para $ipPort o SSRC: ".$hex, 'yellow');
+        }
 
         return $result;
     }
@@ -412,6 +412,7 @@ class MediaChannel
                 $pt = $rtpc->getCodec();
 
                 $ssrc = $this->generateDeterministicSsrc($idFrom );
+                $ssrcOrigin = $this->generateDeterministicSsrc($idFrom );
 
                 if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
                     $member = $this->members[$idFrom] ?? null;
@@ -436,7 +437,7 @@ class MediaChannel
                         'port' => $peer['port'],
                         'codec' => $codec,
                         'pt' => $pt,
-                        'ssrc' => $ssrc,
+                        'ssrc' => $ssrcOrigin,
                         'timestamp' => $rtpc->timestamp,
                         'config' => $this->options['config'] ?? [],
                         'opus' => $this->members[$idFrom]['opus'] ?? null,
@@ -444,7 +445,7 @@ class MediaChannel
                     ]);
                 }
 
-                $this->members[$idFrom]['ssrc'] = $ssrc;
+
                 $pcmData = false;
 
 
@@ -481,39 +482,16 @@ class MediaChannel
 
 
                 foreach ($this->members as $targetId => $info) {
-
-
                     if ($targetId === $idFrom) continue;
 
 
-                    // Inicializar canal do destino se não existir
-                    if (!isset($destinationChannels[$targetId])) {
-                        $destSsrc = $this->generateDeterministicSsrc($targetId);
-                        cli::pcl("$targetId -> SSRC DESTINATION GENERATED: $destSsrc", 'yellow');
-                        $rtpChannel = new rtpChannel($info['pt'], $info['frequency'] ?? 8000, 20, $destSsrc);
-                        $destinationChannels[$targetId] = [
-                            'ssrc' => $destSsrc,
-                            'timestamp' => $rtpChannel->timestamp ?? 0,
-                            'lastFrequency' => $info['frequency'] ?? 8000,
-                            'sequenceNumber' => $rtpChannel->sequenceNumber ?? 0,
-                            'rtpChannel' => $rtpChannel
-                        ];
-                    }
 
-                    $destChannel = &$destinationChannels[$targetId];
-                    $currentFrequency = $info['frequency'] ?? 8000;
 
-                    // Detectar mudança de frequência e ajustar timestamp
-                    if ($destChannel['lastFrequency'] !== $currentFrequency) {
-                        // Converter timestamp para a nova frequência proporcionalmente
-                        if ($destChannel['timestamp'] > 0) {
-                            $ratio = $currentFrequency / $destChannel['lastFrequency'];
-                            $destChannel['timestamp'] = (int)($destChannel['timestamp'] * $ratio);
-                        }
-                        $destChannel['lastFrequency'] = $currentFrequency;
-                    }
 
-                    $frequencyPacket = (int)($this->members[$idFrom]['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000);
+
+
+
+                    $freqOriginPacket = (int)($this->members[$idFrom]['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000);
 
                     try {
                         if (!$pcmData)
@@ -539,16 +517,17 @@ class MediaChannel
 
 
                     $encode = null;
-                    $frequencyMember = $currentFrequency;
+                    $frequencyMember = $info['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000;
+
 
 
                     switch (strtoupper($info['codec'])) {
                         case 'PCMU':
-                            if ($frequencyPacket !== 8000) $pcmData = resampler($pcmData, $frequencyPacket, 8000);
+                            if ($freqOriginPacket !== 8000) $pcmData = resampler($pcmData, $freqOriginPacket, 8000);
                             $encode = encodePcmToPcmu($pcmData);
                             break;
                         case 'PCMA':
-                            if ($frequencyPacket !== 8000) $pcmData = resampler($pcmData, $frequencyPacket, 8000);
+                            if ($freqOriginPacket !== 8000) $pcmData = resampler($pcmData, $freqOriginPacket, 8000);
                             $encode = encodePcmToPcma($pcmData);
                             break;
                         case 'G729':
@@ -567,11 +546,11 @@ class MediaChannel
                             try {
 
                                 $isStereo = $this->members[$targetId]['config']['stereo'] ?? false;
-                                if ($isStereo) $pcmData = resample($pcmData, $frequencyPacket, $info['frequency'], [
+                                if ($isStereo) $pcmData = resample($pcmData, $freqOriginPacket, $info['frequency'], [
                                     'input_channels' => $this->ptCodecsChannels[$rtpc->getCodec()] ?? 1,
                                     'output_channels' => $this->ptCodecsChannels[$info['pt']] ?? 1,
                                 ]);
-                                else $pcmData = resampler($pcmData, $frequencyPacket, $info['frequency']);
+                                else $pcmData = resampler($pcmData, $freqOriginPacket, $info['frequency']);
 
                                 $encode = $this->members[$targetId]['opus']->encode($pcmData);
 
@@ -586,7 +565,7 @@ class MediaChannel
                                 $this->members[$targetId]['opus']->setSignalVoice(true);
 
 
-                                $pcmData = resampler($pcmData, $frequencyPacket, 48000);
+                                $pcmData = resampler($pcmData, $freqOriginPacket, 48000);
 
                                 try {
                                     $encode = $this->members[$targetId]['opus']->encode($pcmData, 48000);
@@ -608,9 +587,9 @@ class MediaChannel
                                 //    'work_channels' => 1,
                                 //]);
                                 $encode = monoToStereo($pcmData);
-                                $encode = resampler($encode, $frequencyPacket, $info['frequency'], 1);
+                                $encode = resampler($encode, $freqOriginPacket, $info['frequency'], 1);
                             } else {
-                                $encode = resampler($pcmData, $frequencyPacket, $info['frequency'], 1);
+                                $encode = resampler($pcmData, $freqOriginPacket, $info['frequency'], 1);
                             }
                             break;
                         default:
@@ -621,27 +600,17 @@ class MediaChannel
                     // Calcular incremento de timestamp baseado na frequência e tipo de payload
                     $timestampIncrement = $calculateTimestampIncrement($currentFrequency, $info['pt'], $targetId);
 
-                    // Incrementar timestamp do destino
-                    if ($destChannel['timestamp'] === 0) {
-                        $destChannel['timestamp'] = rand(0, 0xFFFFFFFF); // Timestamp inicial aleatório
-                    } else {
-                        $destChannel['timestamp'] += $timestampIncrement;
-                    }
 
-                    // Garantir que timestamp está dentro do range de 32 bits
-                    $destChannel['timestamp'] = $destChannel['timestamp'] & 0xFFFFFFFF;
 
-                    // Usar o canal RTP específico do destino com SSRC consistente
-                    $destChannel['rtpChannel']->setPayloadType($info['pt']);
-                    $destChannel['rtpChannel']->setFrequency($currentFrequency);
-                    $destChannel['rtpChannel']->setSsrc($destChannel['ssrc']);
 
-                    $newPacket = $destChannel['rtpChannel']->buildAudioPacket($encode);
+                    $newPacket = $this->members[$targetId]['rtpChannel']->buildAudioPacket($encode);
+
+
                     $this->socket->sendto($info['address'], $info['port'], $newPacket);
 
                     if ($pcmData !== false) {
                         if ($this->vadEnabled)
-                        $this->processVAD($pcmData, $idFrom);
+                            $this->processVAD($pcmData, $idFrom);
                     }
                 }
             }
@@ -709,10 +678,7 @@ class MediaChannel
         $peer['rtpChannel']->setSsrc($this->generateDeterministicSsrc($id));
         $this->ptCodecsChannels[$peer['pt']] = $nc;
         if (!array_key_exists('channels', $peer)) $peer['channels'] = $nc;
-
-
         $this->members[$id] = $peer;
-
     }
 
     private function processVAD(string $pcmData, ...$extra): void
@@ -826,31 +792,16 @@ class MediaChannel
                     continue;
                 }
 
-                $extractSsrc = $member['ssrc'] ?? null;
-                if ($extractSsrc === null) {
+                $rtpChannel = $member['rtpChannel'] ?? null;
+                if (!$rtpChannel instanceof rtpChannel) {
                     continue;
-                }
-
-                if (!array_key_exists($extractSsrc, $this->rtpChans)) {
-                    if (!empty($this->rtpChans)) {
-                        $extractSsrc = array_key_first($this->rtpChans);
-                    } else {
-                        $pt = (int)($member['pt'] ?? 8);
-                        $frequency = (int)($member['frequency'] ?? 8000);
-                        $this->rtpChans[$extractSsrc] = new rtpChannel($pt, $frequency, 20, $extractSsrc);
-                        $this->rtpChans[$extractSsrc]->timestamp = (int)($member['timestamp'] ?? random_int(1, 0x7FFFFFFF));
-                        $this->rtpChans[$extractSsrc]->sequenceNumber = random_int(1, 0xFFFF);
-                        if (class_exists(bcg729Channel::class)) {
-                            $this->rtpChans[$extractSsrc]->bcg729Channel = new bcg729Channel();
-                        }
-                    }
                 }
 
                 $ptTelephoneEvent = $this->findTelephoneEventPt((int)($member['frequency'] ?? 8000));
 
                 // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
-                $eventTs = (int)$this->rtpChans[$extractSsrc]->timestamp;
-                $ssrc = (int)$extractSsrc;
+                $eventTs = (int)$rtpChannel->timestamp;
+                $ssrc = (int)$rtpChannel->ssrc;
 
                 // Pacotes de progresso do evento
                 for ($i = 1; $i <= $steps; $i++) {
@@ -882,7 +833,7 @@ class MediaChannel
                         'CCnNN',
                         $b1,
                         $b2,
-                        $this->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
+                        $rtpChannel->sequenceNumber++ & 0xFFFF,
                         $eventTs & 0xFFFFFFFF,
                         $ssrc & 0xFFFFFFFF
                     );
@@ -908,7 +859,7 @@ class MediaChannel
                         'CCnNN',
                         0x80,
                         $ptTelephoneEvent & 0x7F,
-                        $this->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
+                        $rtpChannel->sequenceNumber++ & 0xFFFF,
                         $eventTs & 0xFFFFFFFF,
                         $ssrc & 0xFFFFFFFF
                     );
@@ -921,7 +872,7 @@ class MediaChannel
                 }
 
                 // Mantém a timeline contínua
-                $this->rtpChans[$extractSsrc]->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
+                $rtpChannel->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
             }
         } catch (\Throwable $e) {
             return;
