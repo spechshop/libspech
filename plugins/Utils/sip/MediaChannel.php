@@ -508,7 +508,7 @@ class MediaChannel
 
 
                 if (strtolower($codec) === 'telephone-event') {
-                    cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
+                    //cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
                     $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
 
 
