@@ -1927,7 +1927,7 @@ class trunkController
                 }
             });
             $this->mediaChannel->start();
-            $this->mediaChannel?->unblock();
+            $this->mediaChannel?->block();
         });
     }
 
@@ -2409,7 +2409,7 @@ class trunkController
             }
             $receive = sip::parse($res);
             if (empty($receive['headers']['CSeq'])) {
-                cli::pcl($receive, 'red');
+                cli::pcl($res, 'red');
                 continue;
             }
             $cseq = sip::letters($receive["headers"]["CSeq"][0]);

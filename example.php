@@ -167,6 +167,12 @@ include 'plugins/autoloader.php';
         $phone->onKeyPress(function ($event, $peer) use ($phone) {
             //cli::pcl("Digitando: " . $event, "yellow");
         });
+        $phone->onPacketOnTimeoutMedia(function ($peer) use ($phone) {
+            cli::pcl("Timeout de mídia atingido, encerrando chamada", 'bold_red');
+            $phone->bye();
+            $phone->close();
+            return true;
+        });
         $phone->call('553140040104');
 
 

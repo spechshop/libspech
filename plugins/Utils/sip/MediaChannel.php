@@ -367,8 +367,6 @@ class MediaChannel
     public function start(): void
     {
         Coroutine::create(function () {
-
-
             $maxFrequency = 8000;
             $this->active = true;
 
@@ -387,8 +385,10 @@ class MediaChannel
 
             $lastPacketTime = microtime(true);
             while (true) {
-
-
+                if (!$this->active) {
+                    cli::pcl("MediaChannel: Desligado", 'bold_red');
+                    return;
+                }
                 $peer = ['address' => '0.0.0.0', 'port' => 0];
                 $packet = $this->socket->recvfrom($peer, 0.2);
                 $currentTime = microtime(true);
@@ -397,9 +397,6 @@ class MediaChannel
                 if (!$packet) {
                     $now = $currentTime;
                     $elapsed = $now - $lastPacketTime;
-
-                    // 110 é timeout normal do recvfrom.
-                    // Não é motivo para fechar socket agora.
                     $errCode = (int)($this->socket->errCode ?? 0);
 
                     if ($errCode !== 0 && !in_array($errCode, [110, 11, 35], true)) {
@@ -421,23 +418,24 @@ class MediaChannel
 
 
 
+
                         // disabled
-                         if (1>2)
-                        if ($this->socket->getsockname()['port'] == $this->listenPort) {
-                            $try = $this->socket->getsockname()['port'] - 1;
-                            if (network::isPortAvailable($try, 'udp')) {
-                                cli::pcl("PORTA: $try disponivel", 'bold_green');
-                            } else {
-                                cli::pcl("PORTA: $try indisponivel", 'bold_red');
-                            }
-                            $this->socket->close();
-                            $this->socket = new \SocketMutable(AF_INET, SOCK_DGRAM, 0);
-                            if (!$this->socket->bind('0.0.0.0', (int)$try)) {
-                                cli::pcl("SOCKET ERROR: {$this->socket->errCode} {$this->socket->errMsg} PORTA: $try", 'bold_red');
-                            } else {
-                                cli::pcl("SOCKET BIND: {$this->socket->errCode} {$this->socket->errMsg} PORTA: " . $this->socket->getsockname()['port'], 'bold_green');
-                            }
-                        }
+
+//                        if ($this->socket->getsockname()['port'] == $this->listenPort) {
+//                            $try = $this->socket->getsockname()['port']-1;
+//                            if (network::isPortAvailable($try, 'udp')) {
+//                                cli::pcl("PORTA: $try disponivel", 'bold_green');
+//                            } else {
+//                                cli::pcl("PORTA: $try indisponivel", 'bold_red');
+//                            }
+//                            $this->socket->close();
+//                            $this->socket = new \SocketMutable(AF_INET, SOCK_DGRAM, 0);
+//                            if (!$this->socket->bind('0.0.0.0', (int)$try)) {
+//                                cli::pcl("SOCKET ERROR: {$this->socket->errCode} {$this->socket->errMsg} PORTA: $try", 'bold_red');
+//                            } else {
+//                                cli::pcl("SOCKET BIND: {$this->socket->errCode} {$this->socket->errMsg} PORTA: " . $this->socket->getsockname()['port'], 'bold_green');
+//                            }
+//                        }
 
                         $this->sendSilenceProbeToMembers($now);
                         continue;
@@ -1029,8 +1027,8 @@ class MediaChannel
     public function close(): void
     {
         $this->active = false;
-        // Fecha o socket primeiro
         try {
+            $this->socket->close();
             if (!$this->socket->isClosed()) {
                 $this->socket->close();
             }
