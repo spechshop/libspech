@@ -302,6 +302,66 @@ class MediaChannel
     {
         $this->onStartCallable = $callable;
     }
+    /**
+     * Faz forward de pacotes DTMF (telephone-event) para todos os membros
+     * Mantém o timestamp original do evento DTMF e ajusta o PT conforme necessário
+     *
+     * @param rtpc $rtpc Pacote RTP original com evento DTMF
+     * @param array $peer Informações do peer de origem ['address' => string, 'port' => int]
+     * @param string $idFrom Identificador do membro de origem (address:port)
+     * @param array $destinationChannels Array de canais RTP por destino (passado por referência)
+     */
+    private function forwardDtmfToMembers(rtpc $rtpc, array $peer, string $idFrom): void
+    {
+        $payload = $rtpc->payloadRaw;
+
+        if (strlen($payload) >= 4) {
+            $event = ord($payload[0]);
+            $e_r_volume = ord($payload[1]);
+            $end = ($e_r_volume & 0x80) >> 7;
+            $volume = $e_r_volume & 0x3F;
+
+            $duration = (ord($payload[2]) << 8) | ord($payload[3]);
+        } else {
+            cli::pcl("Invalid DTMF payload length: " . strlen($payload), 'red');
+            return;
+        }
+
+
+        foreach ($this->members as $targetId => $info) {
+            if ($targetId === $idFrom) {
+                continue;
+            }
+
+
+
+
+            cli::pcl("DTMF: {$event} {$volume} {$duration} {$end} {$targetId}", 'bold_green');
+
+
+
+            $frequencyMember = $this->ptCodecsFrequency[$info['codec']] ?? 8000;
+
+            // Encontrar o PT correto do telephone-event para este destino
+            $telephoneEventPt = $this->findTelephoneEventPt($frequencyMember);
+
+            // Configurar o PT do telephone-event no canal de destino
+            $this->members[$targetId]['rtpChannel']->setNewPtDTMF($telephoneEventPt);
+
+            // Detectar se é o primeiro pacote do evento (marker bit)
+            $isFirstPacket = ($rtpc->marker === 1);
+
+
+            // Construir e enviar pacote DTMF preservando timestamp original
+            $outPacket = $this->members[$targetId]['rtpChannel']->buildDtmfForwardPacket(
+                $rtpc->payloadRaw,
+                $rtpc->timestamp,
+                $isFirstPacket
+            );
+
+            $this->socket->sendto($info['address'], $info['port'], $outPacket);
+        }
+    }
 
     public function start(): void
     {
@@ -467,14 +527,12 @@ class MediaChannel
 
 
                 if (strtolower($codec) === 'telephone-event') {
-                    //cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
-                    // Fazer forward dos pacotes DTMF para todos os membros
-                    $this->forwardDtmfToMembers($rtpc, $peer, $idFrom, $destinationChannels);
+                    cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
+                    $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
 
-                    // Processar o evento DTMF (detectar digit, callbacks, etc)
-                    // O callback onDtmfCallable será disparado apenas 1x quando o evento terminar
+
                     $this->processDtmf($rtpc, $peer, function () {
-                        // Callback vazio - o forward já foi feito acima
+
                     });
 
                     continue;
@@ -598,9 +656,6 @@ class MediaChannel
                     }
 
                     // Calcular incremento de timestamp baseado na frequência e tipo de payload
-                    $timestampIncrement = $calculateTimestampIncrement($currentFrequency, $info['pt'], $targetId);
-
-
 
 
                     $newPacket = $this->members[$targetId]['rtpChannel']->buildAudioPacket($encode);
@@ -1047,75 +1102,6 @@ class MediaChannel
         cli::pcl("MediaChannel fechado Call-ID: {$this->callId}", 'green');
     }
 
-    /**
-     * Faz forward de pacotes DTMF (telephone-event) para todos os membros
-     * Mantém o timestamp original do evento DTMF e ajusta o PT conforme necessário
-     *
-     * @param rtpc $rtpc Pacote RTP original com evento DTMF
-     * @param array $peer Informações do peer de origem ['address' => string, 'port' => int]
-     * @param string $idFrom Identificador do membro de origem (address:port)
-     * @param array $destinationChannels Array de canais RTP por destino (passado por referência)
-     */
-    private function forwardDtmfToMembers(rtpc $rtpc, array $peer, string $idFrom, array &$destinationChannels): void
-    {
-        $payload = $rtpc->payloadRaw;
-
-        if (strlen($payload) >= 4) {
-            $event = ord($payload[0]);
-            $e_r_volume = ord($payload[1]);
-            $end = ($e_r_volume & 0x80) >> 7;
-            $volume = $e_r_volume & 0x3F;
-
-            $duration = (ord($payload[2]) << 8) | ord($payload[3]);
-        }
-
-
-        foreach ($this->members as $targetId => $info) {
-            // Não enviar para si mesmo
-            if ($targetId === $idFrom) {
-                continue;
-            }
-
-            // Não reenviar para o SSRC de origem
-            if (array_key_exists('ssrc', $info) && $rtpc->ssrc == $info['ssrc']) {
-                continue;
-            }
-
-            // Inicializar canal do destino se não existir
-            if (!isset($destinationChannels[$targetId])) {
-                $destSsrc = $this->generateDeterministicSsrc($targetId);
-                $destinationChannels[$targetId] = [
-                    'ssrc' => $destSsrc,
-                    'timestamp' => 0,
-                    'lastFrequency' => $info['frequency'] ?? 8000,
-                    'sequenceNumber' => 0,
-                    'rtpChannel' => new rtpChannel($info['pt'], $info['frequency'] ?? 8000, 20, $destSsrc)
-                ];
-            }
-
-            $destChannel = &$destinationChannels[$targetId];
-            $frequencyMember = $this->ptCodecsFrequency[$info['codec']] ?? 8000;
-
-            // Encontrar o PT correto do telephone-event para este destino
-            $telephoneEventPt = $this->findTelephoneEventPt($frequencyMember);
-
-            // Configurar o PT do telephone-event no canal de destino
-            $destChannel['rtpChannel']->setNewPtDTMF($telephoneEventPt);
-
-            // Detectar se é o primeiro pacote do evento (marker bit)
-            $isFirstPacket = ($rtpc->marker === 1);
-
-
-            // Construir e enviar pacote DTMF preservando timestamp original
-            $outPacket = $destChannel['rtpChannel']->buildDtmfForwardPacket(
-                $rtpc->payloadRaw,
-                $rtpc->timestamp,
-                $isFirstPacket
-            );
-
-            $this->socket->sendto($info['address'], $info['port'], $outPacket);
-        }
-    }
 
     /**
      * Encontra o PT correto do telephone-event para uma frequência específica
