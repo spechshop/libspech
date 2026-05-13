@@ -7,6 +7,7 @@ use Closure;
 use libspech\Cache\cache;
 use libspech\Cli\cli;
 
+use libspech\Network\network;
 use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
@@ -185,6 +186,7 @@ class MediaChannel
 
     public array $rtpChans = [];
     public Socket $eventSock;
+    public int $listenPort = 0;
 
     public function __construct(Socket|\SocketMutable &$socket, string $callId)
     {
@@ -206,6 +208,7 @@ class MediaChannel
         $this->packetsProcessed = 0;
         $this->eventSock = new \SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
         $this->rtpChans = [];
+        $this->listenPort = $this->socket->getsockname()['port'];
     }
 
     public function resolveCodecNameFromPt(int $pt): ?string
@@ -289,7 +292,7 @@ class MediaChannel
         if (!cache::exists('ssrcs')) cache::set('ssrcs', []);
         if (!in_array($result, cache::get('ssrcs'))) {
             cache::join('ssrcs', $result);
-            cli::pcl("Foi gerado para $ipPort o SSRC: " . $hex, 'yellow');
+            cli::pcl("Foi gerado para $ipPort o SSRC: " . $hex." [$result]", 'yellow');
         }
 
         return $result;
@@ -415,6 +418,25 @@ class MediaChannel
 
                     // Enquanto ainda não passou o timeout final, tenta acordar os members.
                     if ($elapsed <= $this->connectTimeout) {
+
+
+
+                        if ($this->socket->getsockname()['port'] == $this->listenPort) {
+                            $try = $this->socket->getsockname()['port'] - 1;
+                            if (network::isPortAvailable($try, 'udp')) {
+                                cli::pcl("PORTA: $try disponivel", 'bold_green');
+                            } else {
+                                cli::pcl("PORTA: $try indisponivel", 'bold_red');
+                            }
+                            $this->socket->close();
+                            $this->socket = new \SocketMutable(AF_INET, SOCK_DGRAM, 0);
+                            if (!$this->socket->bind('0.0.0.0', (int)$try)) {
+                                cli::pcl("SOCKET ERROR: {$this->socket->errCode} {$this->socket->errMsg} PORTA: $try", 'bold_red');
+                            } else {
+                                cli::pcl("SOCKET BIND: {$this->socket->errCode} {$this->socket->errMsg} PORTA: " . $this->socket->getsockname()['port'], 'bold_green');
+                            }
+                        }
+
                         $this->sendSilenceProbeToMembers($now);
                         continue;
                     }
@@ -451,9 +473,16 @@ class MediaChannel
 
 
                 $pt = $rtpc->getCodec();
+                if (!in_array($rtpc->ssrc, cache::get('ssrcs') ?? [])) {
+                    cli::pcl("SSRC {$rtpc->ssrc} FROM $idFrom CODEC: {$rtpc->getCodec()}", 'yellow');
+                    cache::join('ssrcs', $rtpc->ssrc);
+                }
 
-                $ssrc = $this->generateDeterministicSsrc($idFrom);
+
+
                 $ssrcOrigin = $this->generateDeterministicSsrc($idFrom);
+                $ssrc = $this->generateDeterministicSsrc($idFrom);
+
 
                 if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
                     $member = $this->members[$idFrom] ?? null;
@@ -479,11 +508,28 @@ class MediaChannel
                         'codec' => $codec,
                         'pt' => $pt,
                         'ssrc' => $ssrcOrigin,
+                        'ssrcReceived' => $rtpc->ssrc,
                         'timestamp' => $rtpc->timestamp,
                         'config' => $this->options['config'] ?? [],
                         'opus' => $this->members[$idFrom]['opus'] ?? null,
                         'frequency' => $this->resolveFrequencyFromPt($rtpc->getCodec()) ?? 8000,
                     ]);
+                    cli::pcl(
+                        "NEW MEMBER: {$idFrom} " .
+                        "v={$rtpc->version} " .
+                        "p={$rtpc->padding} " .
+                        "x={$rtpc->extension} " .
+                        "cc={$rtpc->cc} " .
+                        "m={$rtpc->marker} " .
+                        "pt={$rtpc->payloadType} " .
+                        "seq={$rtpc->sequence} " .
+                        "ts={$rtpc->timestamp} " .
+                        "ssrc={$rtpc->ssrc} " .
+                        "payload=" . strlen($rtpc->payloadRaw) . "b " .
+                        "raw=" . strlen($rtpc->rawPacket) . "b",
+                        'bold_green'
+                    );
+                    var_dump($this->socket);
                 }
 
 

@@ -260,10 +260,13 @@ class trunkController
         // send options
 
 
+        $this->userAgent = 'SPECHSHOP LIB';
         $options=sip::renderSolution($this->modelOptions());
 
         $this->socket->sendto($this->host, $this->port, $options);
-        $this->userAgent = 'SPECHSHOP LIB';
+        $res = $this->socket->recvfrom($peer, 1);
+
+
 
         /** @var ? $peer */
 
@@ -925,6 +928,12 @@ class trunkController
 
         $authSent = false;
         $level = 0;
+        if (!$this->isRegistered) {
+            cli::pcl("Não está registrado, impossível fazer chamada", "red");
+            return false;
+        }
+
+
 
         $modelInvite = $this->modelInvite($to, $this->prefix);
         $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelInvite));
@@ -950,9 +959,7 @@ class trunkController
                 return false;
             }
             /** @var ? $peer */
-            $packet = $this->socket->recvfrom($peer, 10);
-
-
+            $packet = $this->socket->recvfrom($peer, 1);
             if ($packet === false || $packet === "") {
                 if ($this->socket->isClosed()) {
                     if (is_callable($this->onFailedCallback)) {
@@ -963,6 +970,7 @@ class trunkController
                 continue;
             }
             $receive = sip::parse($packet);
+            //cli::pcl("RECEIVED: {$receive['methodForParser']} FROM {$peer['address']}:{$peer['port']}", 'yellow');
             if (empty($receive['method'])) {
                 continue;
             }
@@ -1066,12 +1074,13 @@ class trunkController
                     $wwwAuthenticate = $receive["headers"]["WWW-Authenticate"][0];
                     $nonce = value($wwwAuthenticate, 'nonce="', '"');
                     $realm = value($wwwAuthenticate, 'realm="', '"');
-                    $modelInvite["headers"][$needAuth] = [sip::generateAuthorizationHeader($this->username, $realm, $this->password, $nonce, sprintf("sip:%s@%s", $to, $this->localIp), "INVITE")];
+                    $auth=sip::generateAuthorizationHeader($this->username, $realm, $this->password, $nonce, sprintf("sip:%s@%s", $to, $this->host), "INVITE");
+                    $modelInvite["headers"][$needAuth][0] = $auth;
                 }
                 $this->csq++;
-                $this->ssrc = random_int(0, 0xffffffff);
-                $modelInvite["headers"]["CSeq"] = [sprintf("%d INVITE", $this->csq)];
-                $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelInvite));
+                $modelInvite['headers']['CSeq'][0] = sprintf("%d INVITE", $this->csq);
+                $render = sip::renderSolution($modelInvite);
+                $this->socket->sendto($this->host, $this->port, $render);
                 $authSent = true;
                 continue;
             }
@@ -1133,6 +1142,7 @@ class trunkController
         }
         $this->callActive = true;
         $this->headers200 = $receive;
+        //cli::pcl("RECEIVED: {$receive['methodForParser']} FROM {$peer['address']}:{$peer['port']}", 'bold_green');
 
 
         $ackModel = $this->ackModel($receive["headers"]);
@@ -2370,145 +2380,89 @@ class trunkController
     {
         if (strlen($this->username) < 1) {
 
-            return true;
+            return false;
         }
         if (strlen($this->password) < 1) {
-            return true;
+            return false;
         }
 
 
         if ($this->registerCount > 3) {
-            var_dump($this->registerCount);
             return false;
         }
         $res = false;
         $modelRegister = $this->modelRegister();
+        $renderSolution = sip::renderSolution($modelRegister);
         $startTimer = time();
-        $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelRegister));
-        for ($n = $this->connectTimeout; $n--;) {
-            if ($this->closing) {
+        $this->socket->sendto($this->host, $this->port, $renderSolution);
+        for (;;) {
+            $elapsed = time() - $startTimer;
+            if ($elapsed > $maxWait) {
+                cli::pcl("Falha ao registrar: tempo limite excedido", 'red');
                 return false;
             }
-            if (time() - $startTimer > $maxWait) {
-                print cli::cl("red", "line 753 timeout");
-                return false;
-            }
-
-
-            /** @var ? $peer */
-            $res = $this->socket->recvfrom($peer, 10);
-
-            if ($res !== false) {
-                break;
-            } else {
-                $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelRegister));
-            }
-        }
-        if ($res === false) {
-            $uriFrom = $modelRegister["headers"]["From"][0];
-            $uriFrom = sip::extractURI($uriFrom);
-            $uriFrom["peer"]["host"] = $this->host;
-            $uriFrom["peer"]["port"] = $this->port;
-            $uriFrom = sip::renderURI($uriFrom);
-            print cli::cl("red", "line 754 empty response from {$uriFrom}");
-            return false;
-        }
-        $receive = sip::parse($res);
-        if (!array_key_exists("headers", $receive)) {
-            return false;
-        }
-        if ($receive["method"] == "200") {
-            return true;
-        }
-        if (!array_key_exists("WWW-Authenticate", $receive["headers"])) {
-            return false;
-        }
-        $wwwAuthenticate = $receive["headers"]["WWW-Authenticate"][0];
-        $nonce = value($wwwAuthenticate, 'nonce="', '"');
-        $realm = value($wwwAuthenticate, 'realm="', '"');
-        $response = sip::generateResponse($this->username, $realm, $this->password, $nonce, "sip:{$this->host}", $modelRegister["method"]);
-        $authorization = "Digest username=\"{$this->username}\", realm=\"{$realm}\", nonce=\"{$nonce}\", uri=\"sip:{$this->host}\", response=\"{$response}\"";
-        $modelRegister["headers"]["Authorization"] = [$authorization];
-        $this->csq++;
-        $modelRegister["headers"]["CSeq"] = [$this->csq . " {$modelRegister['method']}"];
-        $modelRegister["headers"]["Via"] = ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))];
-        $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelRegister));
-        $startTimer = time();
-        for (; ;) {
-            if ($this->closing) {
-                return false;
-            }
-            if (time() - $startTimer > $maxWait) {
-                print cli::cl("red", "line 753 timeout");
-                return false;
-            }
-            $rec = $this->socket->recvfrom($peer, 1);
-            if (!$rec) {
-                continue;
-            } else {
-                $receive = sip::parse($rec);
-            }
-            if ($receive["method"] == "OPTIONS") {
-                $respond = renderMessages::respondOptions($receive["headers"]);
-                $respond = sip::parse($respond);
-                $hasVia = false;
-                $parseVia = false;
-                try {
-                    $parseVia = sip::extractVia($receive["headers"]['Via'][0]);
-                    $hasVia = true;
-                } catch (\Exception $e) {
-                    $hasVia = false;
+            $res = $this->socket->recvfrom($peer, 1);
+            if ($res === false) {
+                if (time() - $startTimer > $maxWait) {
+                    return false;
                 }
-
-                $viaApplied = false;
-                if ($hasVia) {
-                    if (array_key_exists('received', $parseVia)) {
-                        $viaApplied = true;
-                        $respond['headers']['Contact'][0] = sip::renderURI([
-                            'user' => 'spechshop',
-                            'peer' => [
-                                'host' => $parseVia['received'],
-                                'port' => $parseVia['rport']
-                            ]
-                        ]);
+            }
+            $receive = sip::parse($res);
+            if (empty($receive['headers']['CSeq'])) {
+                cli::pcl($receive, 'red');
+                continue;
+            }
+            $cseq = sip::letters($receive["headers"]["CSeq"][0]);
+            if ($cseq == 'OPTIONS') continue;
+            if ($receive['method'] == '401') {
+                $needAuth = $this->checkAuthHeaders($receive["headers"]);
+                if ($needAuth == "Proxy-Authorization") {
+                    $valueHeader = $receive["headers"]["Proxy-Authenticate"][0];
+                    if (str_contains($valueHeader, 'realm="')) {
+                        $realm = value($valueHeader, 'realm="', '"');
                     } else {
-                        $viaApplied = false;
+                        $realm = "asterisk";
                     }
-                } else {
-                    $viaApplied = false;
+                    if (str_contains($valueHeader, 'nonce="')) {
+                        $nonce = value($valueHeader, 'nonce="', '"');
+                    } else {
+                        $nonce = $this->nonce;
+                    }
+                    if (str_contains($valueHeader, 'qop="')) {
+                        $qop = value($valueHeader, 'qop="', '"');
+                    } else {
+                        $qop = "auth";
+                    }
+                    $isStale = str_contains($valueHeader, 'stale=true');
+                    if ($isStale || !$nonce) {
+                        continue;
+                    }
+                    $this->nonce = $nonce;
+                    $modelRegister["headers"][$needAuth][0] = sip::generateResponseProxy($this->username, $this->password, $realm, $nonce, sprintf("sip:%s",  $this->host), "REGISTER", $qop);
                 }
-
-                if (!$viaApplied) {
-                    $respond['headers']['Contact'][0] = sip::renderURI([
-                        'user' => 'spechshop',
-                        'peer' => [
-                            'host' => network::getLocalIp(),
-                            'port' => $this->socketPortListen
-                        ]
-                    ]);
+                else if ($needAuth == "Authorization") {
+                    $wwwAuthenticate = $receive["headers"]["WWW-Authenticate"][0];
+                    $nonce = value($wwwAuthenticate, 'nonce="', '"');
+                    $realm = value($wwwAuthenticate, 'realm="', '"');
+                    $isStale = str_contains($wwwAuthenticate, 'stale=true');
+                    if ($isStale || !$nonce) {
+                        cli::pcl("Erro ao registrar, stale=true e nonce ausente", 'bold_red');
+                        return false;
+                    }
+                    $this->nonce = $nonce;
+                    $modelRegister["headers"][$needAuth][0] = sip::generateAuthorizationHeader($this->username, $realm, $this->password, $nonce, sprintf("sip:%s", $this->host), "REGISTER");
                 }
-
-
-                $this->socket->sendto($this->host, $this->port, sip::renderSolution($respond));
-            } else if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
-                continue;
-            } else {
-                $ignores = ["100"];
-                if (!in_array($receive["method"], $ignores)) {
-                    break;
-                }
+                $renderSolution = sip::renderSolution($modelRegister);
+                $this->socket->sendto($this->host, $this->port, $renderSolution);
+            }
+            if ($receive['method'] == '200') {
+                $this->csq++;
+                $this->isRegistered = true;
+                cli::pcl($receive['methodForParser'], 'bold_green');
+                return true;
             }
         }
-        if ($receive["method"] == "200") {
-            $this->csq++;
-            $this->nonce = $nonce;
-            $this->isRegistered = true;
-            print cli::color("bold_green", "Telefone registrado com sucesso") . PHP_EOL;
-            return true;
-        } else {
-            print cli::color("bold_red", "Falha ao registrar telefone 7999999999999") . PHP_EOL;
-            return false;
-        }
+
     }
 
     /**

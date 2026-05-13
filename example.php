@@ -59,14 +59,17 @@ include 'plugins/autoloader.php';
 
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $host);
-        //$phone->setCallerId('5569984477328');
+        //$phone->setCallerId('XXXXXXXXXXXXX');
         // ====================================================================
         // SESSÃO 4: REGISTRO SIP
         // ====================================================================
         // Tenta registrar no servidor SIP com timeout de 10 segundos
         // Se falhar, lança uma exceção e interrompe a execução
-        if (!$phone->register()) {
-            throw new \Exception("Erro ao registrar");
+        if ($phone->register()) {
+            cli::pcl("Registrado com sucesso", "green");
+        } else {
+            cli::pcl("Erro ao registrar", "red");
+            return false;
         }
 
         // ====================================================================
@@ -106,10 +109,6 @@ include 'plugins/autoloader.php';
         // Habilita a gravação de áudio durante a chamada
         $phone->enableAudioRecording();
         $phone->defineAudioFile('silence_5m.wav');
-
-
-
-        // Callback executado quando a chamada é recebida/respondida
         $phone->onAnswer(function (trunkController $phone) {
             // Inicia o recebimento de mídia (áudio RTP)
             $phone->receiveMedia();
@@ -131,11 +130,14 @@ include 'plugins/autoloader.php';
 
 
             $phone->waitSilence(false, 10);
+
             $buffer = $phone->getBuffer();
             $bufferLen = $buffer->length();
             if ($bufferLen > 0) {
 
                 cli::pcl("Buffer possui packets: " . $bufferLen, "bold_green");
+                $phone->bye();
+                return;
 
             }
             interruptibleSleep(7, $phone->receiveBye);
@@ -162,16 +164,9 @@ include 'plugins/autoloader.php';
             $phone->receiveBye = true;
             $phone->callActive = false;
         });
-
-        // Callback executado quando uma tecla DTMF é pressionada remotamente
         $phone->onKeyPress(function ($event, $peer) use ($phone) {
             //cli::pcl("Digitando: " . $event, "yellow");
         });
-
-        // ====================================================================
-        // SESSÃO 8: INICIALIZAÇÃO DA CHAMADA
-        // ====================================================================
-        // Realiza uma chamada de saída para o númeSro especificado
         $phone->call('553140040104');
 
 
