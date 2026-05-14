@@ -756,6 +756,7 @@ class trunkController
                 continue;
             }
 
+
             $receive = sip::parse($packet);
             if (empty($receive['method'])) {
                 continue;
