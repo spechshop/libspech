@@ -972,6 +972,9 @@ class trunkController
             if (empty($receive['method'])) {
                 continue;
             }
+            if (empty($receive['headers']['Via'])) {
+                continue;
+            }
             $this->currentMethod = $receive["method"];
             $this->lastPacket = $receive;
             if (array_key_exists('Record-Route', $receive["headers"]))
@@ -1197,6 +1200,10 @@ class trunkController
                 continue;
             } else {
                 $receive = sip::parse($res);
+                if (empty($receive['method'])) continue;
+                if (empty($receive['headers']['Via'])) {
+                    continue;
+                }
                 $this->lastPacket = $receive;
                 if (array_key_exists('Record-Route', $receive["headers"]))
                     $this->route = $receive["headers"]["Record-Route"][0];
