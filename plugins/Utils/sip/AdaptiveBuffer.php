@@ -40,7 +40,6 @@ class AdaptiveBuffer
             'avg_buffer_utilization' => 0.0
         ];
 
-        cli::pcl("🔧 [{$callId}] Buffer adaptativo inicializado: {$initialBufferMs}ms (max: {$maxBufferMs}ms)", 'blue');
     }
 
     /**

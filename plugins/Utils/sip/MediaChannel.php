@@ -202,7 +202,7 @@ class MediaChannel
         $this->blockChannel = new \Swoole\Coroutine\Channel(1);
 
 
-        $this->adaptationEnabled = true;
+        $this->adaptationEnabled = false;
         $this->qualityReports = [];
         $this->adaptationCheckInterval = 50;
         $this->packetsProcessed = 0;
@@ -292,7 +292,6 @@ class MediaChannel
         if (!cache::exists('ssrcs')) cache::set('ssrcs', []);
         if (!in_array($result, cache::get('ssrcs'))) {
             cache::join('ssrcs', $result);
-            cli::pcl("Foi gerado para $ipPort o SSRC: " . $hex." [$result]", 'yellow');
         }
 
         return $result;
@@ -400,7 +399,7 @@ class MediaChannel
                     $errCode = (int)($this->socket->errCode ?? 0);
 
                     if ($errCode !== 0 && !in_array($errCode, [110, 11, 35], true)) {
-                        cli::pcl("SOCKET ERROR: {$errCode} {$this->socket->errMsg}", 'bold_red');
+                        //cli::pcl("SOCKET ERROR: {$errCode} {$this->socket->errMsg}", 'bold_red');
 
                         $this->unblock();
                         $this->socket->close();
@@ -728,7 +727,7 @@ class MediaChannel
         $peer['opus']->setBitrate($peer['config']['maxplaybackrate'] ?? 24000);
 
 
-        print cli::cl('bold_green', $rate . " " . $id . " MEMBER ADDED IN CALL " . $peer['codec'] . ' PT ' . $peer['pt'] . ' ' . $peer['frequency'] . ' kHz');
+
         $peer['rtpChannel'] = new rtpChannel((int)$peer['pt'], $peer['frequency'], 20, $this->generateDeterministicSsrc($id));
         $peer['rtpChannel']->setSsrc($this->generateDeterministicSsrc($id));
         $this->ptCodecsChannels[$peer['pt']] = $nc;
