@@ -472,6 +472,15 @@ class MediaChannel
 
 
                 $pt = $rtpc->getCodec();
+                if ($pt==72) {
+                    if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
+                        cli::pcl("PT: 72 solving...", 'bold_green');
+                        $this->socket->close();
+                        $this->socket = new \SocketMutable(AF_INET, SOCK_DGRAM, 0);
+                        $this->socket->bind('0.0.0.0', (int)$this->listenPort - 1);
+                        continue;
+                    }
+                }
 
 
 

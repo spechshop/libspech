@@ -270,7 +270,7 @@ class trunkController
 
         /** @var ? $peer */
 
-        $this->mediaChannel = false;
+        $this->mediaChannel = new MediaChannel($this->rtpSocket, $this->callId);
 
 
     }
@@ -1761,7 +1761,9 @@ class trunkController
             $this->callActive = true;
             $this->receiveBye = false;
 
-            $this->mediaChannel = new MediaChannel($this->rtpSocket, $this->callId);
+
+
+            //$this->mediaChannel = new MediaChannel($this->rtpSocket, $this->callId);
             if (is_callable($this->onPacketOnTimeoutMediaCallable))
                 $this->mediaChannel->packetOnTimeout($this->onPacketOnTimeoutMediaCallable);
 
