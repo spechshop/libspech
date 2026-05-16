@@ -362,7 +362,103 @@ class MediaChannel
             $this->socket->sendto($info['address'], $info['port'], $outPacket);
         }
     }
+    private function debugRtcpPacket(string $packet, array $peer): void
+    {
+        $len = strlen($packet);
 
+        if ($len < 4) {
+            cli::pcl("RTCP inválido len={$len}", 'red');
+            return;
+        }
+
+        $offset = 0;
+        $index = 0;
+
+        while (($offset + 4) <= $len) {
+            $b0 = ord($packet[$offset]);
+            $pt = ord($packet[$offset + 1]);
+
+            $version = ($b0 >> 6) & 0x03;
+            $padding = ($b0 >> 5) & 0x01;
+            $count = $b0 & 0x1F;
+
+            $lengthWords = unpack('n', substr($packet, $offset + 2, 2))[1];
+
+            // length = número de palavras de 32 bits menos 1
+            $blockLen = ($lengthWords + 1) * 4;
+
+            if ($blockLen <= 0 || ($offset + $blockLen) > $len) {
+                cli::pcl(
+                    "RTCP bloco inválido from {$peer['address']}:{$peer['port']} " .
+                    "offset={$offset} pt={$pt} blockLen={$blockLen} total={$len}",
+                    'red'
+                );
+                return;
+            }
+
+            $name = match ($pt) {
+                200 => 'SR',
+                201 => 'RR',
+                202 => 'SDES',
+                203 => 'BYE',
+                204 => 'APP',
+                205 => 'RTPFB',
+                206 => 'PSFB',
+                207 => 'XR',
+                default => 'UNKNOWN',
+            };
+
+            $msg = "RTCP[$index] from {$peer['address']}:{$peer['port']} " .
+                "type={$pt}({$name}) " .
+                "v={$version} p={$padding} count={$count} " .
+                "words={$lengthWords} bytes={$blockLen} offset={$offset}";
+
+            if (($pt === 200 || $pt === 201) && $blockLen >= 8) {
+                $ssrc = unpack('N', substr($packet, $offset + 4, 4))[1];
+                $msg .= " ssrc={$ssrc}";
+            }
+
+            if ($pt === 200 && $blockLen >= 28) {
+                $senderSsrc = unpack('N', substr($packet, $offset + 4, 4))[1];
+                $ntpMsw = unpack('N', substr($packet, $offset + 8, 4))[1];
+                $ntpLsw = unpack('N', substr($packet, $offset + 12, 4))[1];
+                $rtpTs = unpack('N', substr($packet, $offset + 16, 4))[1];
+                $packetCount = unpack('N', substr($packet, $offset + 20, 4))[1];
+                $octetCount = unpack('N', substr($packet, $offset + 24, 4))[1];
+
+                $msg .= " senderSsrc={$senderSsrc}" .
+                    " ntp={$ntpMsw}.{$ntpLsw}" .
+                    " rtpTs={$rtpTs}" .
+                    " packets={$packetCount}" .
+                    " octets={$octetCount}";
+            }
+
+            cli::pcl($msg, 'yellow');
+
+            $offset += $blockLen;
+            $index++;
+        }
+
+        if ($offset !== $len) {
+            cli::pcl("RTCP trailing bytes: " . ($len - $offset), 'yellow');
+        }
+    }
+    private function isRtcpPacket(string $packet): bool
+    {
+        if (strlen($packet) < 4) {
+            return false;
+        }
+
+        $version = (ord($packet[0]) >> 6) & 0x03;
+
+        if ($version !== 2) {
+            return false;
+        }
+
+        $type = ord($packet[1]);
+
+        return $type >= 200 && $type <= 207;
+    }
     public function start(): void
     {
         Coroutine::create(function () {
@@ -464,9 +560,14 @@ class MediaChannel
                 }
 
 
-                $this->packetsProcessed++;
+
                 $idFrom = "{$peer['address']}:{$peer['port']}";
                 $this->audioMetrics['total_packets']++;
+                if ($this->isRtcpPacket($packet)) {
+                   continue;
+                }
+                $this->packetsProcessed++;
+
 
                 $rtpc = new rtpc($packet);
 

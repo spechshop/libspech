@@ -78,6 +78,9 @@ include 'plugins/autoloader.php';
 
         // Callback executado quando uma chamada está tocando (ringing)
         $phone->onRinging(function () use (&$phone) {
+           if ($phone->audioRemoteIp)  $phone->receiveMedia();
+
+
             cli::pcl("Chamada TOCANDO", "yellow");
             //\Swoole\Coroutine::sleep(5);
             //$phone->cancel();
@@ -110,6 +113,9 @@ include 'plugins/autoloader.php';
         $phone->enableAudioRecording();
         $phone->defineAudioFile('silence_5m.wav');
         $phone->onAnswer(function (trunkController $phone) {
+            cli::pcl("Chamada recebida", "green");
+
+            cli::pcl("IP remoto: " . $phone->audioRemoteIp. ':' . $phone->audioRemotePort, "yellow");
             // Inicia o recebimento de mídia (áudio RTP)
             $phone->receiveMedia();
 

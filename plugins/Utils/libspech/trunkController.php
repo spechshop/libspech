@@ -228,8 +228,33 @@ class trunkController
 
 
         $this->rtpSocket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
-        $this->audioReceivePort = network::getFreePort('udp');
-        $this->rtpSocket->bind('0.0.0.0', $this->audioReceivePort);
+
+        do {
+            $port = network::getFreePort('udp');
+
+            // RTP deve ser par. Se cair ímpar, volta uma porta.
+            if ($port % 2 !== 0) {
+                $port--;
+            }
+
+            $rtpPort  = $port;
+
+
+
+            // Garante que o par RTP/RTCP está disponível
+            $rtpAvailable  = network::isPortAvailable($rtpPort, 'udp');
+
+
+        } while (!$rtpAvailable);
+
+        $this->audioReceivePort = $rtpPort;
+
+
+        if (!$this->rtpSocket->bind('0.0.0.0', $this->audioReceivePort)) {
+            throw new \RuntimeException(
+                "Erro ao bindar RTP em {$this->audioReceivePort}: {$this->rtpSocket->errCode} {$this->rtpSocket->errMsg}"
+            );
+        }
 
 
         cli::pcl("Audio Receive Port: {$this->audioReceivePort}");
@@ -1747,11 +1772,7 @@ class trunkController
             $this->remotePort = $this->audioRemotePort;
 
 
-
-            $rtpSocket = $this->rtpSocket;
-
-
-            cli::pcl("Proxy de áudio iniciado na porta " . $this->socket->getsockname()['address'] . ":" . $rtpSocket->getsockname()['port']);
+            cli::pcl("Proxy de áudio iniciado na porta " . $this->mediaChannel->socket->getsockname()['address'] . ":" . $this->mediaChannel->socket->getsockname()['port']);
             $this->lastSpeakTime = microtime(true);
             $this->speakWaitSequence = [];
             $this->waitingEnd = 0;
@@ -1811,7 +1832,6 @@ class trunkController
             ]);
 
 
-
             $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $audioAttributes['ssrc'] ?? $this->ssrc);
             $this->mediaChannel->rtpChans[$audioAttributes['ssrc'] ?? $this->ssrc] = $this->rtpChannel;
             $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
@@ -1821,7 +1841,7 @@ class trunkController
             $opus->setDTX(true);
             $opus->setComplexity(1);
 
-            $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($rtpSocket, $opus) {
+            $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($opus) {
                 if (strlen($rtpc->payloadRaw) < 12) return;
                 $targetId = $peer['address'] . ':' . $peer['port'];
 
