@@ -20,7 +20,7 @@ class MediaChannel
 {
     public bool $active = true;
 
-    public int $connectTimeout = 5;
+    public int $connectTimeout = 10;
 
 
     // pcm 8khz silence
