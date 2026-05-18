@@ -701,15 +701,26 @@ class MediaChannel
 
                     switch (strtoupper($info['codec'])) {
                         case 'PCMU':
+                            if (strtoupper($codec) === strtoupper($info['codec'])) {
+                                $encode = $rtpc->payloadRaw;
+                                break;
+                            }
                             if ($freqOriginPacket !== 8000) $pcmData = resampler($pcmData, $freqOriginPacket, 8000);
                             $encode = encodePcmToPcmu($pcmData);
                             break;
                         case 'PCMA':
+                            if (strtoupper($codec) === strtoupper($info['codec'])) {
+                                $encode = $rtpc->payloadRaw;
+                                break;
+                            }
                             if ($freqOriginPacket !== 8000) $pcmData = resampler($pcmData, $freqOriginPacket, 8000);
                             $encode = encodePcmToPcma($pcmData);
                             break;
                         case 'G729':
-
+                            if (strtoupper($codec) === strtoupper($info['codec'])) {
+                                $encode = $rtpc->payloadRaw;
+                                break;
+                            }
                             if (!array_key_exists('bcg729Channel', $this->members[$targetId]))
                                 $this->members[$targetId]['bcg729Channel'] = new bcg729Channel();
 
@@ -721,6 +732,7 @@ class MediaChannel
                             }
                             break;
                         case 'OPUS':
+
                             try {
 
                                 $isStereo = $this->members[$targetId]['config']['stereo'] ?? false;
@@ -757,6 +769,7 @@ class MediaChannel
 
                             break;
                         case 'L16':
+
                             if ($this->ptCodecsChannels[$info['pt']] > 1) {
                                 // Converte mono para estéreo e resample para a frequência do destino
                                 //$encode = resample($pcmData, $frequencyPacket, $info['frequency'], [
