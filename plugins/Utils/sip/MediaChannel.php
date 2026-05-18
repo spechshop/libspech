@@ -486,7 +486,7 @@ class MediaChannel
                     return;
                 }
                 $peer = ['address' => '0.0.0.0', 'port' => 0];
-                $packet = $this->socket->recvfrom($peer, 0.020);
+                $packet = $this->socket->recvfrom($peer, 0.2);
                 $currentTime = microtime(true);
                 if ($this->debugEnabled) {
                     if (empty($lastDebug)) $lastDebug = microtime(true);
