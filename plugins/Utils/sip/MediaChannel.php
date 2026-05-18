@@ -362,6 +362,7 @@ class MediaChannel
             $this->socket->sendto($info['address'], $info['port'], $outPacket);
         }
     }
+
     private function debugRtcpPacket(string $packet, array $peer): void
     {
         $len = strlen($packet);
@@ -443,6 +444,7 @@ class MediaChannel
             cli::pcl("RTCP trailing bytes: " . ($len - $offset), 'yellow');
         }
     }
+
     private function isRtcpPacket(string $packet): bool
     {
         if (strlen($packet) < 4) {
@@ -459,14 +461,12 @@ class MediaChannel
 
         return $type >= 200 && $type <= 207;
     }
+
     public function start(): void
     {
         Coroutine::create(function () {
             $maxFrequency = 8000;
             $this->active = true;
-
-            // Rastreamento de SSRC e timestamp por destino
-            $destinationChannels = []; // [targetId => ['ssrc' => int, 'timestamp' => int, 'lastFrequency' => int, 'sequenceNumber' => int]]
 
             foreach ($this->ptCodecsFrequency as $codec => $frequency) {
                 if ($frequency > $maxFrequency) {
@@ -495,23 +495,19 @@ class MediaChannel
                     $errCode = (int)($this->socket->errCode ?? 0);
 
                     if ($errCode !== 0 && !in_array($errCode, [110, 11, 35], true)) {
-                        //cli::pcl("SOCKET ERROR: {$errCode} {$this->socket->errMsg}", 'bold_red');
-
                         $this->unblock();
                         $this->socket->close();
                         $this->eventSock->close();
 
-                        if (is_callable($this->packetOnTimeoutCallable)) {
-                            go($this->packetOnTimeoutCallable, $this->callId);
-                        }
-
+                        if ($this->active)
+                            if (is_callable($this->packetOnTimeoutCallable)) {
+                                go($this->packetOnTimeoutCallable, $this->callId);
+                            }
                         return;
                     }
 
                     // Enquanto ainda não passou o timeout final, tenta acordar os members.
                     if ($elapsed <= $this->connectTimeout) {
-
-
 
 
                         // disabled
@@ -560,11 +556,10 @@ class MediaChannel
                 }
 
 
-
                 $idFrom = "{$peer['address']}:{$peer['port']}";
                 $this->audioMetrics['total_packets']++;
                 if ($this->isRtcpPacket($packet)) {
-                   continue;
+                    continue;
                 }
                 $this->packetsProcessed++;
 
@@ -573,7 +568,7 @@ class MediaChannel
 
 
                 $pt = $rtpc->getCodec();
-                if ($pt==72) {
+                if ($pt == 72) {
                     if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
                         cli::pcl("PT: 72 solving...", 'bold_green');
                         $this->socket->close();
@@ -582,8 +577,6 @@ class MediaChannel
                         continue;
                     }
                 }
-
-
 
 
                 $ssrcOrigin = $this->generateDeterministicSsrc($idFrom);
@@ -835,7 +828,6 @@ class MediaChannel
             }
         }
         $peer['opus']->setBitrate($peer['config']['maxplaybackrate'] ?? 24000);
-
 
 
         $peer['rtpChannel'] = new rtpChannel((int)$peer['pt'], $peer['frequency'], 20, $this->generateDeterministicSsrc($id));
