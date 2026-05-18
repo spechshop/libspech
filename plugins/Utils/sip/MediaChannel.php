@@ -775,7 +775,7 @@ class MediaChannel
                 }
                 if ($this->debugEnabled) {
                     if (empty($lastDebug)) $lastDebug = microtime(true);
-                    if (microtime(true) - $lastDebug >= 1) {
+                    if (microtime(true) - $lastDebug >= 0.5) {
                         $timeMS = round((microtime(true) - $lastPacketTime) * 1000, 2);
                         cli::pcl("MediaChannel: " . $timeMS . "ms", 'bold_green');
                         $lastDebug = microtime(true);
