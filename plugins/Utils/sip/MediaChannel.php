@@ -25,6 +25,7 @@ class MediaChannel
 
     // pcm 8khz silence
     private string $syl = '';
+    public bool $debugEnabled = false;
 
     public function onReceive(callable $callback): void
     {
@@ -767,8 +768,18 @@ class MediaChannel
                     $this->socket->sendto($info['address'], $info['port'], $newPacket);
 
                     if ($pcmData !== false) {
-                        if ($this->vadEnabled)
+                        if ($this->vadEnabled) {
                             $this->processVAD($pcmData, $idFrom);
+                        }
+                    }
+                }
+                if ($this->debugEnabled) {
+                    if (empty($lastDebug)) $lastDebug = microtime(true);
+                    if (microtime(true) - $lastDebug >= 1) {
+                        $timeMS = round((microtime(true) - $lastPacketTime) * 1000, 2);
+                        cli::pcl("MediaChannel: " . $timeMS . "ms", 'bold_green');
+                        $lastDebug = microtime(true);
+
                     }
                 }
             }
