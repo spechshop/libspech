@@ -1733,7 +1733,9 @@ class trunkController
     public float $waitingSilenceTime = 1.0;
     public float $waitingSilenceStart = 0;
 
-    public function waitSilence($waitSilence = true, float $time = 1.0): void
+    public bool $waitingSilenceSuccess=false;
+
+    public function waitSilence($waitSilence = true, float $time = 1.0): bool
     {
         $this->waitingSilence = true;
         $this->waitingSilenceType = $waitSilence;
@@ -1748,6 +1750,13 @@ class trunkController
             if (!$this->waitingSilence) {
                 break;
             }
+        }
+        if ($this->waitingSilenceSuccess) {
+            $this->waitingSilenceSuccess = false;
+            return true;
+        } else {
+            $this->waitingSilenceSuccess = false;
+            return false;
         }
     }
 
@@ -1899,12 +1908,15 @@ class trunkController
                             $this->waitingSilenceType = true;
                             $this->waitingSilenceStart = 0;
                             $this->waitingSilenceTime = 1.0;
+                            $this->waitingSilenceSuccess = true;
+                            //cli::pcl("Tempo de silêncio atingido: $diff segundos", 'bold_green');
                         }
                         $volume = $this->volumeAverage($pcmData);
                         if ($volume >= 1.1) {
                             $this->waitingSilenceStart = microtime(true);
                         }
                     } else {
+
                         if ($diff >= $this->waitingSilenceTime) {
                             $this->waitingSilence = false;
                             $this->waitingSilenceType = true;
@@ -1918,11 +1930,14 @@ class trunkController
                        } catch (\Throwable) {
                             $volume = 0;
                        }
+                        //cli::pcl("Volume: {$volume}", $volume >= 1.1 ? 'bold_red' : 'bold_green');
                         if ($volume >= 1.1) {
                             $this->waitingSilence = false;
                             $this->waitingSilenceType = true;
                             $this->waitingSilenceStart = 0;
                             $this->waitingSilenceTime = 1.0;
+                            $this->waitingSilenceSuccess = true;
+                            //cli::pcl("Sinal de voz atingido em: $diff segundos", 'bold_green');
                         }
                     }
                 }
