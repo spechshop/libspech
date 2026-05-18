@@ -46,7 +46,7 @@ class trunkController
         "WWW-Authenticate" => "Authorization",
     ];
     public array $progressCodes = [
-        100,
+
         180,
         181,
         182,
@@ -1033,7 +1033,7 @@ class trunkController
 
             if (in_array($receive["method"], $this->progressCodes)) {
                 if (is_callable($this->onRingingCallback)) {
-                    go($this->onRingingCallback, $this);
+                    go($this->onRingingCallback, $this, $receive);
                     $this->onRingingCallback = null;
                 }
             }
@@ -1050,7 +1050,7 @@ class trunkController
                 if (array_key_exists('sdp', $receive) and !$this->callableRingInvoked) {
                     if ($receive['method'] > 180 && $receive['method'] < 200) {
                         if (is_callable($this->onRingingCallback)) {
-                            go($this->onRingingCallback, $this);
+                            go($this->onRingingCallback, $this, $receive);
                         }
                     }
                     if ($receive['method'] > 180 && $receive['method'] < 200) {
@@ -2344,6 +2344,12 @@ class trunkController
             return;
         }
         $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
+    }
+
+    public function modelBye(): array
+    {
+        return renderMessages::generateBye($this->headers200['headers']);
+
     }
 
     public function addListener(mixed $receiveIp, string $receivePort): void
