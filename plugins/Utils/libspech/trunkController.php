@@ -1905,15 +1905,31 @@ class trunkController
                     $closePcm = ($this->onReceivePcmCallback)(...);
                     go($closePcm, $pcmData, $peer, $this, $packetCodecName, $frequencyPacket);
                 }
-                if (is_callable($this->audioFileHandle)) {
-                    $closure = ($this->audioFileHandle)(...);
-                    go($closure, $pcmData, $peer, $this);
-                }
+
                 if ($this->vadEnabled) {
                     if ($pcmData !== false) {
                         $idFrom = $peer['address'] . ':' . $peer['port'];
                         $this->processVAD($pcmData, $idFrom);
                     }
+                }
+            });
+            $this->mediaChannel->onStart(function () {
+                if (is_callable($this->audioFileHandle)) {
+                    while ($this->mediaChannel->active) {
+                        $closure = ($this->audioFileHandle)(...);
+                        $frame = str_repeat("\x00", 320);
+
+
+
+                        go($closure, $frame, [
+                            'address' => $this->audioRemoteIp,
+                            'port' => $this->audioRemotePort,
+                        ], $this);
+                        co::sleep(0.02);
+                    }
+
+
+
                 }
             });
             $this->mediaChannel->start();
