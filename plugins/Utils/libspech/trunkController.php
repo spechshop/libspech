@@ -1915,13 +1915,14 @@ class trunkController
             });
             $this->mediaChannel->onStart(function () {
                 if (is_callable($this->audioFileHandle)) {
+                    $frame = str_repeat("\x00", 320);
                     while ($this->mediaChannel->active) {
                         $closure = ($this->audioFileHandle)(...);
-                        $frame = str_repeat("\x00", 320);
 
 
 
-                        go($closure, $frame, [
+
+                        call_user_func($closure, $frame, [
                             'address' => $this->audioRemoteIp,
                             'port' => $this->audioRemotePort,
                         ], $this);
