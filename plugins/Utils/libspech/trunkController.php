@@ -1837,6 +1837,9 @@ class trunkController
                     }
                 }
             }
+            $parser = trunkController::getSDPModelCodecs($this->sdpReceived['a']);
+
+
 
 
             $this->mediaChannel->addMember([
@@ -1845,30 +1848,29 @@ class trunkController
                 'codec' => $this->codecName,
                 'pt' => $this->ptUse,
                 'timestamp' => time(),
-                'config' => [],
+                'config' => $parser['config']??[],
                 'ssrc' => $audioAttributes['ssrc'] ?? $this->ssrc,
                 'frequency' => $this->frequencyCall,
                 'channels' => $this->defaultChannels,
+
             ]);
 
 
-            $this->rtpChannel = new RtpChannel($this->ptUse, $this->frequencyCall, 20, $audioAttributes['ssrc'] ?? $this->ssrc);
-            $this->mediaChannel->rtpChans[$audioAttributes['ssrc'] ?? $this->ssrc] = $this->rtpChannel;
-            $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
-            $opus = new \opusChannel($this->frequencyCall, $this->defaultChannels);
-            $opus->setBitrate($this->frequencyCall);
-            $opus->setSignalVoice(true);
-            $opus->setDTX(true);
-            $opus->setComplexity(1);
 
-            $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) use ($opus) {
+            $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
+
+
+
+
+            $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) {
                 if (strlen($rtpc->payloadRaw) < 12) return;
                 $targetId = $peer['address'] . ':' . $peer['port'];
 
 
 
                 $ssrc = $rtpc->ssrc;
-                if (!array_key_exists($ssrc, $channel->rtpChans)) $channel->rtpChans[$ssrc] = $this->rtpChannel;
+
+
 
 
                 $frequencyPacket = $channel->getFrequencyFromPtCodec($rtpc->payloadType);
@@ -1889,13 +1891,11 @@ class trunkController
                         break;
                     case 'OPUS':
 
-                        if (!empty($channel->members[$targetId]['opus'])) {
+                        $pcmData = $this->mediaChannel->members[$targetId]['opus']->decode($rtpc->payloadRaw);
 
-                        }
-                        $pcmData = $opus->decode($rtpc->payloadRaw);
                         // cli::pcl("Recebendo " . strlen($pcmData) . " bytes de {$peer['address']}:{$peer['port']} | Sequence: $rtpc->sequence | TimeStamp: {$rtpc->timestamp} | SSRC: {$rtpChannel->ssrc}", 'bold_yellow');
 
-                        $pcmData = resampler($pcmData, 48000, 8000);
+                        //$pcmData = resampler($pcmData, 48000, 8000);
 
 
                         break;
