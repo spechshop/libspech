@@ -110,6 +110,7 @@ class trunkController
     public int $totalSequence = 3;
     public array $socketsList = [];
     public bool $inTransfer = false;
+    public $currentTtsBlock;
 
     public mixed $currentMethod = null;
     public mixed $globalInfo = [];
@@ -2794,156 +2795,6 @@ class trunkController
         });
     }
 
-    public function defineAudioFile(string $audioFile): void
-    {
-        try {
-            \libspech\Sip\secureAudioVoip($audioFile);
-        } catch (\Exception $e) {
-            cli::pcl("Error defining audio file: " . $e->getMessage());
-            return;
-        }
-
-        $infoFile = \libspech\Sip\getInfoAudio($audioFile);
-        $tags = \libspech\Sip\wavChunks($audioFile);
-
-        $idDataTag = array_find_key($tags, fn($tag) => $tag['id'] === 'data');
-        if ($idDataTag === null) {
-            cli::pcl("Error: WAV data chunk not found");
-            return;
-        }
-
-        $chunkSize = \libspech\Sip\calculateChunkSize(
-            $infoFile['rate'],
-            $infoFile['numChannels'],
-            $infoFile['bitDepth']
-        );
-
-
-        $dataOffset = $tags[$idDataTag]['data'];
-
-        // 🔥 Lê o WAV inteiro em memória
-        $fileData = file_get_contents($audioFile);
-        if ($fileData === false) {
-            cli::pcl("Error reading audio file");
-            return;
-        }
-
-        // Apenas a parte PCM pura
-        $audioData = substr($fileData, $dataOffset);
-        unset($fileData);
-
-        $audioLen = strlen($audioData);
-
-        // 🌀 Começa no zero
-        $currentPosition = 0;
-
-        $this->registerAudioEvent(function ($pcmData, $peer, trunkController $phone)
-        use (&$currentPosition, $audioData, $audioLen, $chunkSize, $infoFile) {
-            if (empty($this->callActive)) {
-                cli::pcl("Call is not active, stopping audio playback.");
-                return;
-            }
-
-            $idFrom = $peer['address'] . ':' . $peer['port'];
-            $frequencyPacket = $infoFile['rate'];
-            $frequencyMember = $phone->frequencyCall;
-            if (!$this->mediaChannel->isMember($idFrom)) {
-                cli::pcl("Member {$idFrom} not found in media channel, stopping audio playback.");
-                return;
-            }
-
-
-            $ssrc = $this->mediaChannel->members[$idFrom]['ssrc'];
-
-
-            // --- LOOP INFINITO LIMPO ---
-            if ($currentPosition + $chunkSize > $audioLen) {
-                // Parte faltando
-                $rest = $audioLen - $currentPosition;
-
-                if ($rest > 0) {
-                    $part1 = substr($audioData, $currentPosition, $rest);
-                } else {
-                    $part1 = '';
-                }
-
-                // Completa com início do arquivo
-                $part2 = substr($audioData, 0, $chunkSize - $rest);
-
-                $pcmChunk = $part1 . $part2;
-
-                // Reinicia posição
-                $currentPosition = ($chunkSize - $rest);
-            } else {
-                // Chunk normal
-                $pcmChunk = substr($audioData, $currentPosition, $chunkSize);
-                $currentPosition += $chunkSize;
-            }
-            $channelsFile = $infoFile['numChannels'] ?? 1;
-            $channelsMember = $this->mediaChannel->members[$idFrom]['channels'];
-            if ($channelsFile > $channelsMember) {
-                $pcmChunk = stereoToMono($pcmChunk);
-            }
-
-
-            // ----------------------------
-            // Codec processing
-            // ----------------------------
-            $emptyFrame = str_repeat("\x00", 160);
-
-
-            switch (strtoupper($phone->codecName)) {
-
-                case 'PCMU':
-                    if ($frequencyPacket !== 8000) {
-                        $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
-                    }
-                    $encode = encodePcmToPcmu($pcmChunk);
-                    break;
-
-                case 'PCMA':
-                    if ($frequencyPacket !== 8000) {
-                        $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
-                    }
-                    $encode = encodePcmToPcma($pcmChunk);
-                    break;
-
-                case 'G729':
-                    if ($frequencyPacket !== 8000) {
-                        $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
-                    }
-                    $encode = $phone->mediaChannel->rtpChans[$ssrc]
-                        ->bcg729Channel->encode($pcmChunk);
-                    break;
-
-                case 'OPUS':
-                    if ($frequencyPacket !== 48000) {
-                        $pcm48 = resampler($pcmChunk, $frequencyPacket, 48000);
-                    } else {
-                        $pcm48 = $pcmChunk;
-                    }
-                    if (strlen($pcm48) < 2) {
-                        return;
-
-                    }
-                    $encode = $phone->mediaChannel->members[$idFrom]['opus']
-                        ->encode($pcm48);
-                    break;
-
-                case 'L16':
-                    $encode = resampler($pcmChunk, $frequencyPacket, $frequencyMember, true);
-                    break;
-
-                default:
-                    return;
-            }
-
-            if (!$encode) return;
-
-            $packet = $this->mediaChannel->members[$idFrom]['rtpChannel']->buildAudioPacket($encode);
-            $this->mediaChannel->socket->sendto($peer['address'], $peer['port'], $packet);
-        });
-    }
 
 
     /**
@@ -3013,6 +2864,180 @@ class trunkController
     {
         $this->vadEnabled = true;
     }
+
+    public bool $loopAudioFile = true;
+    public function autoReplayMedia(bool $option = true): void
+    {
+        $this->loopAudioFile = $option;
+
+    }
+    public function defineAudioFile(string $audioFile): void
+    {
+        try {
+            \libspech\Sip\secureAudioVoip($audioFile);
+        } catch (\Exception $e) {
+            cli::pcl("Error defining audio file: " . $e->getMessage());
+            return;
+        }
+
+        $infoFile = \libspech\Sip\getInfoAudio($audioFile);
+        $tags = \libspech\Sip\wavChunks($audioFile);
+
+        $idDataTag = array_find_key($tags, fn($tag) => $tag['id'] === 'data');
+
+        if ($idDataTag === null) {
+            cli::pcl("Error: WAV data chunk not found");
+            return;
+        }
+
+        $chunkSize = \libspech\Sip\calculateChunkSize(
+            $infoFile['rate'],
+            $infoFile['numChannels'],
+            $infoFile['bitDepth']
+        );
+
+        $dataOffset = $tags[$idDataTag]['data'];
+
+        $fileData = file_get_contents($audioFile);
+
+        if ($fileData === false) {
+            cli::pcl("Error reading audio file");
+            return;
+        }
+
+        $audioData = substr($fileData, $dataOffset);
+        unset($fileData);
+
+        $audioLen = strlen($audioData);
+        $currentPosition = 0;
+
+        $this->registerAudioEvent(function ($pcmData, $peer, trunkController $phone)
+        use (&$currentPosition, $audioData, $audioLen, $chunkSize, $infoFile) {
+            if (empty($this->callActive)) {
+                cli::pcl("Call is not active, stopping audio playback.");
+                return;
+            }
+
+            $idFrom = $peer['address'] . ':' . $peer['port'];
+
+            $frequencyPacket = $infoFile['rate'];
+            $frequencyMember = $phone->frequencyCall;
+
+            if (!$this->mediaChannel->isMember($idFrom)) {
+                cli::pcl("Member {$idFrom} not found in media channel, stopping audio playback.");
+                return;
+            }
+
+            $member = $this->mediaChannel->members[$idFrom];
+            $ssrc = $member['ssrc'];
+
+
+
+            if ($currentPosition >= $audioLen) {
+                $pcmChunk = str_repeat("\x00", $chunkSize);
+            } elseif ($currentPosition + $chunkSize > $audioLen) {
+                $rest = $audioLen - $currentPosition;
+                $part1 = $rest > 0 ? substr($audioData, $currentPosition, $rest) : '';
+
+                if ($this->loopAudioFile) {
+                    $missing = $chunkSize - $rest;
+                    $part2 = substr($audioData, 0, $missing);
+
+                    $pcmChunk = $part1 . $part2;
+                    $currentPosition = $missing;
+                } else {
+                    $missing = $chunkSize - $rest;
+
+                    $pcmChunk = $part1 . str_repeat("\x00", $missing);
+                    $currentPosition = $audioLen;
+                }
+            } else {
+                $pcmChunk = substr($audioData, $currentPosition, $chunkSize);
+                $currentPosition += $chunkSize;
+            }
+
+            $channelsFile = $infoFile['numChannels'] ?? 1;
+            $channelsMember = $member['channels'] ?? 1;
+
+            if ($channelsFile > $channelsMember) {
+                $pcmChunk = stereoToMono($pcmChunk);
+            }
+
+            switch (strtoupper($phone->codecName)) {
+                case 'PCMU':
+                    if ($frequencyPacket !== 8000) {
+                        $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
+                    }
+
+                    $encode = encodePcmToPcmu($pcmChunk);
+                    break;
+
+                case 'PCMA':
+                    if ($frequencyPacket !== 8000) {
+                        $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
+                    }
+
+                    $encode = encodePcmToPcma($pcmChunk);
+                    break;
+
+                case 'G729':
+                    if ($frequencyPacket !== 8000) {
+                        $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
+                    }
+
+                    if (!isset($phone->mediaChannel->rtpChans[$ssrc])) {
+                        return;
+                    }
+
+                    $encode = $phone->mediaChannel->rtpChans[$ssrc]
+                        ->bcg729Channel
+                        ->encode($pcmChunk);
+                    break;
+
+                case 'OPUS':
+                    if ($frequencyPacket !== 48000) {
+                        $pcm48 = resampler($pcmChunk, $frequencyPacket, 48000);
+                    } else {
+                        $pcm48 = $pcmChunk;
+                    }
+
+                    if (strlen($pcm48) < 2) {
+                        return;
+                    }
+
+                    if (!isset($member['opus'])) {
+                        return;
+                    }
+
+                    $encode = $member['opus']->encode($pcm48);
+                    break;
+
+                case 'L16':
+                    $encode = resampler($pcmChunk, $frequencyPacket, $frequencyMember, true);
+                    break;
+
+                default:
+                    return;
+            }
+
+            if (!$encode) {
+                return;
+            }
+
+            if (!isset($member['rtpChannel'])) {
+                return;
+            }
+
+            $packet = $member['rtpChannel']->buildAudioPacket($encode);
+
+            $this->mediaChannel->socket->sendto(
+                $peer['address'],
+                $peer['port'],
+                $packet
+            );
+        });
+    }
+
 
 
     private function generateEmptyWavFile(string $path, int $durationSec): void
