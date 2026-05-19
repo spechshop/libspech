@@ -1446,6 +1446,7 @@ class trunkController
     {
         $codecMediaLine = "";
         $codecRtpMap = [];
+        $defaultChannels = 1;
         $preferredCodec = null;
         $dtmfCodec = null;
         $lineArg = [];
@@ -1456,6 +1457,12 @@ class trunkController
             if (str_starts_with($row, "rtpmap:")) {
                 $pt = value($row, "rtpmap:", " ");
                 $rate = explode('/', $row)[1];
+                $parts = explode('/', $row);
+                if (count($parts) > 2) {
+                    $defaultChannels = $parts[2];
+                }
+
+
                 $name = value($row, ' ', '/');
                 $codecMediaLine .= "{$pt} ";
                 $codecRtpMap[] = $row;
@@ -1465,7 +1472,8 @@ class trunkController
                         'pt' => $pt,
                         'rate' => $rate,
                         'sdp' => $row,
-                        'name' => $name
+                        'name' => $name,
+                        'channels' => $defaultChannels
                     ];
                     break; // Encerrar quando encontrar o codec preferencial
                 }
@@ -1497,7 +1505,8 @@ class trunkController
                         'pt' => $dtmfPt,
                         'rate' => $dtmfRate,
                         'sdp' => $row,
-                        'name' => 'telephone-event'
+                        'name' => 'telephone-event',
+                        'channels' => $defaultChannels
                     ];
                     break; // Encerrar no primeiro DTMF correspondente
                 }
@@ -1515,7 +1524,8 @@ class trunkController
                         'pt' => $dtmfPt,
                         'rate' => $dtmfRate,
                         'sdp' => $row,
-                        'name' => 'telephone-event'
+                        'name' => 'telephone-event',
+                        'channels' => $defaultChannels
                     ];
                     break; // Encerrar no primeiro DTMF correspondente
                 }
