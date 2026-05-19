@@ -995,39 +995,41 @@ class trunkController
                 continue;
             }
             $receive = sip::parse($packet);
-            //cli::pcl("RECEIVED: {$receive['methodForParser']} FROM {$peer['address']}:{$peer['port']}", 'yellow');
-            if (empty($receive['method'])) {
+            if (empty($receive['method']) || empty($receive['headers']['Via'])) {
                 continue;
             }
-            if (empty($receive['headers']['Via'])) {
+
+            // Normalização e validação do Call-ID
+            if (!isset($receive["headers"]["Call-ID"])) {
+                if (isset($receive["headers"]["i"])) {
+                    $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
+                }
+            }
+            if (isset($receive["headers"]["Call-ID"]) && $receive["headers"]["Call-ID"][0] !== $this->callId) {
+                if ($receive["method"] === "OPTIONS") {
+                    $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
+                }
                 continue;
             }
+
             $this->currentMethod = $receive["method"];
             $this->lastPacket = $receive;
-            if (array_key_exists('Record-Route', $receive["headers"]))
+            if (array_key_exists('Record-Route', $receive["headers"])) {
                 $this->route = $receive["headers"]["Record-Route"][0];
+            }
 
-            $abortCodes = [
-                    '480',
-                    'CANCEL',
-                    'BYE',
-                    '486',
-                    '487',
-                    '488',
-                    '500',
-                    '600',
-                    '603',
-                ]
-                    |> (fn($x) => array_merge($x, $this->failureCodes))
-                    |> array_unique(...);
+            $method = $receive["method"];
+            $isErrorResponse = is_numeric($method) && (int)$method >= 300 && !in_array((int)$method, [401, 407]);
+            $isAbortRequest = in_array($method, ['CANCEL', 'BYE']);
 
-
-            if (in_array($receive["method"], $abortCodes)) {
-                $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
+            if ($isErrorResponse || $isAbortRequest) {
+                if ($isAbortRequest) {
+                    $this->socket->sendto($this->host, $this->port, renderMessages::respond200OK($receive["headers"]));
+                }
                 $this->socket->close();
                 $this->error = true;
                 if (is_callable($this->onFailedCallback)) {
-                    return go($this->onFailedCallback, $receive['methodForParser']);
+                    go($this->onFailedCallback, $receive['methodForParser'] ?? "Chamada encerrada ($method)");
                 }
                 return false;
             }
@@ -1065,17 +1067,6 @@ class trunkController
                 $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1];
                 $this->audioRemoteIp = $remoteAddressAudioDestination;
                 $this->audioRemotePort = (int)$remotePortAudioDestination;
-            }
-            if (!array_key_exists("Call-ID", $receive["headers"])) {
-                if (array_key_exists("i", $receive["headers"])) {
-                    $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
-                } else {
-                    var_dump($packet);
-                    cli::pcl(sip::renderSolution($receive), "magenta");
-                }
-            }
-            if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
-                continue;
             }
             $needAuth = $this->checkAuthHeaders($receive["headers"]);
             if ($needAuth && !$authSent) {
@@ -1130,42 +1121,6 @@ class trunkController
                 if (array_key_exists('sdp', $receive)) {
                     break;
                 }
-            }
-            if (in_array($receive["method"], $this->failureCodes)) {
-                break;
-            }
-        }
-        if (!is_array($receive)) {
-            $this->error = true;
-            print "Falhou pois não recebeu resposta depois do INVITE" . PHP_EOL;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            }
-        }
-        if (!is_array($receive)) {
-            $this->error = true;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            }
-        }
-        if (!array_key_exists("headers", $receive)) {
-            $this->error = true;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            }
-        }
-        if (!array_key_exists("sdp", $receive)) {
-            $this->error = true;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            }
-        }
-        if (in_array($receive['method'], $this->failureCodes)) {
-            $this->error = true;
-            if (is_callable($this->onFailedCallback)) {
-                return go($this->onFailedCallback, $receive['methodForParser']);
-            } else {
-                return false;
             }
         }
         $this->callActive = true;
@@ -1225,68 +1180,49 @@ class trunkController
                     return false;
                 }
                 continue;
-            } else {
-                $receive = sip::parse($res);
-                if (empty($receive['method'])) continue;
-                if (empty($receive['headers']['Via'])) {
-                    continue;
-                }
-                $this->lastPacket = $receive;
-                if (array_key_exists('Record-Route', $receive["headers"]))
-                    $this->route = $receive["headers"]["Record-Route"][0];
-
-
-                if (empty($receive['method'])) {
-                    continue;
-                }
-                if ($receive["method"] == "NOTIFY") {
-                    $this->callActive = false;
-                    $this->receiveBye = true;
-                    $this->unblockCoroutine();
-                    return false;
-                }
-                if ($receive["method"] == "BYE") {
-                    $modelOk = renderMessages::respondOptions($receive['headers']);
-                    $this->socket->sendto($this->host, $this->port, $modelOk);
-                    $this->receiveBye = true;
-                    $this->callActive = false;
-                    $this->mediaChannel->close();
-
-
-                    $this->unblockCoroutine();
-                    if (is_callable($this->onHangupCallback)) {
-                        return go($this->onHangupCallback, $this, $receive, $peer);
-                    }
-                }
             }
-            if (!array_key_exists("Call-ID", $receive["headers"])) {
-                if (array_key_exists("i", $receive["headers"])) {
-                    $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
-                } else {
-                    cli::pcl(sip::renderSolution($receive), "magenta");
-                }
-            }
-            if ($receive["headers"]["Call-ID"][0] !== $this->callId) {
+
+            $receive = sip::parse($res);
+            if (empty($receive['method']) || empty($receive['headers']['Via'])) {
                 continue;
             }
-            if ($receive["method"] == "NOTIFY") {
-                $this->callActive = false;
-                $this->receiveBye = true;
-                $this->unblockCoroutine();
-                return false;
+
+            // Normalização e validação do Call-ID
+            if (!isset($receive["headers"]["Call-ID"])) {
+                if (isset($receive["headers"]["i"])) {
+                    $receive["headers"]["Call-ID"] = [$receive["headers"]["i"][0]];
+                }
             }
-            if ($receive["method"] == "BYE") {
-                $modelOk = renderMessages::respondOptions($receive['headers']);
-                $this->socket->sendto($this->host, $this->port, $modelOk);
-                $this->receiveBye = true;
+            if (isset($receive["headers"]["Call-ID"]) && $receive["headers"]["Call-ID"][0] !== $this->callId) {
+                if ($receive["method"] === "OPTIONS") {
+                    $this->socket->sendto($this->host, $this->port, renderMessages::respondOptions($receive["headers"]));
+                }
+                continue;
+            }
+
+            $this->lastPacket = $receive;
+            if (array_key_exists('Record-Route', $receive["headers"])) {
+                $this->route = $receive["headers"]["Record-Route"][0];
+            }
+
+            if ($receive["method"] == "NOTIFY" || $receive["method"] == "BYE") {
                 $this->callActive = false;
+                $this->receiveBye = true;
                 $this->unblockCoroutine();
+
+                if ($receive["method"] == "BYE") {
+                    $modelOk = renderMessages::respond200OK($receive['headers']);
+                    $this->socket->sendto($this->host, $this->port, $modelOk);
+                    if (isset($this->mediaChannel) && $this->mediaChannel instanceof MediaChannel) {
+                        $this->mediaChannel->close();
+                    }
+                }
+
                 if (is_callable($this->onHangupCallback)) {
-                    return go($this->onHangupCallback, $this, $receive, $peer);
+                    go($this->onHangupCallback, $this, $receive, $peer);
                 }
                 return false;
-            }
-            elseif ($this->receiveBye) {
+            } elseif ($this->receiveBye) {
                 print "Call ended 6 receiveBye" . PHP_EOL;
                 return true;
             } else {
