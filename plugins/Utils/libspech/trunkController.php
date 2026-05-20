@@ -2179,6 +2179,7 @@ class trunkController
 
     public function close(): void
     {
+        if ($this->isRegistered)   $this->unRegister();
 
         // Evitar múltiplas chamadas
         if ($this->closing) {
@@ -2360,6 +2361,143 @@ class trunkController
         }
     }
 
+
+    public function unRegister(): bool
+    {
+        if (strlen($this->username) < 1) {
+
+            return false;
+        }
+        if (strlen($this->password) < 1) {
+            return false;
+        }
+
+
+        $maxWait=5;
+        if ($this->registerCount > 3) {
+            return false;
+        }
+        $res = false;
+        $modelRegister = $this->modelRegister(0);
+        unset($modelRegister['headers']['Contact']);
+
+
+
+
+         $renderSolution = sip::renderSolution($modelRegister);
+        $startTimer = time();
+        $this->socket->sendto($this->host, $this->port, $renderSolution);
+        for (; ;) {
+            $elapsed = time() - $startTimer;
+            if ($elapsed > $maxWait) {
+                cli::pcl("Falha ao registrar: tempo limite excedido", 'red');
+                return false;
+            }
+             $res = $this->socket->recvfrom($peer, 1);
+            if ($res === false) {
+                if (time() - $startTimer > $maxWait) {
+                    return false;
+                }
+            }
+            $receive = sip::parse($res);
+            if (empty($receive['headers']['CSeq'])) {
+                 continue;
+            }
+            $cseq = sip::letters($receive["headers"]["CSeq"][0]);
+            if ($cseq == 'OPTIONS') continue;
+            if ($receive['method'] == '401') {
+                $needAuth = $this->checkAuthHeaders($receive["headers"]);
+
+                if ($needAuth == "Proxy-Authorization") {
+                    $valueHeader = $receive["headers"]["Proxy-Authenticate"][0] ?? '';
+
+                    $realm = str_contains($valueHeader, 'realm="')
+                        ? value($valueHeader, 'realm="', '"')
+                        : "asterisk";
+
+                    $nonce = str_contains($valueHeader, 'nonce="')
+                        ? value($valueHeader, 'nonce="', '"')
+                        : $this->nonce;
+
+                    $qop = str_contains($valueHeader, 'qop="')
+                        ? value($valueHeader, 'qop="', '"')
+                        : "auth";
+
+                    if (str_contains($valueHeader, 'stale=true') || !$nonce) {
+                        continue;
+                    }
+
+                    $this->nonce = $nonce;
+
+                    $modelRegister["headers"][$needAuth][0] = sip::generateResponseProxy(
+                        $this->username,
+                        $this->password,
+                        $realm,
+                        $nonce,
+                        sprintf("sip:%s", $this->host),
+                        "REGISTER",
+                        $qop
+                    );
+                } elseif ($needAuth == "Authorization") {
+                    $wwwAuthenticate = $receive["headers"]["WWW-Authenticate"][0] ?? '';
+
+                    $nonce = value($wwwAuthenticate, 'nonce="', '"');
+                    $realm = value($wwwAuthenticate, 'realm="', '"');
+
+                    if (str_contains($wwwAuthenticate, 'stale=true') || !$nonce) {
+                         return false;
+                    }
+
+                    $this->nonce = $nonce;
+
+                    $modelRegister["headers"][$needAuth][0] = sip::generateAuthorizationHeader(
+                        $this->username,
+                        $realm,
+                        $this->password,
+                        $nonce,
+                        sprintf("sip:%s", $this->host),
+                        "REGISTER"
+                    );
+                }
+
+                unset($modelRegister['headers']['Session-Expires']);
+
+                $this->csq++;
+                $modelRegister['headers']['CSeq'][0] = $this->csq . ' REGISTER';
+
+                $modelRegister['headers']['Contact'][0] = '*';
+                $modelRegister['headers']['Expires'][0] = '0';
+
+                if (isset($modelRegister['headers']['To'][0])) {
+                    $modelRegister['headers']['To'][0] = preg_replace(
+                        '/;tag=[^;>\s]+/i',
+                        '',
+                        $modelRegister['headers']['To'][0]
+                    );
+                }
+
+                if (isset($modelRegister['headers']['Via'][0])) {
+                    $modelRegister['headers']['Via'][0] = preg_replace(
+                        '/branch=z9hG4bK-[^;\s]+/i',
+                        'branch=z9hG4bK-' . bin2hex(random_bytes(8)),
+                        $modelRegister['headers']['Via'][0]
+                    );
+                }
+
+                $renderSolution = sip::renderSolution($modelRegister);
+
+                $this->socket->sendto($this->host, $this->port, $renderSolution);
+            }
+
+            if ($receive['method'] == '200') {
+                $this->csq++;
+                $this->isRegistered = false;
+                return true;
+            }
+
+
+        }
+    }
     public function register(int $maxWait = 5): bool
     {
         if (strlen($this->username) < 1) {
@@ -2445,7 +2583,6 @@ class trunkController
                 return true;
             }
         }
-
     }
 
     /**
@@ -2511,7 +2648,7 @@ class trunkController
                 "CSeq" => [$this->csq . " REGISTER"],
                 "Contact" => ["<sip:{$this->username}@{$this->localIp}:{$this->socketPortListen}>"],
                 "User-Agent" => [$this->userAgent],
-                "Expires" => [$expire ?? "120"],
+                "Expires" => ["$expire"],
                 "Allow" => ["INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, INFO, UPDATE"],
                 "Content-Length" => ["0"],
             ],
@@ -2805,74 +2942,7 @@ class trunkController
 
     }
 
-    public function resampleFileClone($audioFile, $newRate, $outputFile): void
-    {
-        if (file_exists($outputFile))
-            return;
 
-        try {
-            \libspech\Sip\secureAudioVoip($audioFile);
-        } catch (\Exception $e) {
-            cli::pcl("Error defining audio file: " . $e->getMessage());
-            return;
-        }
-
-        $infoFile = \libspech\Sip\getInfoAudio($audioFile);
-        $tags = \libspech\Sip\wavChunks($audioFile);
-
-        $idDataTag = array_find_key($tags, fn($tag) => $tag['id'] === 'data');
-
-        if ($idDataTag === null) {
-            cli::pcl("Error: WAV data chunk not found");
-            return;
-        }
-
-        $chunkSize = \libspech\Sip\calculateChunkSize(
-            $infoFile['rate'],
-            $infoFile['numChannels'],
-            $infoFile['bitDepth']
-        );
-
-        $dataOffset = $tags[$idDataTag]['data'];
-
-        $fileData = file_get_contents($audioFile);
-
-        if ($fileData === false) {
-            cli::pcl("Error reading audio file");
-            return;
-        }
-
-        $audioData = substr($fileData, $dataOffset);
-        unset($fileData);
-
-        $audioLen = strlen($audioData);
-        $currentPosition = 0;
-
-
-        // convert to desired rate, reading chunk by chunk
-        $outputPcm = '';
-        $chunkCount = 0;
-
-        while ($currentPosition < $audioLen) {
-            $chunk = substr($audioData, $currentPosition, $chunkSize);
-            $currentPosition += $chunkSize;
-
-            if ($chunk === '') {
-                break;
-            }
-
-            // Realiza a reamostragem para a nova taxa
-            $resampled = resample($chunk, $infoFile['rate'], $newRate, [
-                'output_channels' => 1
-            ]);
-            $outputPcm .= $resampled;
-            $chunkCount++;
-        }
-
-
-        $header = \libspech\Sip\waveHead(strlen($outputPcm), $newRate, 1, 1);
-        file_put_contents($outputFile, $header . $outputPcm);
-    }
     public function defineAudioFile(string $audioFile): void
     {
         try {
@@ -2882,16 +2952,6 @@ class trunkController
             return;
         }
         $infoFile = \libspech\Sip\getInfoAudio($audioFile);
-        if ($infoFile['rate'] !== $this->frequencyCall) {
-            $newName = $audioFile . '_' . $this->frequencyCall . 'Hz.wav';
-
-            $this->resampleFileClone($audioFile, $this->frequencyCall, $newName);
-            defer(function () use ($newName) {
-                unlink($newName);
-            });
-            $audioFile = $newName;
-            $infoFile = \libspech\Sip\getInfoAudio($audioFile);
-        }
 
 
         $tags = \libspech\Sip\wavChunks($audioFile);
@@ -3056,6 +3116,8 @@ class trunkController
             );
         });
     }
+
+
 
 
     private function generateEmptyWavFile(string $path, int $durationSec): void

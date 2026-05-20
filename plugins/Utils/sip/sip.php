@@ -573,7 +573,7 @@ class sip
             if ($key == 'Content-Length') continue;
             if ($key == 'Content-Type') continue;
             if (is_array($value)) foreach ($value as $vx) {
-                if (empty($vx)) continue;
+                if (!is_string($vx)) continue;
                 $render .= "$key: $vx\r\n";
                 //$render .= "$key: $vx\r\n";
             }
