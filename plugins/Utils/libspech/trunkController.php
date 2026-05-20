@@ -2209,9 +2209,7 @@ class trunkController
         $this->callActive = false;
         $this->blockSpeak = false;
 
-        if ($this->isRegistered) {
-            $this->unRegister();
-        }
+
 
         foreach ($this->idTimers as $id => $timer) {
             Timer::clear($id);
