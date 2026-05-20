@@ -2371,6 +2371,11 @@ class trunkController
         if (strlen($this->password) < 1) {
             return false;
         }
+        $this->socket->close();
+        $this->isRegistered = false;
+        $this->callActive = false;
+        $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
+        $this->socket->bind('0.0.0.0', $this->socketPortListen);
 
 
         $maxWait=5;
