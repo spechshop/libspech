@@ -521,207 +521,6 @@ class trunkController
     }
 
 
-    /**
-     * @deprecated Use send2833 instead
-     */
-    public function send2833Deprecated(string $digit): void
-    {
-        try {
-            if (empty($this->rtpSocket) || empty($this->remoteIp) || empty($this->remotePort)) {
-                cli::pcl("[2833] socket/destino não inicializados.", "bold_red");
-                return;
-            }
-
-            /** @var Socket $socket */
-            //var_dump(array_keys($this->mediaChannel->members));
-            //cli::pcl("Remote IP: {$this->remoteIp} Porta: {$this->remotePort}");
-
-
-            $ip = $this->remoteIp;
-            $port = $this->remotePort;
-            if (empty($this->mediaChannel))
-                return;
-            if (empty($this->mediaChannel->members)) {
-                return;
-            }
-            $extractSsrc = $this->mediaChannel->members["$ip:$port"]['ssrc'];
-            $key = "$ip:$port";
-
-            if (!array_key_exists($extractSsrc, $this->mediaChannel->rtpChans)) {
-                if (!empty($this->mediaChannel->rtpChans)) {
-                    $extractSsrc = array_key_first($this->mediaChannel->rtpChans);
-                } else {
-                    $member = $this->mediaChannel->members[$key] ?? null;
-                    if (!$member) return;
-                    $pt = (int)($member['pt'] ?? 8);
-                    $frequency = (int)($member['frequency'] ?? 8000);
-                    $this->mediaChannel->rtpChans[$extractSsrc] = new \libspech\Rtp\rtpChannel($pt, $frequency, 20, $extractSsrc);
-                    $this->mediaChannel->rtpChans[$extractSsrc]->timestamp = (int)($member['timestamp'] ?? random_int(1, 0x7FFFFFFF));
-                    $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber = random_int(1, 0xFFFF);
-                    if (class_exists(\bcg729Channel::class)) {
-                        $this->mediaChannel->rtpChans[$extractSsrc]->bcg729Channel = new \bcg729Channel();
-                    }
-                }
-            }
-
-
-            //cli::pcl("Members: ".json_encode(array_keys($this->mediaChannel->members)), 'bold_blue');
-            //cli::pcl("Chans: ".json_encode(array_keys($this->mediaChannel->rtpChans)), 'bold_blue');
-            //cli::pcl("Ssrc: {$extractSsrc}", 'bold_blue');
-            //cli::pcl("Buffer: ".strlen($this->getBuffer()).' bytes', 'bold_blue');
-
-
-            $event = match (strtoupper($digit)) {
-                '0' => 0,
-                '1' => 1,
-                '2' => 2,
-                '3' => 3,
-                '4' => 4,
-                '5' => 5,
-                '6' => 6,
-                '7' => 7,
-                '8' => 8,
-                '9' => 9,
-                '*' => 10,
-                '#' => 11,
-                'A' => 12,
-                'B' => 13,
-                'C' => 14,
-                'D' => 15,
-                default => null,
-            };
-
-            if ($event === null) {
-                cli::pcl("[DTMF] Dígito inválido: {$digit}", "bold_red");
-                return;
-            }
-
-            // MicroSIP usa PJSIP; o default do PJSIP é:
-            // - volume = 10
-            // - duração total = 1600 timestamps (200ms em telephone-event/8000)
-            // - retransmissão do pacote final com E-bit = 3 vezes
-            // - primeiro pacote com marker bit = 1
-            // - timestamp do evento fixo durante todo o dígito
-            $volume = 10;
-            $endRetransmits = 3;
-
-            // PT negociado no SDP (normalmente 101)
-            $ptTelephoneEvent = property_exists($this, 'ptTelephoneEvent')
-                ? (int)$this->ptTelephoneEvent
-                : 101;
-
-            // Clock do telephone-event.
-            // Para bater com o padrão clássico do PJSIP/MicroSIP, 8000 é o default.
-            $eventClockRate = property_exists($this, 'telephoneEventClockRate') && (int)$this->telephoneEventClockRate > 0
-                ? (int)$this->telephoneEventClockRate
-                : 8000;
-
-            // Packetização típica do PJSIP: 20ms por frame
-            $ptimeMs = property_exists($this, 'telephoneEventPtimeMs') && (int)$this->telephoneEventPtimeMs > 0
-                ? (int)$this->telephoneEventPtimeMs
-                : 20;
-
-            // Duração total padrão do PJSIP: 200ms
-            $durationMs = 200;
-
-            $stepSamples = (int)round(($eventClockRate * $ptimeMs) / 1000);
-            if ($stepSamples <= 0) {
-                $stepSamples = 160; // fallback clássico 20ms @ 8k
-            }
-
-            $finalDurationSamples = (int)round(($eventClockRate * $durationMs) / 1000);
-            if ($finalDurationSamples <= 0) {
-                $finalDurationSamples = 1600;
-            }
-
-            $steps = (int)ceil($finalDurationSamples / $stepSamples);
-
-            if ($steps < 1) {
-                $steps = 1;
-            }
-
-            // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
-            $eventTs = (int)$this->mediaChannel->rtpChans[$extractSsrc]->timestamp;
-            $ssrc = (int)$extractSsrc;
-
-
-            // Pacotes de progresso do evento
-            for ($i = 1; $i <= $steps; $i++) {
-                $duration = $i * $stepSamples;
-                if ($duration > $finalDurationSamples) {
-                    $duration = $finalDurationSamples;
-                }
-
-                $isFirst = ($i === 1);
-                $isLast = ($duration >= $finalDurationSamples);
-
-                // Byte 2 do payload:
-                // bit 7 = E (não setar aqui; os pacotes End são enviados separadamente)
-                // bits 0..5 = volume
-                $eVol = $volume & 0x3F;
-
-                $payload = pack(
-                    'CCn',
-                    $event,
-                    $eVol,
-                    $duration
-                );
-
-                // Marker bit somente no primeiro pacote
-                $b1 = 0x80;
-                $b2 = ($isFirst ? 0x80 : 0x00) | ($ptTelephoneEvent & 0x7F);
-
-                $hdr = pack(
-                    'CCnNN',
-                    $b1,
-                    $b2,
-                    $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
-                    $eventTs & 0xFFFFFFFF,
-                    $ssrc & 0xFFFFFFFF
-                );
-
-
-                $this->mediaChannel->socket->sendto($ip, $port, $hdr . $payload);
-
-                // Dorme entre os pacotes, exceto depois do último "progresso"
-                if (!$isLast) {
-                    Coroutine::sleep($ptimeMs / 1000);
-                }
-            }
-
-            // Retransmite o último pacote com E-bit 3 vezes
-            $payloadEnd = pack(
-                'CCn',
-                $event,
-                0x80 | ($volume & 0x3F),
-                $finalDurationSamples
-            );
-
-            for ($r = 0; $r < $endRetransmits; $r++) {
-                $hdr = pack(
-                    'CCnNN',
-                    0x80,
-                    $ptTelephoneEvent & 0x7F,
-                    $this->mediaChannel->rtpChans[$extractSsrc]->sequenceNumber++ & 0xFFFF,
-                    $eventTs & 0xFFFFFFFF,
-                    $ssrc & 0xFFFFFFFF
-                );
-
-                $this->mediaChannel->socket->sendto($ip, $port, $hdr . $payloadEnd);
-
-                if ($r < $endRetransmits - 1) {
-                    Coroutine::sleep($ptimeMs / 1000);
-                }
-            }
-
-            // Mantém a timeline contínua
-            $this->mediaChannel->rtpChans[$extractSsrc]->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
-        } catch (\Throwable $e) {
-            return;
-        }
-
-    }
-
     public function send2833(mixed $digit): void
     {
         if ($this->mediaChannel instanceof MediaChannel) {
@@ -783,9 +582,10 @@ class trunkController
             }
 
             /** @var ?array $peer */
-            $packet = $this->socket->recvfrom($peer, 10);
+            $packet = $this->safeRecvfrom($peer, 10);
 
-            if ($packet === false || $packet === "") {
+            // null = socket em uso por outra corrotina (ex.: unRegister concorrente) — pula iteração
+            if ($packet === null || $packet === false || $packet === "") {
                 continue;
             }
 
@@ -1002,7 +802,11 @@ class trunkController
                 return false;
             }
             /** @var ? $peer */
-            $packet = $this->socket->recvfrom($peer, 1);
+            $packet = $this->safeRecvfrom($peer, 1);
+            // null = socket em uso por outra corrotina (ex.: unRegister concorrente) — pula iteração
+            if ($packet === null) {
+                continue;
+            }
             if ($packet === false || $packet === "") {
                 if ($this->socket->isClosed()) {
                     if (is_callable($this->onFailedCallback)) {
