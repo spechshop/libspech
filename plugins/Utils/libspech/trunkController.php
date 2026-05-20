@@ -2210,7 +2210,7 @@ class trunkController
 
 
 
-        $maxWait=5;
+        $maxWait=1.5;
         if ($this->registerCount > 3) {
             return false;
         }
