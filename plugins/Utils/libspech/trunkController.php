@@ -2227,7 +2227,7 @@ class trunkController
         for (; ;) {
             $elapsed = time() - $startTimer;
             if ($elapsed > $maxWait) {
-                cli::pcl("Falha ao registrar: tempo limite excedido", 'red');
+                cli::pcl("Falha ao deslogar: tempo limite excedido", 'red');
                 return false;
             }
             try {
@@ -2241,6 +2241,8 @@ class trunkController
             }
             if ($res === false) {
                 if (time() - $startTimer > $maxWait) {
+                    cli::pcl("Falha ao deslogar: tempo limite excedido", 'red');
+
                     return false;
                 }
             }
@@ -2337,6 +2339,7 @@ class trunkController
             if ($receive['method'] == '200') {
                 $this->csq++;
                 $this->isRegistered = false;
+                $this->callActive = false;
                 return true;
             }
 
