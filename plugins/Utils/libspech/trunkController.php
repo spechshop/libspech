@@ -274,7 +274,7 @@ class trunkController
         }
 
 
-        cli::pcl("Audio Receive Port: {$this->audioReceivePort}");
+//        cli::pcl("Audio Receive Port: {$this->audioReceivePort}");
         $this->localIp = network::getLocalIp();
 
 

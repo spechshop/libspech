@@ -1236,7 +1236,7 @@ class MediaChannel
         $this->rtpChans = [];
         $this->openChannels = [];
 
-        cli::pcl("MediaChannel fechado Call-ID: {$this->callId}", 'green');
+//        cli::pcl("MediaChannel fechado Call-ID: {$this->callId}", 'green');
     }
 
 

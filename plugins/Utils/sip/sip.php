@@ -556,7 +556,7 @@ class sip
         if (!array_key_exists('X-Originating-IP', $solution['headers'])) $solution['headers']['X-Originating-IP'] = [];
         $solution['headers']['X-Originating-IP'][] = network::getLocalIp();
         if (!array_key_exists('method', $solution)) {
-            var_dump($solution);
+//            var_dump($solution);
 
         }
         $method = $solution['method'];
