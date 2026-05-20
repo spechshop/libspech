@@ -909,6 +909,8 @@ class MediaChannel
         return $this->audioMetrics;
     }
 
+    public bool $dtmfInUse = false;
+
     public function send2833(string $digit): void
     {
         try {
@@ -944,6 +946,7 @@ class MediaChannel
                 cli::pcl("[DTMF] Dígito inválido: {$digit}", "bold_red");
                 return;
             }
+            $this->dtmfInUse = true;
 
             // MicroSIP usa PJSIP; o default do PJSIP é:
             // - volume = 10
@@ -1060,8 +1063,10 @@ class MediaChannel
 
                 // Mantém a timeline contínua
                 $rtpChannel->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
+                $this->dtmfInUse = false;
             }
         } catch (\Throwable $e) {
+            $this->dtmfInUse = false;
             return;
         }
     }
