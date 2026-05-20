@@ -965,28 +965,39 @@ class trunkController
 
         $authSent = false;
         $level = 0;
+        $firstPacketReceived = false;
 
 
         $modelInvite = $this->modelInvite($to, $this->prefix);
         $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelInvite));
         $timeRing = time();
+        $inviteSentTime = time();
         for (; ;) {
             if ($this->closing || $this->socket->isClosed()) {
                 if (is_callable($this->onFailedCallback)) {
-                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                    return go($this->onFailedCallback, "Conexão encerrada prematuramente");
                 }
                 return false;
             }
             if (time() - $timeRing > $maxRings) {
                 $this->error = true;
                 if (is_callable($this->onFailedCallback)) {
-                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                    return go($this->onFailedCallback, "Tempo máximo de toque excedido ({$maxRings}s)");
+                }
+                return false;
+            }
+
+            // Se não recebeu nenhuma resposta em 15 segundos (ou no tempo de maxRings se for menor), aborta.
+            if (!$firstPacketReceived && (time() - $inviteSentTime > min(15, (int)$maxRings))) {
+                $this->error = true;
+                if (is_callable($this->onFailedCallback)) {
+                    return go($this->onFailedCallback, "Sem resposta do servidor SIP após " . min(15, (int)$maxRings) . " segundos");
                 }
                 return false;
             }
             if ($this->error) {
                 if (is_callable($this->onFailedCallback)) {
-                    return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                    return go($this->onFailedCallback, "Chamada interrompida por erro");
                 }
                 return false;
             }
@@ -995,7 +1006,7 @@ class trunkController
             if ($packet === false || $packet === "") {
                 if ($this->socket->isClosed()) {
                     if (is_callable($this->onFailedCallback)) {
-                        return go($this->onFailedCallback, "O convite para a chamada não nenhum retorno após {$maxRings} segundos");
+                        return go($this->onFailedCallback, "Socket fechado durante espera");
                     }
                     return false;
                 }
@@ -1019,6 +1030,7 @@ class trunkController
                 continue;
             }
 
+            $firstPacketReceived = true;
             $this->currentMethod = $receive["method"];
             $this->lastPacket = $receive;
             if (array_key_exists('Record-Route', $receive["headers"])) {
@@ -1108,6 +1120,8 @@ class trunkController
                 $render = sip::renderSolution($modelInvite);
                 $this->socket->sendto($this->host, $this->port, $render);
                 $authSent = true;
+                $firstPacketReceived = false;
+                $inviteSentTime = time();
                 continue;
             }
 
