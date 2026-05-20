@@ -2371,11 +2371,7 @@ class trunkController
         if (strlen($this->password) < 1) {
             return false;
         }
-        $this->socket->close();
-        $this->isRegistered = false;
-        $this->callActive = false;
-        $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
-        $this->socket->bind('0.0.0.0', $this->socketPortListen);
+
 
 
         $maxWait=5;
@@ -2398,7 +2394,11 @@ class trunkController
                 cli::pcl("Falha ao registrar: tempo limite excedido", 'red');
                 return false;
             }
-             $res = $this->socket->recvfrom($peer, 1);
+            try {
+                $res = $this->socket->recvfrom($peer, 1);
+            } catch (\Throwable $e) {
+                continue;
+            }
             if ($res === false) {
                 if (time() - $startTimer > $maxWait) {
                     return false;
