@@ -173,6 +173,7 @@ class trunkController
     public array $sdp;
     public $bcgChannel;
     public bool $closing = false;
+    protected bool $socketReadInProgress = false;
     private int $cid;
     private array $idTimers = [];
     public ?array $lastPacket = [];
@@ -184,6 +185,21 @@ class trunkController
     public bool $byeSent = false;
     public bool $answerCallbackInvoked = false;
 
+
+    private function safeRecvfrom(&$peer, $timeout = 1)
+    {
+        if ($this->socketReadInProgress) {
+            return null;
+        }
+        $this->socketReadInProgress = true;
+        try {
+            return $this->socket->recvfrom($peer, $timeout);
+        } catch (\Throwable $e) {
+            return false;
+        } finally {
+            $this->socketReadInProgress = false;
+        }
+    }
 
     /**
      * @throws RandomException
@@ -285,7 +301,7 @@ class trunkController
         $options = sip::renderSolution($this->modelOptions());
 
         $this->socket->sendto($this->host, $this->port, $options);
-        $res = $this->socket->recvfrom($peer, 1);
+        $res = $this->safeRecvfrom($peer, 1);
 
 
         /** @var ? $peer */
@@ -1155,7 +1171,11 @@ class trunkController
                 return false;
             }
 
-            $res = $this->socket->recvfrom($peer, 1);
+            $res = $this->safeRecvfrom($peer, 1);
+            if ($res === null) {
+                Coroutine::sleep(0.01);
+                continue;
+            }
             if (!$res) {
                 if ($this->socket->isClosed()) {
                     if (is_callable($this->onHangupCallback)) {
@@ -2179,25 +2199,25 @@ class trunkController
 
     public function close(): void
     {
-        if ($this->isRegistered)   $this->unRegister();
-
-        // Evitar múltiplas chamadas
+        // Evitar múltiplas chamadas e garantir reentrância
         if ($this->closing) {
             return;
         }
-        foreach ($this->idTimers as $id => $timer) {
-            Timer::clear($id);
-        }
-
-
-        cli::pcl("Iniciando fechamento Call-ID: {$this->callId}", 'yellow');
-
-        // Marca que está fechando ANTES de tudo para interromper loops
         $this->closing = true;
         $this->error = true;
         $this->receiveBye = true;
         $this->callActive = false;
         $this->blockSpeak = false;
+
+        if ($this->isRegistered) {
+            $this->unRegister();
+        }
+
+        foreach ($this->idTimers as $id => $timer) {
+            Timer::clear($id);
+        }
+
+        cli::pcl("Iniciando fechamento Call-ID: {$this->callId}", 'yellow');
 
 
         // Envia BYE se houver chamada ativa (fazer antes de fechar sockets)
@@ -2395,7 +2415,11 @@ class trunkController
                 return false;
             }
             try {
-                $res = $this->socket->recvfrom($peer, 1);
+                $res = $this->safeRecvfrom($peer, 1);
+                if ($res === null) {
+                    // Socket ocupado por outra corrotina, assumimos que não podemos esperar resposta aqui
+                    return true;
+                }
             } catch (\Throwable $e) {
                 continue;
             }
@@ -2528,7 +2552,11 @@ class trunkController
                 cli::pcl("Falha ao registrar: tempo limite excedido", 'red');
                 return false;
             }
-            $res = $this->socket->recvfrom($peer, 1);
+            $res = $this->safeRecvfrom($peer, 1);
+            if ($res === null) {
+                // Socket ocupado, não podemos ler aqui
+                return true;
+            }
             if ($res === false) {
                 if (time() - $startTimer > $maxWait) {
                     return false;
