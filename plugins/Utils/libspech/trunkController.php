@@ -88,6 +88,7 @@ class trunkController
     public array $dtmfList = [];
     public int $lastTime = 0;
     public bool $receiveBye = false;
+    public bool $preserveSockets = false;
 
     public $headers200;
     public string $calledNumber;
@@ -2059,28 +2060,30 @@ class trunkController
         }
 
         // Fecha todos os sockets
-        foreach ($this->socketsList as $socket) {
+        if (!$this->preserveSockets) {
+            foreach ($this->socketsList as $socket) {
+                try {
+                    if ($socket instanceof Socket && !$socket->isClosed()) {
+                        $socket->close();
+                    }
+                } catch (\Throwable $e) {
+                }
+            }
+
+            // Fecha sockets principais
             try {
-                if ($socket instanceof Socket && !$socket->isClosed()) {
-                    $socket->close();
+                if ($this->socket && !$this->socket->isClosed()) {
+                    $this->socket->close();
                 }
             } catch (\Throwable $e) {
             }
-        }
 
-        // Fecha sockets principais
-        try {
-            if (!$this->socket->isClosed()) {
-                $this->socket->close();
+            try {
+                if ($this->rtpSocket && !$this->rtpSocket->isClosed()) {
+                    $this->rtpSocket->close();
+                }
+            } catch (\Throwable $e) {
             }
-        } catch (\Throwable $e) {
-        }
-
-        try {
-            if (!$this->rtpSocket->isClosed()) {
-                $this->rtpSocket->close();
-            }
-        } catch (\Throwable $e) {
         }
 
         // Limpa callbacks
