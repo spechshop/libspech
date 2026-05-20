@@ -1574,6 +1574,8 @@ class trunkController
                 });
                 $this->mediaChannel->setVadRegistrationThreshold(15.51);
             }
+
+
             $this->mediaChannel->portList = $this->audioReceivePort;
             $this->mediaChannel->onDtmfCallable = $this->onDtmfCallable;
             $this->mediaChannel->codecMapper = [
@@ -1613,6 +1615,8 @@ class trunkController
 
 
             $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
+
+
 
 
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) {
@@ -1658,6 +1662,8 @@ class trunkController
                         cli::pcl("Codec não suportado: {$packetCodecName}");
                         break;
                 };
+
+
                 if (empty($pcmData)) return;
                 if ($this->waitingSilence) {
 
@@ -1715,8 +1721,7 @@ class trunkController
 
                 }
                 if (is_callable($this->onReceivePcmCallback)) {
-                    $closePcm = ($this->onReceivePcmCallback)(...);
-                    go($closePcm, $pcmData, $peer, $this, $packetCodecName, $frequencyPacket);
+                    ($this->onReceivePcmCallback)(...)($pcmData, $peer, $this, $packetCodecName, $frequencyPacket);
                 }
 
                 if ($this->vadEnabled) {
@@ -1728,15 +1733,15 @@ class trunkController
             });
             $this->mediaChannel->onStart(function () {
                 if (is_callable($this->audioFileHandle)) {
-                    $frame = str_repeat("\x00", 320);
+
                     while ($this->mediaChannel->active) {
                         if (!$this->mediaChannel->dtmfInUse) {
-                            call_user_func($this->audioFileHandle, $frame, [
+                            go($this->audioFileHandle, [
                                 'address' => $this->audioRemoteIp,
                                 'port' => $this->audioRemotePort,
                             ], $this);
                         }
-                        co::sleep(0.02);
+                        co::sleep(0.020);
                     }
                 }
             });
@@ -2029,7 +2034,6 @@ class trunkController
         $this->blockSpeak = false;
 
 
-
         foreach ($this->idTimers as $id => $timer) {
             Timer::clear($id);
         }
@@ -2212,8 +2216,7 @@ class trunkController
         }
 
 
-
-        $maxWait=1.5;
+        $maxWait = 1.5;
         if ($this->registerCount > 3) {
             return false;
         }
@@ -2222,9 +2225,7 @@ class trunkController
         unset($modelRegister['headers']['Contact']);
 
 
-
-
-         $renderSolution = sip::renderSolution($modelRegister);
+        $renderSolution = sip::renderSolution($modelRegister);
         $startTimer = time();
         $this->socket->sendto($this->host, $this->port, $renderSolution);
         for (; ;) {
@@ -2251,7 +2252,7 @@ class trunkController
             }
             $receive = sip::parse($res);
             if (empty($receive['headers']['CSeq'])) {
-                 continue;
+                continue;
             }
             $cseq = sip::letters($receive["headers"]["CSeq"][0]);
             if ($cseq == 'OPTIONS') continue;
@@ -2295,7 +2296,7 @@ class trunkController
                     $realm = value($wwwAuthenticate, 'realm="', '"');
 
                     if (str_contains($wwwAuthenticate, 'stale=true') || !$nonce) {
-                         return false;
+                        return false;
                     }
 
                     $this->nonce = $nonce;
@@ -2349,6 +2350,7 @@ class trunkController
 
         }
     }
+
     public function register(int $maxWait = 5): bool
     {
         if (strlen($this->username) < 1) {
@@ -2839,7 +2841,7 @@ class trunkController
         $audioLen = strlen($audioData);
         $currentPosition = 0;
 
-        $this->registerAudioEvent(function ($pcmData, $peer, trunkController $phone) use (&$currentPosition, $audioData, $audioLen, $chunkSize, $infoFile) {
+        $this->registerAudioEvent(function ($peer, trunkController $phone) use (&$currentPosition, $audioData, $audioLen, $chunkSize, $infoFile) {
             if (empty($this->callActive)) {
                 cli::pcl("Call is not active, stopping audio playback.");
                 return;
@@ -2889,6 +2891,9 @@ class trunkController
                 $pcmChunk = resample($pcmChunk, $frequencyPacket, $phone->frequencyCall, [
                     'input_channels' => $channelsFile,
                     'output_channels' => $channelsMember,
+                    'resample_filter' => 'kaiser_best',
+                    'resample_quality' => 10,
+                    'normalize' => true,
                 ]);
                 $frequencyPacket = $phone->frequencyCall;
             }
@@ -2971,8 +2976,6 @@ class trunkController
             );
         });
     }
-
-
 
 
     private function generateEmptyWavFile(string $path, int $durationSec): void
