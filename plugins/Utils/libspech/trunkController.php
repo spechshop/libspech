@@ -154,6 +154,8 @@ class trunkController
     public $socketInUse;
     public $waitingEnd = 0;
     private $audioFileHandle;
+    private array $preEncodedAudio = [];
+    private array $preEncodedInfo = [];
     public int $speakStartThreshold = 2;
     public int $speakEndThreshold = 3;
     public $prefix = '';
@@ -1987,12 +1989,13 @@ class trunkController
                 if (is_callable($this->audioFileHandle)) {
 
                     while ($this->mediaChannel->active) {
-                        if (!$this->mediaChannel->dtmfInUse) {
-                            go($this->audioFileHandle, [
+                        if (!$this->mediaChannel->dtmfInUse && $this->audioFileHandle instanceof Closure) {
+                            ($this->audioFileHandle)([
                                 'address' => $this->audioRemoteIp,
                                 'port' => $this->audioRemotePort,
                             ], $this);
                         }
+
                         co::sleep(0.020);
                     }
                 }
@@ -2479,13 +2482,20 @@ class trunkController
 
         $renderSolution = sip::renderSolution($modelRegister);
         $startTimer = time();
-        if (!is_null($this->socket)) {
+        if (is_null($this->socket)) {
             $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
-            $this->socket->bind($this->localIp, $this->socketPortListen);
+            if (!$this->socket->bind($this->localIp, $this->socketPortListen)) {
+                cli::pcl("Falha ao iniciar socket para deslogar", 'red');
+                return false;
+            }
         } else {
+            $this->socket->close();
             if ($this->socket->isClosed()) {
                 $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
-                $this->socket->bind($this->localIp, $this->socketPortListen);
+                if (!$this->socket->bind($this->localIp, $this->socketPortListen)) {
+                    cli::pcl("Falha ao iniciar socket para deslogar", 'red');
+                    return false;
+                }
             }
         }
 
@@ -2494,26 +2504,28 @@ class trunkController
         for (; ;) {
             $elapsed = time() - $startTimer;
             if ($elapsed > $maxWait) {
-                cli::pcl("Falha ao deslogar: tempo limite excedido", 'red');
+
                 return false;
             }
             try {
-                $res = $this->safeRecvfrom($peer, 1);
+                $res = $this->socket->safeRecvfrom($peer, 1);
                 if ($res === null) {
+                    cli::pcl("Socket ocupado por outra corrotina, assumimos que não podemos esperar resposta aqui");
                     // Socket ocupado por outra corrotina, assumimos que não podemos esperar resposta aqui
                     return true;
                 }
             } catch (\Throwable $e) {
+                cli::pcl("Erro ao receber resposta do servidor durante deslogagem: " . $e->getMessage(), 'red');
                 continue;
             }
             if ($res === false) {
                 if (time() - $startTimer > $maxWait) {
-                    cli::pcl("Falha ao deslogar: tempo limite excedido", 'red');
-
                     return false;
                 }
+                continue;
             }
             $receive = sip::parse($res);
+
             if (empty($receive['headers']['CSeq'])) {
                 continue;
             }
@@ -2601,6 +2613,18 @@ class trunkController
                 $renderSolution = sip::renderSolution($modelRegister);
 
                 $this->socket->sendto($this->host, $this->port, $renderSolution);
+                $res = $this->socket->safeRecvfrom($peer, 1);
+                if ($res) {
+                    $receive = sip::parse($res);
+                    if ($receive['method'] == '200') {
+                        $this->csq++;
+                        $this->isRegistered = false;
+                        $this->callActive = false;
+
+                        cli::pcl("Deslogado com sucesso", 'green');
+                        return true;
+                    }
+                }
             }
 
             if ($receive['method'] == '200') {
@@ -3104,6 +3128,72 @@ class trunkController
         $audioLen = strlen($audioData);
         $currentPosition = 0;
 
+        // Pré-codificação para economizar recursos
+        $this->preEncodedAudio = [];
+        $codec = strtoupper($this->codecName ?? '');
+        $frequencyMember = $this->frequencyCall;
+
+        if ($codec) {
+            $tempPos = 0;
+            $bcg729 = ($codec === 'G729') ? new \bcg729Channel() : null;
+            $opus = ($codec === 'OPUS') ? new \opusChannel(48000, 1) : null;
+
+            while ($tempPos < $audioLen) {
+                $pcmChunk = substr($audioData, $tempPos, $chunkSize);
+                $tempPos += $chunkSize;
+
+                if (strlen($pcmChunk) === 0) break;
+                if (strlen($pcmChunk) < $chunkSize) {
+                    $pcmChunk .= str_repeat("\x00", $chunkSize - strlen($pcmChunk));
+                }
+
+                $frequencyPacket = $infoFile['rate'];
+                $channelsFile = $infoFile['numChannels'] ?? 1;
+
+                // Forçar 1 canal para pré-codificação (padrão VoIP)
+                $pcmChunkEncoded = $pcmChunk;
+                if ($channelsFile > 1) {
+                    $pcmChunkEncoded = resample($pcmChunkEncoded, $frequencyPacket, $frequencyMember, [
+                        'input_channels' => $channelsFile,
+                        'output_channels' => 1,
+                        'resample_filter' => 'kaiser_best',
+                        'resample_quality' => 10,
+                        'normalize' => true,
+                    ]);
+                    $frequencyPacket = $frequencyMember;
+                }
+
+                $encode = null;
+                switch ($codec) {
+                    case 'PCMU':
+                        if ($frequencyPacket !== 8000) $pcmChunkEncoded = resampler($pcmChunkEncoded, $frequencyPacket, 8000);
+                        $encode = encodePcmToPcmu($pcmChunkEncoded);
+                        break;
+                    case 'PCMA':
+                        if ($frequencyPacket !== 8000) $pcmChunkEncoded = resample($pcmChunkEncoded, $frequencyPacket, 8000, ['normalize' => true]);
+                        $encode = encodePcmToPcma($pcmChunkEncoded);
+                        break;
+                    case 'G729':
+                        if ($frequencyPacket !== 8000) $pcmChunkEncoded = resampler($pcmChunkEncoded, $frequencyPacket, 8000);
+                        $encode = $bcg729->encode($pcmChunkEncoded);
+                        break;
+                    case 'OPUS':
+                        $pcm48 = ($frequencyPacket !== 48000) ? resampler($pcmChunkEncoded, $frequencyPacket, 48000) : $pcmChunkEncoded;
+                        if (strlen($pcm48) >= 2) $encode = $opus->encode($pcm48);
+                        break;
+                    case 'L16':
+                        $encode = resampler($pcmChunkEncoded, $frequencyPacket, $frequencyMember, true);
+                        break;
+                }
+
+                if ($encode) {
+                    $this->preEncodedAudio[] = $encode;
+                }
+            }
+            $this->preEncodedInfo = ['codec' => $codec, 'frequency' => $frequencyMember, 'chunkSize' => $chunkSize];
+        }
+
+
         $this->registerAudioEvent(function ($peer, trunkController $phone) use (&$currentPosition, $audioData, $audioLen, $chunkSize, $infoFile) {
             if (empty($this->callActive)) {
                 cli::pcl("Call is not active, stopping audio playback.");
@@ -3112,9 +3202,6 @@ class trunkController
 
             $idFrom = $peer['address'] . ':' . $peer['port'];
 
-            $frequencyPacket = $infoFile['rate'];
-            $frequencyMember = $phone->frequencyCall;
-
             if (!$this->mediaChannel->isMember($idFrom)) {
                 cli::pcl("Member {$idFrom} not found in media channel, stopping audio playback.");
                 return;
@@ -3122,104 +3209,127 @@ class trunkController
 
             $member = $this->mediaChannel->members[$idFrom];
             $ssrc = $member['ssrc'];
+            $codec = strtoupper($phone->codecName);
+            $frequencyMember = $phone->frequencyCall;
 
+            $encode = null;
 
-            if ($currentPosition >= $audioLen) {
-                $pcmChunk = str_repeat("\x00", $chunkSize);
-            } elseif ($currentPosition + $chunkSize > $audioLen) {
-                $rest = $audioLen - $currentPosition;
-                $part1 = $rest > 0 ? substr($audioData, $currentPosition, $rest) : '';
-
-                if ($this->loopAudioFile) {
-                    $missing = $chunkSize - $rest;
-                    $part2 = substr($audioData, 0, $missing);
-
-                    $pcmChunk = $part1 . $part2;
-                    $currentPosition = $missing;
-                } else {
-                    $missing = $chunkSize - $rest;
-
-                    $pcmChunk = $part1 . str_repeat("\x00", $missing);
-                    $currentPosition = $audioLen;
+            // Tentar usar áudio pré-codificado
+            if (!empty($this->preEncodedAudio) &&
+                $this->preEncodedInfo['codec'] === $codec &&
+                $this->preEncodedInfo['frequency'] === $frequencyMember &&
+                ($member['channels'] ?? 1) === 1 &&
+                ($currentPosition % $chunkSize) === 0
+            ) {
+                $chunkIndex = (int)($currentPosition / $chunkSize);
+                if ($chunkIndex < count($this->preEncodedAudio)) {
+                    $encode = $this->preEncodedAudio[$chunkIndex];
+                    $currentPosition += $chunkSize;
+                    if ($currentPosition >= $audioLen) {
+                        $currentPosition = $this->loopAudioFile ? 0 : $audioLen;
+                    }
                 }
-            } else {
-                $pcmChunk = substr($audioData, $currentPosition, $chunkSize);
-                $currentPosition += $chunkSize;
             }
 
-            $channelsFile = $infoFile['numChannels'] ?? 1;
-            $channelsMember = $member['channels'] ?? 1;
+            if ($encode === null) {
+                $frequencyPacket = $infoFile['rate'];
+                if ($currentPosition >= $audioLen) {
+                    $pcmChunk = str_repeat("\x00", $chunkSize);
+                } elseif ($currentPosition + $chunkSize > $audioLen) {
+                    $rest = $audioLen - $currentPosition;
+                    $part1 = $rest > 0 ? substr($audioData, $currentPosition, $rest) : '';
 
-            if ($channelsFile > $channelsMember) {
-                $pcmChunk = resample($pcmChunk, $frequencyPacket, $phone->frequencyCall, [
-                    'input_channels' => $channelsFile,
-                    'output_channels' => $channelsMember,
-                    'resample_filter' => 'kaiser_best',
-                    'resample_quality' => 10,
-                    'normalize' => true,
-                ]);
-                $frequencyPacket = $phone->frequencyCall;
-            }
+                    if ($this->loopAudioFile) {
+                        $missing = $chunkSize - $rest;
+                        $part2 = substr($audioData, 0, $missing);
 
-            switch (strtoupper($phone->codecName)) {
-                case 'PCMU':
-                    if ($frequencyPacket !== 8000) {
-                        $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
-                    }
-
-                    $encode = encodePcmToPcmu($pcmChunk);
-                    break;
-
-                case 'PCMA':
-                    if ($frequencyPacket !== 8000) {
-
-                        $pcmChunk = resample($pcmChunk, $frequencyPacket, 8000, [
-                            'normalize' => true,
-                            //'output_channels' => 1,
-                        ]);
-                    }
-
-                    $encode = encodePcmToPcma($pcmChunk);
-                    break;
-
-                case 'G729':
-                    if ($frequencyPacket !== 8000) {
-                        $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
-                    }
-
-                    if (!isset($phone->mediaChannel->rtpChans[$ssrc])) {
-                        return;
-                    }
-
-                    $encode = $phone->mediaChannel->rtpChans[$ssrc]
-                        ->bcg729Channel
-                        ->encode($pcmChunk);
-                    break;
-
-                case 'OPUS':
-                    if ($frequencyPacket !== 48000) {
-                        $pcm48 = resampler($pcmChunk, $frequencyPacket, 48000);
+                        $pcmChunk = $part1 . $part2;
+                        $currentPosition = $missing;
                     } else {
-                        $pcm48 = $pcmChunk;
-                    }
+                        $missing = $chunkSize - $rest;
 
-                    if (strlen($pcm48) < 2) {
+                        $pcmChunk = $part1 . str_repeat("\x00", $missing);
+                        $currentPosition = $audioLen;
+                    }
+                } else {
+                    $pcmChunk = substr($audioData, $currentPosition, $chunkSize);
+                    $currentPosition += $chunkSize;
+                }
+
+                $channelsFile = $infoFile['numChannels'] ?? 1;
+                $channelsMember = $member['channels'] ?? 1;
+
+                if ($channelsFile > $channelsMember) {
+                    $pcmChunk = resample($pcmChunk, $frequencyPacket, $phone->frequencyCall, [
+                        'input_channels' => $channelsFile,
+                        'output_channels' => $channelsMember,
+                        'resample_filter' => 'kaiser_best',
+                        'resample_quality' => 10,
+                        'normalize' => true,
+                    ]);
+                    $frequencyPacket = $phone->frequencyCall;
+                }
+
+                switch ($codec) {
+                    case 'PCMU':
+                        if ($frequencyPacket !== 8000) {
+                            $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
+                        }
+
+                        $encode = encodePcmToPcmu($pcmChunk);
+                        break;
+
+                    case 'PCMA':
+                        if ($frequencyPacket !== 8000) {
+
+                            $pcmChunk = resample($pcmChunk, $frequencyPacket, 8000, [
+                                'normalize' => true,
+                                //'output_channels' => 1,
+                            ]);
+                        }
+
+                        $encode = encodePcmToPcma($pcmChunk);
+                        break;
+
+                    case 'G729':
+                        if ($frequencyPacket !== 8000) {
+                            $pcmChunk = resampler($pcmChunk, $frequencyPacket, 8000);
+                        }
+
+                        if (!isset($phone->mediaChannel->rtpChans[$ssrc])) {
+                            return;
+                        }
+
+                        $encode = $phone->mediaChannel->rtpChans[$ssrc]
+                            ->bcg729Channel
+                            ->encode($pcmChunk);
+                        break;
+
+                    case 'OPUS':
+                        if ($frequencyPacket !== 48000) {
+                            $pcm48 = resampler($pcmChunk, $frequencyPacket, 48000);
+                        } else {
+                            $pcm48 = $pcmChunk;
+                        }
+
+                        if (strlen($pcm48) < 2) {
+                            return;
+                        }
+
+                        if (!isset($member['opus'])) {
+                            return;
+                        }
+
+                        $encode = $member['opus']->encode($pcm48);
+                        break;
+
+                    case 'L16':
+                        $encode = resampler($pcmChunk, $frequencyPacket, $frequencyMember, true);
+                        break;
+
+                    default:
                         return;
-                    }
-
-                    if (!isset($member['opus'])) {
-                        return;
-                    }
-
-                    $encode = $member['opus']->encode($pcm48);
-                    break;
-
-                case 'L16':
-                    $encode = resampler($pcmChunk, $frequencyPacket, $frequencyMember, true);
-                    break;
-
-                default:
-                    return;
+                }
             }
 
             if (!$encode) {

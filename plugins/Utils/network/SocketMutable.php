@@ -15,4 +15,9 @@ class SocketMutable extends \Co\Socket
 
         return $this->lastSockname ?? [];
     }
+
+    public function safeRecvfrom(&$peername, mixed $int)
+    {
+        return parent::recvfrom($peername, $int);
+    }
 }
