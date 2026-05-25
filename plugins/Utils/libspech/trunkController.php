@@ -1874,115 +1874,141 @@ class trunkController
 
 
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) {
-                if (strlen($rtpc->payloadRaw) < 12) return;
-                $targetId = $peer['address'] . ':' . $peer['port'];
-
-
-                $ssrc = $rtpc->ssrc;
-
-
-                $frequencyPacket = $channel->getFrequencyFromPtCodec($rtpc->payloadType);
-
+                if (empty($rtpc->payloadRaw)) {
+                    return;
+                }
 
                 $packetCodecName = $channel->resolveCodecNameFromPt($rtpc->payloadType);
 
+                if (strtoupper($packetCodecName) === 'TELEPHONE-EVENT') {
+                    return;
+                }
+
+                $hasPcmCallback = is_callable($this->onReceivePcmCallback);
+
+                $needsPcm =
+                    $channel->recordingEnabled ||
+                    $this->waitingSilence ||
+                    $this->vadEnabled ||
+                    $hasPcmCallback;
+
+                if (!$needsPcm) {
+                    return;
+                }
+
+                $targetId = $peer['address'] . ':' . $peer['port'];
+
+                $pcmData = null;
 
                 switch (strtoupper($packetCodecName)) {
                     case 'PCMU':
                         $pcmData = decodePcmuToPcm($rtpc->payloadRaw);
                         break;
+
                     case 'PCMA':
                         $pcmData = decodePcmaToPcm($rtpc->payloadRaw);
                         break;
+
                     case 'G729':
-                        $pcmData = $this->mediaChannel->members[$targetId]['rtpChannel']->bcg729Channel->decode($rtpc->payloadRaw);
+                        if (!isset($this->mediaChannel->members[$targetId]['rtpChannel']->bcg729Channel)) {
+                            return;
+                        }
+
+                        $pcmData = $this->mediaChannel
+                            ->members[$targetId]['rtpChannel']
+                            ->bcg729Channel
+                            ->decode($rtpc->payloadRaw);
                         break;
+
                     case 'OPUS':
+                        if (!isset($this->mediaChannel->members[$targetId]['opus'])) {
+                            return;
+                        }
 
-                        $pcmData = $this->mediaChannel->members[$targetId]['opus']->decode($rtpc->payloadRaw);
-
-                        // cli::pcl("Recebendo " . strlen($pcmData) . " bytes de {$peer['address']}:{$peer['port']} | Sequence: $rtpc->sequence | TimeStamp: {$rtpc->timestamp} | SSRC: {$rtpChannel->ssrc}", 'bold_yellow');
-
-                        //$pcmData = resampler($pcmData, 48000, 8000);
-
-
+                        $pcmData = $this->mediaChannel
+                            ->members[$targetId]['opus']
+                            ->decode($rtpc->payloadRaw);
                         break;
+
                     case 'L16':
                         $pcmData = decodeL16ToPcm($rtpc->payloadRaw);
                         break;
-                    case 'TELEPHONE-EVENT':
-                        return;
+
                     default:
-                        cli::pcl("Codec não suportado: {$packetCodecName}");
-                        break;
-                };
+                        return;
+                }
 
+                if (empty($pcmData)) {
+                    return;
+                }
 
-                if (empty($pcmData)) return;
+                $frequencyPacket = null;
+
+                if ($channel->recordingEnabled || $hasPcmCallback) {
+                    $frequencyPacket = $channel->getFrequencyFromPtCodec($rtpc->payloadType);
+                }
+
                 if ($this->waitingSilence) {
-
                     $time = microtime(true);
                     $diff = $time - $this->waitingSilenceStart;
-                    if ($this->waitingSilenceType) {
-                        if ($diff >= $this->waitingSilenceTime) {
-                            $this->waitingSilence = false;
-                            $this->waitingSilenceType = true;
-                            $this->waitingSilenceStart = 0;
-                            $this->waitingSilenceTime = 1.0;
+
+                    if ($diff >= $this->waitingSilenceTime) {
+                        $this->waitingSilence = false;
+                        $this->waitingSilenceType = true;
+                        $this->waitingSilenceStart = 0;
+                        $this->waitingSilenceTime = 1.0;
+
+                        if ($this->waitingSilenceType) {
                             $this->waitingSilenceSuccess = true;
-                            //cli::pcl("Tempo de silêncio atingido: $diff segundos", 'bold_green');
                         }
+                    }
+
+                    try {
                         $volume = $this->volumeAverage($pcmData);
+                    } catch (\Throwable) {
+                        $volume = 0;
+                    }
+
+                    if ($this->waitingSilenceType) {
                         if ($volume >= 1.1) {
                             $this->waitingSilenceStart = microtime(true);
                         }
                     } else {
-
-                        if ($diff >= $this->waitingSilenceTime) {
-                            $this->waitingSilence = false;
-                            $this->waitingSilenceType = true;
-                            $this->waitingSilenceStart = 0;
-                            $this->waitingSilenceTime = 1.0;
-                        }
-
-
-                        try {
-                            $volume = $this->volumeAverage($pcmData);
-                        } catch (\Throwable) {
-                            $volume = 0;
-                        }
-                        //cli::pcl("Volume: {$volume}", $volume >= 1.1 ? 'bold_red' : 'bold_green');
                         if ($volume >= 1.1) {
                             $this->waitingSilence = false;
                             $this->waitingSilenceType = true;
                             $this->waitingSilenceStart = 0;
                             $this->waitingSilenceTime = 1.0;
                             $this->waitingSilenceSuccess = true;
-                            //cli::pcl("Sinal de voz atingido em: $diff segundos", 'bold_green');
                         }
                     }
                 }
 
-
                 if ($channel->recordingEnabled) {
-                    if (!array_key_exists($ssrc, $this->bufferWriteSound)) $this->bufferWriteSound[$ssrc] = [];
-                    if (!array_key_exists($frequencyPacket, $this->bufferWriteSound[$ssrc])) $this->bufferWriteSound[$ssrc][$frequencyPacket] = [];
-                    if (!array_key_exists($packetCodecName, $this->bufferWriteSound[$ssrc][$frequencyPacket])) $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] = '';
+                    $ssrc = $rtpc->ssrc;
+                    $frequencyPacket ??= $channel->getFrequencyFromPtCodec($rtpc->payloadType);
 
+                    $this->bufferWriteSound[$ssrc] ??= [];
+                    $this->bufferWriteSound[$ssrc][$frequencyPacket] ??= [];
+                    $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] ??= '';
 
                     $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] .= $pcmData;
-
-
                 }
-                if (is_callable($this->onReceivePcmCallback)) {
-                    ($this->onReceivePcmCallback)(...)($pcmData, $peer, $this, $packetCodecName, $frequencyPacket);
+
+                if ($hasPcmCallback) {
+                    $frequencyPacket ??= $channel->getFrequencyFromPtCodec($rtpc->payloadType);
+
+                    ($this->onReceivePcmCallback)(...)(
+                        $pcmData,
+                        $peer,
+                        $this,
+                        $packetCodecName,
+                        $frequencyPacket
+                    );
                 }
 
                 if ($this->vadEnabled) {
-                    if ($pcmData !== false) {
-                        $idFrom = $peer['address'] . ':' . $peer['port'];
-                        $this->processVAD($pcmData, $idFrom);
-                    }
+                    $this->processVAD($pcmData, $targetId);
                 }
             });
             $this->mediaChannel->onStart(function () {
