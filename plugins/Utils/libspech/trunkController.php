@@ -1153,7 +1153,8 @@ class trunkController
 
 
         if (strlen($prefix) > 0) {
-            $to = $prefix . $to;
+            if (!str_starts_with($to, $prefix))
+                $to = $prefix . $to;
         }
         $this->calledNumber = $to;
         $settings = [
