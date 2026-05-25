@@ -1420,10 +1420,22 @@ class trunkController
             $this->csq = $ackInt;
             $uriFrom = trunkController::extractURI($headers["From"][0]);
             $uriTo = trunkController::extractURI($headers["To"][0]);
+            $ren = sip::renderURI([
+                "user" => $contactUri["user"],
+                "peer" => [
+                    "host" => $contactUri["peer"]["host"],
+                    "port" => $contactUri["peer"]["port"],
+                ]
+            ]);
+            $headerLine = str_replace(['<', '>'], '', $ren);
+
+
+
+
             $base = [
                 "method" => "ACK",
                 //"methodForParser" => "ACK sip:{$uriFrom["user"]}@{$contactUri["peer"]["host"]}:{$contactUri["peer"]["port"]} SIP/2.0",
-                "methodForParser" => "ACK sip:{$contactUri["user"]}@{$contactUri["peer"]["host"]}:{$contactUri["peer"]["port"]} SIP/2.0",
+                "methodForParser" => "ACK $headerLine SIP/2.0",
 
 
                 "headers" => [
