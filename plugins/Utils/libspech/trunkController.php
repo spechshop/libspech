@@ -46,7 +46,6 @@ class trunkController
         "WWW-Authenticate" => "Authorization",
     ];
     public array $progressCodes = [
-
         180,
         181,
         182,
@@ -1183,15 +1182,6 @@ class trunkController
                 "CSeq" => [$this->csq . " INVITE"],
                 "Max-Forwards" => ["70"],
                 "Content-Type" => ["application/sdp"],
-                "Date" => [date("D, d M Y H:i:s T")],
-                "P-Preferred-Identity" => ['"' . $this->callerId . '" ' . sip::renderURI([
-                        'user' => !empty($this->callerId) ? $this->callerId : $this->username,
-                        'peer' => [
-                            'host' => $this->localIp,
-                            'port' => $this->socketPortListen,
-                        ],
-                    ])],
-
             ],
             "sdp" => $sdp,
         ];
