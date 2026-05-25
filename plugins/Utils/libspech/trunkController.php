@@ -1409,63 +1409,89 @@ class trunkController
             "To",
             "Call-ID",
         ];
+
         foreach ($ruleNeed as $rule) {
-            if (!array_key_exists($rule, $headers)) {
-                if (!array_key_exists($rule, $headers)) {
-                    return [];
-                }
+            if (!array_key_exists($rule, $headers) || empty($headers[$rule][0])) {
+                return [];
             }
-            $contactUri = trunkController::extractURI($headers["Contact"][0]);
-            $ackInt = explode(" ", $headers["CSeq"][0])[0];
-            $this->csq = $ackInt;
-            $uriFrom = trunkController::extractURI($headers["From"][0]);
-            $uriTo = trunkController::extractURI($headers["To"][0]);
-            $ren = sip::renderURI([
-                "user" => $contactUri["user"],
-                "peer" => [
-                    "host" => $contactUri["peer"]["host"],
-                    "port" => $contactUri["peer"]["port"],
-                ]
-            ]);
-            $headerLine = str_replace(['<', '>'], '', $ren);
+        }
 
+        $contactUri = trunkController::extractURI($headers["Contact"][0]);
+        $uriFrom = trunkController::extractURI($headers["From"][0]);
+        $uriTo = trunkController::extractURI($headers["To"][0]);
 
+        $ackInt = explode(" ", trim($headers["CSeq"][0]))[0];
+        $this->csq = $ackInt;
 
+        $contactHost = $contactUri["peer"]["host"] ?? $this->host;
+        $contactPort = $contactUri["peer"]["port"] ?? 5060;
+        $contactUser = $contactUri["user"] ?? $uriTo["user"];
 
-            $base = [
-                "method" => "ACK",
-                //"methodForParser" => "ACK sip:{$uriFrom["user"]}@{$contactUri["peer"]["host"]}:{$contactUri["peer"]["port"]} SIP/2.0",
-                "methodForParser" => "ACK $headerLine SIP/2.0",
+        $requestUri = "sip:{$contactUser}@{$contactHost}";
 
+        if ((int)$contactPort !== 5060) {
+            $requestUri .= ":{$contactPort}";
+        }
 
-                "headers" => [
-                    "Via" => $headers["Via"],
-                    "Max-Forwards" => ["70"],
-                    "From" => [trunkController::renderURI([
+        $branch = "z9hG4bK64d" . bin2hex(secure_random_bytes(8) ?? random_bytes(8));
+
+        $base = [
+            "method" => "ACK",
+            "methodForParser" => "ACK {$requestUri} SIP/2.0",
+            "headers" => [
+                "Via" => [
+                    "SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch={$branch};rport"
+                ],
+
+                "Max-Forwards" => [
+                    "70"
+                ],
+
+                "From" => [
+                    trunkController::renderURI([
                         "user" => $uriFrom["user"],
                         "peer" => [
                             "host" => $uriFrom["peer"]["host"],
-                            "port" => $uriFrom["peer"]["port"],
+                            "port" => $uriFrom["peer"]["port"] ?? null,
                         ],
-                        "additional" => ["tag" => $uriFrom["additional"]["tag"] ?? ""],
-                    ])],
-                    "To" => [trunkController::renderURI([
+                        "additional" => [
+                            "tag" => $uriFrom["additional"]["tag"] ?? "",
+                        ],
+                    ])
+                ],
+
+                "To" => [
+                    trunkController::renderURI([
                         "user" => $uriTo["user"],
                         "peer" => [
                             "host" => $uriTo["peer"]["host"],
-                            "port" => $uriTo["peer"]["port"],
+                            "port" => $uriTo["peer"]["port"] ?? null,
                         ],
-                        "additional" => ["tag" => $uriTo["additional"]["tag"] ?? ""],
-                    ])],
-                    "Call-ID" => [$this->callId],
-                    "CSeq" => [$this->csq . " ACK"],
+                        "additional" => [
+                            "tag" => $uriTo["additional"]["tag"] ?? "",
+                        ],
+                    ])
                 ],
-            ];
-            if (array_key_exists("Record-Route", $headers)) {
-                $base["headers"]["Route"] = $headers["Record-Route"];
-            }
-            return $base;
+
+                "Call-ID" => [
+                    $headers["Call-ID"][0]
+                ],
+
+                "CSeq" => [
+                    "{$this->csq} ACK"
+                ],
+
+                "Content-Length" => [
+                    "0"
+                ],
+            ],
+        ];
+
+        if (array_key_exists("Record-Route", $headers) && !empty($headers["Record-Route"])) {
+            $base["headers"]["Route"] = $headers["Record-Route"];
         }
+
+        return $base;
     }
 
     public static function extractURI($line): array
