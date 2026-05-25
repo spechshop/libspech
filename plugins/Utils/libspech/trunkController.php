@@ -1439,7 +1439,7 @@ class trunkController
 
 
                 "headers" => [
-                    "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=" . bin2hex(secure_random_bytes(8))],
+                    "Via" => $headers["Via"],
                     "Max-Forwards" => ["70"],
                     "From" => [trunkController::renderURI([
                         "user" => $uriFrom["user"],
