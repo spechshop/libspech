@@ -920,6 +920,10 @@ class trunkController
                     $modelInvite["headers"][$needAuth][0] = $auth;
                 }
                 $this->csq++;
+                $modelInvite['headers']['Via'] = $receive['headers']['Via'];
+                $modelInvite['headers']['To'] = $receive['headers']['To'];
+
+
                 $modelInvite['headers']['CSeq'][0] = sprintf("%d INVITE", $this->csq);
                 $render = sip::renderSolution($modelInvite);
                 $this->socket->sendto($this->host, $this->port, $render);
@@ -1095,7 +1099,6 @@ class trunkController
     public function modelInvite(string $to, $prefix = "", $options = []): array
     {
         $this->calledNumber = $to;
-
         if (!$this->username) {
             if ($this->callerId) {
                 $this->username = $this->callerId;
@@ -1103,18 +1106,15 @@ class trunkController
                 $this->username = "100";
             }
         }
-
         $this->codecRtpMap = [];
-
         $codecs = array_keys($this->mapLearn);
         foreach ($codecs as $codec) {
             foreach ($this->mapLearn[$codec] as $media) {
                 $this->codecRtpMap[] = $media;
             }
         }
+        //var_dump( $this->mapLearn);
 
-        $authUser = $this->username;
-        $bina = !empty($this->callerId) ? $this->callerId : $this->username;
 
         $sdp = [
             "v" => ["0"],
@@ -1122,117 +1122,70 @@ class trunkController
             "s" => [$this->userAgent],
             "c" => ["IN IP4 {$this->localIp}"],
             "t" => ["0 0"],
-            "m" => [
-                "audio {$this->rtpSocket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn))
-            ],
+            "m" => ["audio {$this->rtpSocket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn))],
             "a" => [
-                'ssrc:' . $this->ssrc . ' cname:' . $bina . "@{$this->localIp}",
+                'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->localIp}",
                 ...$this->codecRtpMap,
                 'ptime:20',
                 'sendrecv',
             ],
         ];
-
         $this->sdp = $sdp;
-
-        cli::pcl(
-            "audio {$this->rtpSocket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn)),
-            'bold_green'
-        );
-
+        cli::pcl("audio {$this->rtpSocket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn)), 'bold_green');
         $this->ptUse = array_key_first($this->mapLearn);
         $this->ptTelephoneEvent = array_key_last($this->mapLearn);
+        $this->codecName = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['name'];
+        $this->frequencyCall = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['rate'];
 
-        $codecInfo = self::getSDPModelCodecs($this->sdp['a']);
-
-        $this->codecName = $codecInfo['preferredCodec']['name'];
-        $this->frequencyCall = $codecInfo['preferredCodec']['rate'];
 
         if ($this->domain) {
             $mf = $this->domain;
         } else {
             $mf = $this->host;
         }
-
         if ($this->port != 5060) {
             $mf .= ":" . $this->port;
         }
-
-        if (strlen($prefix) > 0) {
-            if (!str_starts_with($to, $prefix)) {
-                $to = $prefix . $to;
-            }
-        }
-
-        $this->calledNumber = $to;
-
         $toCall = [
-            'user' => $to,
+            'user' => ($prefix ?? '') . $to,
             'peer' => [
                 'host' => $this->host ?? $this->domain,
                 'port' => $this->port ?? 5060,
-            ],
+            ]
         ];
 
-        $fromTag = bin2hex(secure_random_bytes(10));
-        $branch = "z9hG4bK64d" . bin2hex(secure_random_bytes(8) ?? time());
 
-
-        $from = "\"{$bina}\" <sip:{$authUser}@{$mf}>;tag={$fromTag}";
-
+        if (strlen($prefix) > 0) {
+            if (!str_starts_with($to, $prefix))
+                $to = $prefix . $to;
+        }
+        $this->calledNumber = $to;
         $settings = [
             "method" => "INVITE",
             "methodForParser" => "INVITE sip:{$to}@{$mf} SIP/2.0",
             "headers" => [
-                "Via" => [
-                    "SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch={$branch};rport"
+                "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=z9hG4bK64d" .
+                    bin2hex(secure_random_bytes(8) ?? time()) .
+                    ";rport"
                 ],
 
-                "From" => [$from],
-
-                "To" => [
-                    sip::renderURI($toCall)
-                ],
-
-                "Supported" => [
-                    "gruu,replaces"
-                ],
-
-                "User-Agent" => [
-                    $this->userAgent
-                ],
-
-                "Call-ID" => [
-                    $this->callId
-                ],
-
-                "Allow" => [
-                    "INVITE,ACK,BYE,CANCEL,OPTIONS,NOTIFY,MESSAGE,REFER"
-                ],
-
-                "Contact" => [
-                    "<sip:{$authUser}@{$this->localIp}:{$this->socketPortListen}>"
-                ],
-
-                "P-Asserted-Identity" => [
-                    "\"{$bina}\" <sip:{$bina}@{$mf}>"
-                ],
-
-                "Remote-Party-ID" => [
-                    "\"{$bina}\" <sip:{$bina}@{$mf}>;party=calling;screen=no;privacy=off"
-                ],
-
-                "CSeq" => [
-                    $this->csq . " INVITE"
-                ],
-
-                "Max-Forwards" => [
-                    "70"
-                ],
-
-                "Content-Type" => [
-                    "application/sdp"
-                ],
+                "From" => [sip::renderURI([
+                    "user" => !empty($this->callerId) ? $this->callerId : $this->username,
+                    "peer" => [
+                        "host" => $this->host ?? $this->domain,
+                        "port" => $this->port,
+                    ],
+                    "additional" => ["tag" => bin2hex(secure_random_bytes(10))],
+                ])],
+                "To" => [sip::renderURI($toCall)],
+                "Supported" => ["gruu,replaces"],
+                "User-Agent" => [$this->userAgent],
+                "Call-ID" => [$this->callId],
+                "Allow" => ["INVITE,ACK,BYE,CANCEL,OPTIONS,NOTIFY,MESSAGE,REFER"],
+                "Contact" => ["<sip:{$this->username}@{$this->localIp}:{$this->socketPortListen}>"],
+                "CSeq" => [$this->csq . " INVITE"],
+                "Max-Forwards" => ["70"],
+                "Content-Type" => ["application/sdp"],
             ],
             "sdp" => $sdp,
         ];
@@ -1241,6 +1194,7 @@ class trunkController
 
         return $settings;
     }
+
     public static function getSDPModelCodecs(array $sdpAttributes): array
     {
         $codecMediaLine = "";
