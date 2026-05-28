@@ -86,6 +86,7 @@ include 'plugins/autoloader.php';
             //$phone->cancel();
         });
 
+
         // Callback executado quando a chamada é desligada (hangup/bye)
 
 
@@ -101,6 +102,7 @@ include 'plugins/autoloader.php';
             cli::pcl("Bye recebido", "red");
 
         });
+
 
         // ====================================================================
         // SESSÃO 6: CONFIGURAÇÃO DE CODEC E RECURSOS DE ÁUDIO

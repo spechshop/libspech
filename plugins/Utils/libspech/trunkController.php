@@ -1106,9 +1106,16 @@ class trunkController
                 $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2] ?? null;
                 $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1] ?? null;
 
+
                 if ($remoteAddressAudioDestination && $remotePortAudioDestination) {
+                    if (isset($receive["sdp"])) {
+                        $this->sdpReceived = $receive["sdp"];
+                    }
                     $this->audioRemoteIp = $remoteAddressAudioDestination;
                     $this->audioRemotePort = (int)$remotePortAudioDestination;
+                    if (is_callable($this->onReceiveSdpCallable)) {
+                        go($this->onReceiveSdpCallable, $this);
+                    }
                 }
 
                 if (!$this->callableRingInvoked) {
@@ -1121,6 +1128,8 @@ class trunkController
 
                     $this->callableRingInvoked = true;
                 }
+
+
             }
 
             if (in_array($receive["method"], $this->successCodes)) {
@@ -3323,6 +3332,13 @@ class trunkController
                 $packet
             );
         });
+    }
+
+
+    public mixed $onReceiveSdpCallable = false;
+    public function onSdpReceived(Closure $param): void
+    {
+        $this->onReceiveSdpCallable = $param;
     }
 
 
