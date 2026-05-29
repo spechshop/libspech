@@ -461,7 +461,7 @@ class MediaChannel
 
             $lastPacketTime = microtime(true);
             $lastDebug = microtime(true);
-            $this->sendSilenceProbeToMembers(microtime(true));
+
             while (true) {
                 if (!$this->active) {
                     cli::pcl("MediaChannel: Desligado", 'bold_red');
@@ -470,18 +470,7 @@ class MediaChannel
                 $peer = ['address' => '0.0.0.0', 'port' => 0];
                 $packet = $this->socket->recvfrom($peer, 0.2);
                 $currentTime = microtime(true);
-                if ($this->debugEnabled) {
-                    if (empty($lastDebug)) $lastDebug = microtime(true);
-                    if (microtime(true) - $lastDebug >= 0.160) {
 
-                        $timeMS = round((microtime(true) - $lastPacketTime) * 1000, 2);
-                        cli::pcl("$this->callId MediaChannel: " . $timeMS . "ms com ".count($this->members). " membros",
-                        !empty($packet) ? 'bold_green' : 'bold_red'
-                        );
-                        $lastDebug = microtime(true);
-
-                    }
-                }
 
 
 
@@ -546,6 +535,7 @@ class MediaChannel
                     return;
                 } else {
                     if ($peer['port'] === 5060) continue;
+                    $lastPacketTime = microtime(true);
                 }
 
 
@@ -564,7 +554,7 @@ class MediaChannel
 
 
                 $ssrcOrigin = $this->generateDeterministicSsrc($idFrom);
-                $ssrc = $this->generateDeterministicSsrc($idFrom);
+                $ssrc = $ssrcOrigin;
 
 
                 if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
@@ -605,7 +595,7 @@ class MediaChannel
 
 
 
-                $lastPacketTime = microtime(true);
+
                 if ($this->onReceiveCallable) {
                     go(function () use ($rtpc, $peer, $ssrc) {
                         call_user_func($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
@@ -773,6 +763,20 @@ class MediaChannel
                         if ($this->vadEnabled) {
                             $this->processVAD($pcmData, $idFrom);
                         }
+                    }
+                }
+                if ($this->debugEnabled) {
+                    if (empty($lastDebug)) $lastDebug = microtime(true);
+                    if (microtime(true) - $lastDebug >= 0.160) {
+
+
+
+                        $timeMS = round((microtime(true) - $lastPacketTime) * 1000, 2);
+                        cli::pcl("$this->callId MediaChannel: " . $timeMS . "ms com ".count($this->members). " membros",
+                            !empty($packet) ? 'bold_green' : 'bold_red'
+                        );
+                        $lastDebug = microtime(true);
+
                     }
                 }
             }
