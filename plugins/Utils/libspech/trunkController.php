@@ -2529,7 +2529,6 @@ class trunkController
 
         $this->socket->sendto($this->host, $this->port, $renderSolution);
         for (; ;) {
-            cli::pcl("Deslogando {$this->username} {$this->host} {$this->port}", 'bold_yellow');
             Coroutine::sleep(0.5);
             $elapsed = time() - $startTimer;
             if ($elapsed > $maxWait) {
