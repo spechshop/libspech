@@ -26,6 +26,11 @@ class MediaChannel
     // pcm 8khz silence
     private string $syl = '';
     public bool $debugEnabled = false;
+    private array $settings = [];
+    public function setSettings(array $settings): void
+    {
+        $this->settings = $settings;
+    }
 
     public function onReceive(callable $callback): void
     {
@@ -150,41 +155,6 @@ class MediaChannel
         $this->blockChannel->close();
     }
 
-    public function mixPcmArray(array $chunks): string
-    {
-        if (count($chunks) < 2) {
-            if (isset($chunks[0]) && $chunks[0] instanceof StringObject) {
-                return $chunks[0]->toString();
-            }
-            return $chunks[0] ?? "";
-        }
-        $stringChunks = [];
-        foreach ($chunks as $chunk) {
-            if ($chunk instanceof StringObject) {
-                $stringChunks[] = $chunk->toString();
-            } else {
-                $stringChunks[] = $chunk;
-            }
-        }
-        $minLen = min(array_map("strlen", $stringChunks));
-        $minLen -= $minLen % 2;
-        $result = new StringObject("");
-        for ($i = 0; $i < $minLen; $i += 2) {
-            $mix = 0;
-            foreach ($stringChunks as $buf) {
-                $s = unpack("s", substr($buf, $i, 2))[1];
-                $mix += $s;
-            }
-            if ($mix > 32767) {
-                $mix = 32767;
-            } elseif ($mix < -32768) {
-                $mix = -32768;
-            }
-            $result->append(pack("s", $mix));
-        }
-        return $result->toString();
-    }
-
     public array $rtpChans = [];
     public Socket $eventSock;
     public int $listenPort = 0;
@@ -192,6 +162,9 @@ class MediaChannel
     public function __construct(Socket|\SocketMutable &$socket, string $callId)
     {
 
+        $this->settings = [
+            'sendSilenceProbeToMembers' => true,
+        ];
         $this->socket = $socket;
         $this->callId = $callId;
         $this->syl = str_repeat("\0\0", 160);
@@ -277,8 +250,14 @@ class MediaChannel
     public int $retrys = 0;
     public mixed $ssrc = 0;
 
+    private array $cacheKeys = [];
     public function generateDeterministicSsrc(string $ipPort): int
     {
+        if (isset($this->cacheKeys[$ipPort])) {
+            return $this->cacheKeys[$ipPort];
+        }
+
+
         // Hash SHA-1 da string IP:porta (gera 40 caracteres hex)
         $hash = sha1($ipPort);
 
@@ -295,6 +274,7 @@ class MediaChannel
             cache::join('ssrcs', $result);
         }
 
+        $this->cacheKeys[$ipPort] = $result;
         return $result;
     }
 
@@ -480,6 +460,8 @@ class MediaChannel
 
 
             $lastPacketTime = microtime(true);
+            $lastDebug = microtime(true);
+            $this->sendSilenceProbeToMembers(microtime(true));
             while (true) {
                 if (!$this->active) {
                     cli::pcl("MediaChannel: Desligado", 'bold_red');
@@ -542,6 +524,7 @@ class MediaChannel
 //                            }
 //                        }
 
+                        if ($this->settings['sendSilenceProbeToMembers'])
                         $this->sendSilenceProbeToMembers($now);
                         continue;
                     }
