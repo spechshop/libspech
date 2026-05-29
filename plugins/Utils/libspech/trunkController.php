@@ -870,7 +870,7 @@ class trunkController
         $timeRing = time();
         $inviteSentTime = time();
 
-        for (;;) {
+        for (; ;) {
             if ($this->closing || $this->socket->isClosed()) {
                 if (is_callable($this->onFailedCallback)) {
                     return go($this->onFailedCallback, "Conexão encerrada prematuramente");
@@ -1169,7 +1169,7 @@ class trunkController
             go($this->onAnswerCallback, $this);
         }
 
-        for (;;) {
+        for (; ;) {
             if ($this->closing || $this->receiveBye) {
                 return false;
             }
@@ -1880,8 +1880,6 @@ class trunkController
             $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
 
 
-
-
             $this->mediaChannel->onReceive(function (rtpc $rtpc, array $peer, MediaChannel $channel, rtpChannel $rtpChannel) {
                 if (empty($rtpc->payloadRaw)) {
                     return;
@@ -2456,22 +2454,6 @@ class trunkController
         });
     }
 
-    public function extractRTPPayload(string $packet): ?string
-    {
-        if (strlen($packet) < 12) {
-            return null;
-        }
-        $rtpHeader = unpack("CversionAndPadding/CpayloadTypeAndSeq/nsequenceNumber/Ntimestamp/Nssrc", substr($packet, 0, 12));
-        $payloadType = $rtpHeader["payloadTypeAndSeq"] & 0x7f;
-        if (!in_array($payloadType, [
-            0,
-            8,
-        ])) {
-            return null;
-        }
-        return substr($packet, 12);
-    }
-
     public function setCallId(string $callId): void
     {
         $this->callId = $callId;
@@ -2547,13 +2529,18 @@ class trunkController
 
         $this->socket->sendto($this->host, $this->port, $renderSolution);
         for (; ;) {
+            cli::pcl("Deslogando {$this->username} {$this->host} {$this->port}", 'bold_yellow');
+            Coroutine::sleep(0.5);
             $elapsed = time() - $startTimer;
             if ($elapsed > $maxWait) {
-
+                cli::pcl("Timeout No Response in {$maxWait} seconds On UnRegister", 'red');
                 return false;
             }
             try {
-                $res = $this->socket->safeRecvfrom($peer, 1);
+
+
+                $res = $this->socket->recvfrom($peer, 1);
+
                 if ($res === null) {
                     cli::pcl("Socket ocupado por outra corrotina, assumimos que não podemos esperar resposta aqui");
                     // Socket ocupado por outra corrotina, assumimos que não podemos esperar resposta aqui
@@ -3213,7 +3200,7 @@ class trunkController
                     'chunkSize' => $chunkSize,
                     'fileEncoder' => null
                 ];
-                
+
                 // Cria os encoders dedicados para o cache do arquivo, se necessário, evitando corromper o estado do encoder da chamada
                 if ($codec === 'G729') {
                     $this->preEncodedInfo['fileEncoder'] = new \bcg729Channel();
@@ -3225,7 +3212,7 @@ class trunkController
             // Tentar usar áudio pré-codificado (Cache Lazy)
             if (isset($this->preEncodedAudio[$chunkIndex])) {
                 $encode = $this->preEncodedAudio[$chunkIndex];
-                
+
                 // Atualiza a posição de forma estritamente alinhada aos chunks
                 $currentPosition += $chunkSize;
                 if ($currentPosition >= $audioLen) {
@@ -3234,11 +3221,11 @@ class trunkController
             } else {
                 // Processamento sob demanda para este chunk (Lazy Encoding)
                 $frequencyPacket = $infoFile['rate'];
-                
+
                 // Extrai e faz o padding do chunk atual garantindo alinhamento
                 $pcmChunk = substr($audioData, $currentPosition, $chunkSize);
                 $len = strlen($pcmChunk);
-                
+
                 if ($len === 0 && $currentPosition >= $audioLen) {
                     $pcmChunk = str_repeat("\x00", $chunkSize);
                 } elseif ($len < $chunkSize) {
@@ -3308,7 +3295,7 @@ class trunkController
                 if ($encode) {
                     $this->preEncodedAudio[$chunkIndex] = $encode;
                 }
-                
+
                 // Atualiza a posição de forma estritamente alinhada aos chunks
                 $currentPosition += $chunkSize;
                 if ($currentPosition >= $audioLen) {
@@ -3336,6 +3323,7 @@ class trunkController
 
 
     public mixed $onReceiveSdpCallable = false;
+
     public function onSdpReceived(Closure $param): void
     {
         $this->onReceiveSdpCallable = $param;
