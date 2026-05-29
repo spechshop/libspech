@@ -524,8 +524,7 @@ class MediaChannel
 //                            }
 //                        }
 
-                        if ($this->settings['sendSilenceProbeToMembers'])
-                        $this->sendSilenceProbeToMembers($now);
+                        if ($this->settings['sendSilenceProbeToMembers']) $this->sendSilenceProbeToMembers($now);
                         continue;
                     }
 
