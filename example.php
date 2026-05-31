@@ -59,6 +59,10 @@ include 'plugins/autoloader.php';
 
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $host);
+        $phone->enableAudioMemorySharing();
+
+
+
         //$phone->setCallerId('XXXXXXXXXXXXX');
         // ====================================================================
         // SESSÃO 4: REGISTRO SIP
