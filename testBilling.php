@@ -12,8 +12,8 @@ Runtime::enableCoroutine();
 include 'plugins/autoloader.php';
 run(function () {
     $priceMinute = '0.15';
-    $totalCalls = 1;
-    $durationSec = 120;
+    $totalCalls = 5;
+    $durationSec = 20;
     $username = getenv('SIP_USERNAME') ?: '';
     $password = getenv('SIP_PASSWORD') ?: '';
     $domain = getenv('SIP_HOST') ?: 'spechshop.com';
@@ -28,7 +28,7 @@ run(function () {
             $callKey = "call_{$i}";
             $phone = new trunkController($username, $password, $host);
             $phone->enableAudioMemorySharing();
-            $phone->defineAudioFile('/home/lotus/projetos/libspech/music.wav');
+            $phone->defineAudioFile('ss.wav');
 
 
 
