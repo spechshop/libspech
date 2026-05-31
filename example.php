@@ -113,6 +113,9 @@ include 'plugins/autoloader.php';
 
         // Habilita a gravação de áudio durante a chamada
         $phone->enableAudioRecording();
+        $phone->enableAudioMemorySharing();
+
+
         $phone->defineAudioFile('silence_5m.wav');
         $phone->onAnswer(function (trunkController $phone) {
             cli::pcl("Chamada recebida", "green");

@@ -3098,6 +3098,18 @@ class trunkController
 
     public bool $audioRecordingEnabled = false;
 
+    public bool $audioMemorySharingEnabled = false;
+
+    public function enableAudioMemorySharing(): void
+    {
+        $this->audioMemorySharingEnabled = true;
+    }
+
+    public function disableAudioMemorySharing(): void
+    {
+        $this->audioMemorySharingEnabled = false;
+    }
+
     public function enableAudioRecording(): void
     {
         $this->audioRecordingEnabled = true;
@@ -3118,45 +3130,71 @@ class trunkController
     }
 
 
+    public static array $sharedAudioCache = [];
+
     public function defineAudioFile(string $audioFile): void
     {
-        try {
-            \libspech\Sip\secureAudioVoip($audioFile);
-        } catch (\Exception $e) {
-            cli::pcl("Error defining audio file: " . $e->getMessage());
-            return;
-        }
-        $infoFile = \libspech\Sip\getInfoAudio($audioFile);
+        $fileMTime = file_exists($audioFile) ? filemtime($audioFile) : 0;
+        $cacheKey = md5($audioFile . '_' . $fileMTime);
+        $fromCache = false;
 
-
-        $tags = \libspech\Sip\wavChunks($audioFile);
-
-        $idDataTag = array_find_key($tags, fn($tag) => $tag['id'] === 'data');
-
-        if ($idDataTag === null) {
-            cli::pcl("Error: WAV data chunk not found");
-            return;
+        if ($this->audioMemorySharingEnabled && isset(self::$sharedAudioCache[$cacheKey])) {
+            $cache = self::$sharedAudioCache[$cacheKey];
+            $infoFile = $cache['infoFile'];
+            $chunkSize = $cache['chunkSize'];
+            $audioData = $cache['audioData'];
+            $audioLen = $cache['audioLen'];
+            $fromCache = true;
         }
 
-        $chunkSize = \libspech\Sip\calculateChunkSize(
-            $infoFile['rate'],
-            $infoFile['numChannels'],
-            $infoFile['bitDepth']
-        );
+        if (!$fromCache) {
+            try {
+                \libspech\Sip\secureAudioVoip($audioFile);
+            } catch (\Exception $e) {
+                cli::pcl("Error defining audio file: " . $e->getMessage());
+                return;
+            }
+            $infoFile = \libspech\Sip\getInfoAudio($audioFile);
 
-        $dataOffset = $tags[$idDataTag]['data'];
+            $tags = \libspech\Sip\wavChunks($audioFile);
 
-        $fileData = file_get_contents($audioFile);
+            $idDataTag = array_find_key($tags, fn($tag) => $tag['id'] === 'data');
 
-        if ($fileData === false) {
-            cli::pcl("Error reading audio file");
-            return;
+            if ($idDataTag === null) {
+                cli::pcl("Error: WAV data chunk not found");
+                return;
+            }
+
+            $chunkSize = \libspech\Sip\calculateChunkSize(
+                $infoFile['rate'],
+                $infoFile['numChannels'],
+                $infoFile['bitDepth']
+            );
+
+            $dataOffset = $tags[$idDataTag]['data'];
+
+            $fileData = file_get_contents($audioFile);
+
+            if ($fileData === false) {
+                cli::pcl("Error reading audio file");
+                return;
+            }
+
+            $audioData = substr($fileData, $dataOffset);
+            unset($fileData);
+
+            $audioLen = strlen($audioData);
+
+            if ($this->audioMemorySharingEnabled) {
+                self::$sharedAudioCache[$cacheKey] = [
+                    'infoFile' => $infoFile,
+                    'chunkSize' => $chunkSize,
+                    'audioData' => $audioData,
+                    'audioLen' => $audioLen,
+                ];
+            }
         }
 
-        $audioData = substr($fileData, $dataOffset);
-        unset($fileData);
-
-        $audioLen = strlen($audioData);
         $currentPosition = 0;
 
         // Pré-codificação movida para o closure (Lazy Encoding) para evitar gargalos e travamentos
@@ -3165,7 +3203,7 @@ class trunkController
 
         $this->registerAudioEvent(function ($peer, trunkController $phone) use (&$currentPosition, $audioData, $audioLen, $chunkSize, $infoFile) {
             if (empty($this->callActive)) {
-                cli::pcl("Call is not active, stopping audio playback.");
+                $this->stopAudioFile();
                 return;
             }
 
