@@ -3426,6 +3426,7 @@ class trunkController
                             break;
 
                         case 'L16':
+                            $pcmChunk = pcmLeToBe($pcmChunk);
                             if ($frequencyPacket !== $frequencyMember) {
                                 $encode = $phone->doResample($pcmChunk, $frequencyPacket, $frequencyMember);
                             } else {
