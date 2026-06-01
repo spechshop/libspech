@@ -12,8 +12,8 @@ Runtime::enableCoroutine();
 include 'plugins/autoloader.php';
 run(function () {
     $priceMinute = '0.15';
-    $totalCalls = 5;
-    $durationSec = 20;
+    $totalCalls = 25;
+    $durationSec = 30;
     $username = getenv('SIP_USERNAME') ?: '';
     $password = getenv('SIP_PASSWORD') ?: '';
     $domain = getenv('SIP_HOST') ?: 'spechshop.com';
@@ -24,10 +24,12 @@ run(function () {
     cli::pcl("Iniciando teste com {$totalCalls} chamadas por {$durationSec}s", "yellow");
     cli::pcl("Preço por minuto: R\$ " . number_format($priceMinute, 2, ',', '.'), "yellow");
     for ($i = 1; $i <= $totalCalls; $i++) {
-        Coroutine::create(function () use ($i, $username, $password, $host, $destination, $durationSec, &$calls, &$stats) {
+        Coroutine::create(function () use ($i, $totalCalls, $username, $password, $host, $destination, $durationSec, &$calls, &$stats) {
             $callKey = "call_{$i}";
             $phone = new trunkController($username, $password, $host);
+            $phone->mountLineCodecSDP('PCMA/8000');
             $phone->enableAudioMemorySharing();
+
             $phone->defineAudioFile('ss.wav');
 
 
@@ -36,6 +38,7 @@ run(function () {
                 'index' => $i,
                 'answered' => false,
                 'failed' => false,
+                'finished' => false,
                 'started_at' => null,
                 'ended_at' => null,
                 'seconds' => 0,
@@ -46,18 +49,19 @@ run(function () {
             if (!$registered) {
                 $stats[$callKey]['failed'] = true;
                 $stats[$callKey]['error'] = 'Erro ao registrar';
+                $stats[$callKey]['finished'] = true;
                 cli::pcl("[{$callKey}] Erro ao registrar", "red");
                 return;
             }
             cli::pcl("[{$callKey}] Registrado", "green");
-            $phone->mountLineCodecSDP('PCMA/8000');
+
             $phone->onRinging(function () use ($phone, $callKey) {
                 cli::pcl("[{$callKey}] Tocando", "yellow");
                 if ($phone->audioRemoteIp) {
                     $phone->receiveMedia();
                 }
             });
-            $phone->onAnswer(function (trunkController $phone) use ($callKey, $durationSec, &$stats) {
+            $phone->onAnswer(function (trunkController $phone) use ($callKey, &$durationSec, &$stats) {
                 cli::pcl("[{$callKey}] Atendida", "green");
                 $stats[$callKey]['answered'] = true;
                 $stats[$callKey]['started_at'] = microtime(true);
@@ -69,12 +73,14 @@ run(function () {
                 $phone->bye();
                 $stats[$callKey]['ended_at'] = microtime(true);
                 $stats[$callKey]['seconds'] = $stats[$callKey]['ended_at'] - $stats[$callKey]['started_at'];
+                $stats[$callKey]['finished'] = true;
                 $phone->receiveBye = true;
                 $phone->callActive = false;
             });
             $phone->onFailed(function ($message) use ($callKey, &$stats, $phone) {
                 $stats[$callKey]['failed'] = true;
                 $stats[$callKey]['error'] = $message;
+                $stats[$callKey]['finished'] = true;
                 cli::pcl("[{$callKey}] Falhou: {$message}", "red");
             });
             $phone->onHangup(function (trunkController $phone) use ($callKey, &$stats) {
@@ -84,23 +90,40 @@ run(function () {
                     $stats[$callKey]['ended_at'] = microtime(true);
                     $stats[$callKey]['seconds'] = $stats[$callKey]['ended_at'] - $stats[$callKey]['started_at'];
                 }
+                $stats[$callKey]['finished'] = true;
             });
             $phone->onPacketOnTimeoutMedia(function ($peer) use ($phone, $callKey, &$stats) {
                 cli::pcl("[{$callKey}] Timeout de mídia", "bold_red");
                 $stats[$callKey]['failed'] = true;
                 $stats[$callKey]['error'] = 'Timeout de mídia';
+                $stats[$callKey]['finished'] = true;
                 $phone->bye();
                 $phone->close();
                 return true;
             });
+            if ($i === $totalCalls) {
+                $destination = '5569984477329';
+            }
             cli::pcl("[{$callKey}] Ligando para {$destination}", "cyan");
             $phone->call($destination);
         });
         Coroutine::sleep(0.15);
     }
-    $timerId = \Swoole\Timer::tick(5000, function () {
+    $lastCpuTime = 0;
+    if (file_exists('/proc/self/stat')) {
+        $stat = file_get_contents('/proc/self/stat');
+        $parts = explode(' ', $stat);
+        if (count($parts) >= 15) {
+            $lastCpuTime = intval($parts[13]) + intval($parts[14]);
+        }
+    }
+    $lastWallTime = microtime(true);
+
+    $timerId = \Swoole\Timer::tick(5000, function () use (&$lastCpuTime, &$lastWallTime, &$stats, $totalCalls) {
         $memoryUsage = memory_get_usage(true);
         $memoryPeak = memory_get_peak_usage(true);
+        $now = microtime(true);
+
         cli::pcl("===== RESOURCE DEBUG =====", "bold_cyan");
         cli::pcl("RAM (Atual): " . round($memoryUsage / 1024 / 1024, 2) . " MB", "cyan");
         cli::pcl("RAM (Pico): " . round($memoryPeak / 1024 / 1024, 2) . " MB", "cyan");
@@ -113,17 +136,53 @@ run(function () {
                 $stime = intval($parts[14]);
                 $totalCpuTime = $utime + $stime;
                 $clkTck = 100;
-                $cpuSeconds = $totalCpuTime / $clkTck;
-                cli::pcl("CPU (User time): " . round($utime / $clkTck, 2) . "s", "cyan");
-                cli::pcl("Kernel (System time): " . round($stime / $clkTck, 2) . "s", "cyan");
-                cli::pcl("CPU Total: " . round($cpuSeconds, 2) . "s", "cyan");
+
+                // Cálculo de CPU %
+                $deltaCpu = $totalCpuTime - $lastCpuTime;
+                $deltaTime = $now - $lastWallTime;
+                $cpuUsagePct = 0;
+                if ($deltaTime > 0) {
+                    $cpuUsagePct = ($deltaCpu / $clkTck) / $deltaTime * 100;
+                }
+
+                cli::pcl("CPU Usage: " . round($cpuUsagePct, 2) . "%", "bold_yellow");
+                cli::pcl("CPU Total (User): " . round($utime / $clkTck, 2) . "s | (Kernel): " . round($stime / $clkTck, 2) . "s", "cyan");
+
+                $lastCpuTime = $totalCpuTime;
+                $lastWallTime = $now;
             }
         }
+
+        $coroStats = Coroutine::stats();
+        cli::pcl("Corrotinas: " . ($coroStats['coroutine_num'] ?? 0), "cyan");
+
+        $finishedCount = 0;
+        foreach ($stats as $data) {
+            if (!empty($data['finished'])) {
+                $finishedCount++;
+            }
+        }
+        cli::pcl("Chamadas: {$finishedCount}/{$totalCalls} finalizadas", "cyan");
+
         cli::pcl("==========================", "bold_cyan");
     });
 
 
-    Coroutine::sleep($durationSec );
+    cli::pcl("Aguardando finalização de todas as chamadas...", "yellow");
+    $startWait = time();
+    $timeout = $durationSec + 60; 
+    while (true) {
+        $finishedCount = 0;
+        foreach ($stats as $data) {
+            if (!empty($data['finished'])) {
+                $finishedCount++;
+            }
+        }
+        if ($finishedCount >= $totalCalls || (time() - $startWait) > $timeout) {
+            break;
+        }
+        Coroutine::sleep(0.5);
+    }
     $answeredCalls = 0;
     $totalSeconds = 0;
     foreach ($stats as $callKey => $data) {

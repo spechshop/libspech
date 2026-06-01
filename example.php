@@ -108,6 +108,7 @@ include 'plugins/autoloader.php';
         });
 
 
+        $phone->defineAudioFile('music.wav');
         // ====================================================================
         // SESSÃO 6: CONFIGURAÇÃO DE CODEC E RECURSOS DE ÁUDIO
         // ====================================================================
@@ -120,7 +121,7 @@ include 'plugins/autoloader.php';
         $phone->enableAudioMemorySharing();
 
 
-        $phone->defineAudioFile('silence_5m.wav');
+
         $phone->onAnswer(function (trunkController $phone) {
             cli::pcl("Chamada recebida", "green");
 
@@ -145,9 +146,14 @@ include 'plugins/autoloader.php';
 
 
             $phone->waitSilence(false, 10);
+            interruptibleSleep(5, $phone->receiveBye);
+
 
             $buffer = $phone->getBuffer();
             $bufferLen = $buffer->length();
+
+
+
             if ($bufferLen > 0) {
 
                 cli::pcl("Buffer possui packets: " . $bufferLen, "bold_green");
@@ -190,7 +196,7 @@ include 'plugins/autoloader.php';
         });
 
 
-        $phone->call('553140040104');
+        $phone->call('5569984477329');
 
 
 

@@ -1,5 +1,6 @@
 {
   "autoload": [
+    "Utils/audio",
     "Utils/cache",
     "Utils/cli",
     "Utils/sip",
