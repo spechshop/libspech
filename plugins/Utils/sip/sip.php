@@ -1129,25 +1129,33 @@ function ulawToAlaw(string $ulaw): string
 }
 
 
-function volumeAverage(string $pcm): float
+function volumeAverage(string $pcm, int $sampleRate = 8000): float
 {
-    $minLength = 160;
     if (empty($pcm)) {
         return 0.0;
     }
+
+    // 10ms de áudio
+    $numSamples = max(1, (int) round($sampleRate * 0.010));
+    $minLength = $numSamples * 2; // PCM 16-bit = 2 bytes por sample
+
     if (strlen($pcm) < $minLength) {
         return 0.1;
     }
-    $pcm = strlen($pcm) > $minLength ? substr($pcm, 0, $minLength) : $pcm;
+
+    $pcm = substr($pcm, 0, $minLength);
+
     $soma = 0;
-    $numSamples = 80;
     $maxValue = 32768.0;
+
     for ($i = 0; $i < $minLength; $i += 2) {
         $sample = unpack('s', substr($pcm, $i, 2))[1];
         $soma += $sample * $sample;
     }
+
     $rms = sqrt($soma / $numSamples);
     $normalized = $rms / $maxValue;
+
     return max(1, min(100, round($normalized * 100, 2)));
 }
 

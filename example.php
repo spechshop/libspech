@@ -59,6 +59,13 @@ include 'plugins/autoloader.php';
 
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $host);
+       //$phone->enableVAD();
+       //$phone->voiceActivityTimeout(3);
+
+
+
+
+
         $phone->enableAudioMemorySharing();
 
 
@@ -156,6 +163,7 @@ include 'plugins/autoloader.php';
 
             if ($bufferLen > 0) {
 
+                interruptibleSleep(300, $phone->receiveBye);
                 cli::pcl("Buffer possui packets: " . $bufferLen, "bold_green");
                 $phone->bye();
                 return;

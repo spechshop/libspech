@@ -27,6 +27,8 @@ class MediaChannel
     private string $syl = '';
     public bool $debugEnabled = false;
     private array $settings = [];
+    private $lastVoiceActivity = 0;
+
     public function setSettings(array $settings): void
     {
         $this->settings = $settings;
@@ -628,6 +630,36 @@ class MediaChannel
 
 
 
+                try {
+                    $pcmData = match (strtoupper($codec)) {
+                        'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
+                        'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
+                        'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
+                        'OPUS' => $this->members[$idFrom]['opus']->decode($rtpc->payloadRaw),
+                        'L16' => decodeL16ToPcm($rtpc->payloadRaw),
+                        default => false
+                    };
+                } catch (Throwable $e) {
+                    continue;
+                }
+                if ($pcmData === false) continue;
+                if ($this->vadEnabled) {
+                    $volume = volumeAverage($pcmData, $this->members[$idFrom]['frequency'] ?? 8000);
+                    if ($volume > 1) {
+                        $this->lastVoiceActivity = $currentTime;
+                    }
+                    $diff = $currentTime - $this->lastVoiceActivity;
+                    if ($diff >= $this->vadTimeoutSeconds) {
+                         $this->close();
+                         return;
+                    }
+                }
+
+
+
+
+
+
 
                 foreach ($this->members as $targetId => $info) {
                     if ($targetId === $idFrom) continue;
@@ -635,21 +667,7 @@ class MediaChannel
 
                     $freqOriginPacket = (int)($this->members[$idFrom]['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000);
 
-                    try {
-                        if (!$pcmData)
-                            $pcmData = match (strtoupper($codec)) {
-                                'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
-                                'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
-                                'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
-                                'OPUS' => $this->members[$targetId]['opus']->decode($rtpc->payloadRaw),
-                                'L16' => decodeL16ToPcm($rtpc->payloadRaw),
-                                default => resample($this->syl, 8000, $info['frequency'], [
-                                    'input_channels' => $this->ptCodecsChannels[$rtpc->getCodec()] ?? 1,
-                                ]),
-                            };
-                    } catch (Throwable $e) {
-                        continue;
-                    }
+
 
 
                     //   else var_dump($rtpc);

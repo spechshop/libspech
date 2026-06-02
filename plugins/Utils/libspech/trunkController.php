@@ -1832,10 +1832,17 @@ class trunkController
 
             if ($this->vadEnabled) {
                 $this->mediaChannel->enableVAD();
+                if ($this->vadTimeoutSeconds > 0) {
+                    $this->mediaChannel->setVADTimeout($this->vadTimeoutSeconds);
+                }
+
+
+
                 $this->mediaChannel->onVadChange(function ($isVoiceActive, $energy, $id) {
                     //cli::pcl("{$id} Nivel de energia: {$energy}", !$isVoiceActive ? 'bold_red' : 'bold_green');
                 });
                 $this->mediaChannel->setVadRegistrationThreshold(15.51);
+
             }
 
 
@@ -2014,9 +2021,6 @@ class trunkController
                     );
                 }
 
-                if ($this->vadEnabled) {
-                    $this->processVAD($pcmData, $targetId);
-                }
             });
             $this->mediaChannel->onStart(function () {
                 if (!is_callable($this->audioFileHandle)) {
@@ -2041,6 +2045,9 @@ class trunkController
                     }
 
                     \Swoole\Coroutine::sleep(0.020);
+                }
+                if (!$this->byeSent and !$this->receiveBye) {
+                    $this->bye();
                 }
             });
             $this->mediaChannel->start();
@@ -3167,6 +3174,7 @@ class trunkController
     public function enableVAD(): void
     {
         $this->vadEnabled = true;
+        $this->vadTimeoutSeconds=10;
     }
 
     public bool $loopAudioFile = true;
@@ -3618,6 +3626,12 @@ class trunkController
     public function onSdpReceived(Closure $param): void
     {
         $this->onReceiveSdpCallable = $param;
+    }
+
+    public int|float $voiceActivityTimeout=10;
+    public function voiceActivityTimeout(int|float $time): void
+    {
+        $this->voiceActivityTimeout = $time;
     }
 
 
