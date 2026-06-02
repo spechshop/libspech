@@ -648,8 +648,10 @@ class MediaChannel
                     if ($volume > 1) {
                         $this->lastVoiceActivity = $currentTime;
                     }
-                    $diff = $currentTime - $this->lastVoiceActivity;
+                    $diffInMs = $currentTime - $this->lastVoiceActivity;
+                    $diff = round($diffInMs / 1000, 2);
                     if ($diff >= $this->vadTimeoutSeconds) {
+                        cli::pcl("VAD: $idFrom desativado por timeout de {$this->vadTimeoutSeconds} segundos após $diff segundos", 'red');
                          $this->close();
                          return;
                     }
