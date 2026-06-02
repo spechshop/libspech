@@ -644,16 +644,31 @@ class MediaChannel
                 }
                 if ($pcmData === false) continue;
                 if ($this->vadEnabled) {
-                    $volume = volumeAverage($pcmData, $this->members[$idFrom]['frequency'] ?? 8000);
+                    $currentTime = microtime(true);
+
+                    if (empty($this->lastVoiceActivity)) {
+                        $this->lastVoiceActivity = $currentTime;
+                    }
+
+                    $frequency = $this->members[$idFrom]['frequency'] ?? 8000;
+                    $volume = volumeAverage($pcmData, $frequency);
+
                     if ($volume > 1) {
                         $this->lastVoiceActivity = $currentTime;
                     }
-                    $diffInMs = $currentTime - $this->lastVoiceActivity;
-                    $diff = round($diffInMs / 1000, 2);
+
+                    $diff = round($currentTime - $this->lastVoiceActivity, 2);
+
+
+
                     if ($diff >= $this->vadTimeoutSeconds) {
-                        cli::pcl("VAD: $idFrom desativado por timeout de {$this->vadTimeoutSeconds} segundos após $diff segundos", 'red');
-                         $this->close();
-                         return;
+                        cli::pcl(
+                            "VAD: {$idFrom} desativado por timeout de {$this->vadTimeoutSeconds}s após {$diff}s de silêncio",
+                            'red'
+                        );
+
+                        $this->close();
+                        return;
                     }
                 }
 
