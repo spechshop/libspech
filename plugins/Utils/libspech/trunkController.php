@@ -1221,6 +1221,9 @@ class trunkController
             if ($this->closing || $this->receiveBye) {
                 return false;
             }
+            if ($this->byeSent) {
+                return false;
+            }
 
             if ($this->error) {
                 if (is_callable($this->onHangupCallback)) {
@@ -1236,17 +1239,12 @@ class trunkController
 
             $res = $this->safeRecvfrom($peer, 1);
 
-            if ($res === null) {
-                Coroutine::sleep(0.01);
-                continue;
-            }
 
             if (!$res) {
                 if ($this->socket->isClosed()) {
                     if (is_callable($this->onHangupCallback)) {
                         go($this->onHangupCallback, $this);
                     }
-
                     return false;
                 }
 
@@ -2426,7 +2424,7 @@ class trunkController
         if (!$this->preserveSockets) {
             foreach ($this->socketsList as $socket) {
                 try {
-                    if ($socket instanceof Socket && !$socket->isClosed()) {
+                    if ($socket instanceof SocketMutable && !$socket->isClosed()) {
                         $socket->close();
                     }
                 } catch (\Throwable $e) {
@@ -2476,13 +2474,16 @@ class trunkController
         $this->onHangupCallback = $callback;
     }
 
+
     public function bye(): void
     {
+        if ($this->byeSent) return;
         if (empty($this->headers200)) {
             $this->cancel();
             return;
         }
         $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
+        $this->byeSent=true;
         $this->mediaChannel->close();
     }
 
@@ -2559,8 +2560,11 @@ class trunkController
         if (strlen($this->password) < 1) {
             return false;
         }
+        if (!$this->isRegistered) {
+            return false;
+        }
 
-
+        $this->isRegistered=false;
         $maxWait = 1.5;
         if ($this->registerCount > 3) {
             return false;
@@ -2572,6 +2576,10 @@ class trunkController
 
         $renderSolution = sip::renderSolution($modelRegister);
         $startTimer = time();
+
+
+
+        $sent=false;
         if (is_null($this->socket)) {
             $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
             if (!$this->socket->bind($this->localIp, $this->socketPortListen)) {
@@ -2588,20 +2596,39 @@ class trunkController
                 }
             }
         }
-
-
-        $this->socket->sendto($this->host, $this->port, $renderSolution);
-        for (; ;) {
-            Coroutine::sleep(0.5);
-            $elapsed = time() - $startTimer;
-            if ($elapsed > $maxWait) {
-                cli::pcl("Timeout No Response in {$maxWait} seconds On UnRegister", 'red');
-                return false;
+        while (time() - $startTimer < $maxWait) {
+            if ($this->socket->isClosed()) {
+                $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
+                if (!$this->socket->bind($this->localIp, $this->socketPortListen)) {
+                    cli::pcl("Falha ao iniciar socket para deslogar", 'red');
+                    return false;
+                }
+            } else {
+               $this->socket->sendto($this->host, $this->port, $renderSolution);
+               $sent=$this->socket->recvfrom($peer, 1);
+                if ($sent === false) {
+                    $this->socket->close();
+                } else {
+                    $sent=true;
+                    break;
+                }
             }
+        }
+
+
+
+        $startTimer = time();
+        for (; ;) {
+
             try {
 
 
-                $res = $this->socket->recvfrom($peer, 1);
+                if (!$sent)
+                $res = $this->safeRecvfrom($peer, 1);
+                else {
+                    $res=$sent;
+                    $sent=false;
+                }
 
                 if ($res === null) {
                     cli::pcl("Socket ocupado por outra corrotina, assumimos que não podemos esperar resposta aqui");
@@ -2611,6 +2638,11 @@ class trunkController
             } catch (\Throwable $e) {
                 cli::pcl("Erro ao receber resposta do servidor durante deslogagem: " . $e->getMessage(), 'red');
                 continue;
+            }
+            $elapsed = time() - $startTimer;
+            if ($elapsed > $maxWait) {
+                cli::pcl("Timeout No Response in {$maxWait} seconds On UnRegister", 'red');
+                return false;
             }
             if ($res === false) {
                 if (time() - $startTimer > $maxWait) {

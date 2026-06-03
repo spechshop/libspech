@@ -60,8 +60,8 @@ run(function () {
         mkdir('benchmark', 0755, true);
     }
     shell_exec('rm benchmark/*');
-    $totalCalls  = 80;
-    $durationSec = 30;
+    $totalCalls  = 50;
+    $durationSec = 20;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
     $domain      = getenv('SIP_HOST') ?: 'spechshop.com';
@@ -91,14 +91,13 @@ run(function () {
         ) {
             $callKey = "call_{$i}";
             $phone   = new trunkController($username, $password, $host);
-            $phone->mountLineCodecSDP('G729/8000');
-            //$phone->enableStereoSound();
-
-
-
-
+            $phone->mountLineCodecSDP('PCMU/8000');
             $phone->enableAudioMemorySharing();
             $phone->enableAudioRecording();
+
+
+
+
             $audioFile = "ss.wav";
             $phone->defineAudioFile($audioFile);
 
@@ -150,9 +149,10 @@ run(function () {
 
 
 
-                Coroutine::sleep($durationSec);
+                \libspech\Sip\interruptibleSleep($durationSec/2, $phone->receiveBye);
+                $phone->send2833('*');
+                \libspech\Sip\interruptibleSleep($durationSec/2, $phone->receiveBye);
                 $buffer=$phone->getBuffer();
-                cli::pcl("[{$callKey}] Encerrando após {$durationSec}s", "yellow");
 
                 // Capture media metrics before closing
                 try {
@@ -196,7 +196,11 @@ run(function () {
 
 
                 $phone->bye();
+                $phone->unRegister();
                 $phone->close();
+                cli::pcl("[{$callKey}] Encerrando após {$durationSec}s", "yellow");
+
+
 
             });
             $phone->onFailed(function ($message) use ($callKey, &$stats, $phone) {
@@ -214,6 +218,7 @@ run(function () {
                     $stats[$callKey]['seconds']  = $stats[$callKey]['ended_at'] - $stats[$callKey]['started_at'];
                 }
                 $stats[$callKey]['finished'] = true;
+                $phone->unRegister();
             });
             $phone->onPacketOnTimeoutMedia(function ($peer) use ($phone, $callKey, &$stats) {
                 cli::pcl("[{$callKey}] Timeout de mídia", "bold_red");
@@ -227,7 +232,11 @@ run(function () {
             });
             cli::pcl("[{$callKey}] Ligando para {$destination}", "cyan");
             $phone->call($destination);
+
+
             $phone->saveBufferToWavFile($stats[$callKey]['output_rec'], $phone->getBuffer());
+
+
         });
         Coroutine::sleep(0.1);
     }

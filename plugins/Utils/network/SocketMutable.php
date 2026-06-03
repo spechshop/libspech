@@ -1,5 +1,5 @@
 <?php
-class SocketMutable extends \Co\Socket
+class SocketMutable extends \Swoole\Coroutine\Socket
 {
     private ?array $lastSockname = null;
     private bool $closed = false;
