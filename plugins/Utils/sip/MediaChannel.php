@@ -6,8 +6,6 @@ use bcg729Channel;
 use Closure;
 use libspech\Cache\cache;
 use libspech\Cli\cli;
-
-use libspech\Network\network;
 use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
@@ -263,6 +261,7 @@ class MediaChannel
     public mixed $ssrc = 0;
 
     private array $cacheKeys = [];
+
     public function generateDeterministicSsrc(string $ipPort): int
     {
         if (isset($this->cacheKeys[$ipPort])) {
@@ -484,8 +483,6 @@ class MediaChannel
                 $currentTime = microtime(true);
 
 
-
-
                 if (!$packet) {
                     $now = $currentTime;
                     $elapsed = round($now - $lastPacketTime, 3);
@@ -538,8 +535,6 @@ class MediaChannel
                             'bold_red'
                         );
                     }
-
-
 
 
                     $this->unblock();
@@ -653,9 +648,6 @@ class MediaChannel
                 $pcmData = false;
 
 
-
-
-
                 if ($this->onReceiveCallable) {
                     go(function () use ($rtpc, $peer, $ssrc) {
                         call_user_func($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
@@ -685,8 +677,6 @@ class MediaChannel
 
                     continue;
                 }
-
-
 
 
                 try {
@@ -719,7 +709,6 @@ class MediaChannel
                     $diff = round($currentTime - $this->lastVoiceActivity, 2);
 
 
-
                     if ($diff >= $this->vadTimeoutSeconds) {
                         cli::pcl(
                             "VAD: {$idFrom} desativado por timeout de {$this->vadTimeoutSeconds}s após {$diff}s de silêncio",
@@ -732,18 +721,11 @@ class MediaChannel
                 }
 
 
-
-
-
-
-
                 foreach ($this->members as $targetId => $info) {
                     if ($targetId === $idFrom) continue;
 
 
                     $freqOriginPacket = (int)($this->members[$idFrom]['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000);
-
-
 
 
                     //   else var_dump($rtpc);
@@ -860,9 +842,8 @@ class MediaChannel
                     if (microtime(true) - $lastDebug >= 0.160) {
 
 
-
                         $timeMS = round((microtime(true) - $lastPacketTime) * 1000, 2);
-                        cli::pcl("$this->callId MediaChannel: " . $timeMS . "ms com ".count($this->members). " membros",
+                        cli::pcl("$this->callId MediaChannel: " . $timeMS . "ms com " . count($this->members) . " membros",
                             !empty($packet) ? 'bold_green' : 'bold_red'
                         );
                         $lastDebug = microtime(true);
@@ -893,6 +874,8 @@ class MediaChannel
 
         if (empty($peer['config']['stereo'])) $nc = 1;
         $peer['opus'] = new opusChannel(48000, $nc);
+
+
 
         // $peer['LPCM_MONO'] = new LPCM(1, 16);
 

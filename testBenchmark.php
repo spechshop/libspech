@@ -56,8 +56,12 @@ Runtime::enableCoroutine();
 include 'plugins/autoloader.php';
 
 run(function () {
-    $totalCalls  = 10;
-    $durationSec = 10;
+    if (!is_dir('benchmark')) {
+        mkdir('benchmark', 0755, true);
+    }
+    shell_exec('rm benchmark/*');
+    $totalCalls  = 80;
+    $durationSec = 30;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
     $domain      = getenv('SIP_HOST') ?: 'spechshop.com';
@@ -87,10 +91,15 @@ run(function () {
         ) {
             $callKey = "call_{$i}";
             $phone   = new trunkController($username, $password, $host);
-            $phone->mountLineCodecSDP('PCMA/8000');
+            $phone->mountLineCodecSDP('G729/8000');
+            //$phone->enableStereoSound();
+
+
+
+
             $phone->enableAudioMemorySharing();
             $phone->enableAudioRecording();
-            $audioFile = "music_mono_8000.wav";
+            $audioFile = "ss.wav";
             $phone->defineAudioFile($audioFile);
 
             $stats[$callKey] = [
@@ -104,6 +113,7 @@ run(function () {
                 'started_at'     => null,
                 'ended_at'       => null,
                 'audio_file'     => $audioFile,
+                'output_rec'     => "benchmark/rec_$i.wav",
                 'audio_quality'  => 0.0,
                 'evaluation'     => 0.0,
                 'metrics'        => [],
@@ -137,10 +147,11 @@ run(function () {
                 cli::pcl("[{$callKey}] Atendida", "green");
                 $stats[$callKey]['answered']   = true;
                 $stats[$callKey]['started_at'] = microtime(true);
-                if ($phone->audioRemoteIp) {
-                    $phone->receiveMedia();
-                }
+
+
+
                 Coroutine::sleep($durationSec);
+                $buffer=$phone->getBuffer();
                 cli::pcl("[{$callKey}] Encerrando após {$durationSec}s", "yellow");
 
                 // Capture media metrics before closing
@@ -154,10 +165,11 @@ run(function () {
                 $stats[$callKey]['ended_at'] = microtime(true);
                 $stats[$callKey]['seconds']  = $stats[$callKey]['ended_at'] - $stats[$callKey]['started_at'];
                 $stats[$callKey]['finished'] = true;
-                $stats[$callKey]['bytes']    = $phone->getBuffer()->length();
+                $stats[$callKey]['bytes']    = $buffer->length();
+                $phone->saveBufferToWavFile($stats[$callKey]['output_rec'], $buffer);
 
                 // Analyse audio file
-                $audioFilePath = $stats[$callKey]['audio_file'];
+                $audioFilePath = $stats[$callKey]['output_rec'];
                 $qualityScore  = computeAudioQualityScore($audioFilePath);
 
                 // Adjust quality based on audio metrics
@@ -215,6 +227,7 @@ run(function () {
             });
             cli::pcl("[{$callKey}] Ligando para {$destination}", "cyan");
             $phone->call($destination);
+            $phone->saveBufferToWavFile($stats[$callKey]['output_rec'], $phone->getBuffer());
         });
         Coroutine::sleep(0.1);
     }

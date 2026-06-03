@@ -371,78 +371,126 @@ class trunkController
 
     public int $defaultChannels = 1;
 
+    public function enableStereoSound(): void
+    {
+
+
+        $ptFind=false;
+        foreach ($this->mapLearn as $pt => $aValues) {
+            foreach ($aValues as $a) {
+                if (str_contains($a, 'opus')) {
+                    $ptFind=$pt;
+                    break 2;
+                }
+            }
+        }
+        if (!$ptFind) return;
+        $dtmf48k=$this->ptsDtmfRegistered[48000];
+        unset($this->mapLearn[$ptFind]);
+        unset($this->mapLearn[$dtmf48k]);
+        unset($this->ptsRegistered[$ptFind]);
+        unset($this->ptsRegistered[$dtmf48k]);
+        $this->stereoMode=true;
+        $this->mountLineCodecSDP('OPUS/48000/2');
+    }
+    public bool $stereoMode=false;
+
     public function mountLineCodecSDP(string $codec = 'PCMA/8000'): array
     {
-        $codecRtpMap = [];
         $defaultRate = 8000;
         $defaultChannels = 1;
 
-        $pt = null;
-        $fmtp = [];
-        $ptStrict = ['PCMU' => 0, 'PCMA' => 8, 'G729' => 18, 'telephone-event' => 101];
-        $parts = explode('/', $codec);
-        $name = $parts[0];
-        if (!empty($parts[1])) {
-            $defaultRate = $parts[1];
+        $parts = explode('/', trim($codec));
+        $rawName = trim($parts[0] ?? 'PCMA');
+        $nameUpper = strtoupper($rawName);
+        $name = $nameUpper;
+
+        if ($nameUpper === 'OPUS') {
+            $name = 'opus';
+        }
+        if ($nameUpper === 'TELEPHONE-EVENT') {
+            $name = 'telephone-event';
         }
 
+        if (!empty($parts[1])) {
+            $defaultRate = (int)$parts[1];
+        }
+        if (!empty($parts[2])) {
+            $defaultChannels = (int)$parts[2];
+        }
 
-        if (array_key_exists($name, $ptStrict)) {
-            $pt = $ptStrict[$name];
-        } else {
-            if (strtoupper($name) === 'OPUS') $name = 'opus';
+        $pt = null;
+        $mainLines = [];
+
+        $ptStrict = [
+            'PCMU' => 0,
+            'PCMA' => 8,
+            'G729' => 18,
+            'TELEPHONE-EVENT' => 101,
+        ];
+
+        if (array_key_exists($nameUpper, $ptStrict)) {
+            $pt = $ptStrict[$nameUpper];
         }
 
         if ($pt === null) {
-            $start = 97;
-            for ($i = $start; $i < 128; $i++) {
-                if (!array_key_exists($i, $this->ptsRegistered)) {
-
-                    $this->ptsRegistered[$i] = $i;
+            for ($i = 97; $i < 128; $i++) {
+                if (!array_key_exists($i, $this->ptsRegistered) && !array_key_exists($i, $this->mapLearn)) {
                     $pt = $i;
-                    if ($name === 'opus') $fmtp[] = "fmtp:$pt maxplaybackrate=24000;sprop-maxcapturerate=24000;maxaveragebitrate=64000;useinbandfec=1";
                     break;
-
                 }
             }
         }
-        $lineString = "rtpmap:$pt $name/$defaultRate";
 
-
-        if (!empty($parts[2])) {
-            if (intval($parts[2]) > 1) $lineString .= "/$parts[2]";
-            $defaultChannels = $parts[2];
+        if ($pt === null) {
+            throw new \RuntimeException('Não foi possível alocar payload type dinâmico para SDP');
         }
-        $this->ptsRegistered[$pt] = $lineString;
-        $start = 101;
-        $ptDtmf = $start;
-        for ($i = $start; $i < 128; $i++) {
 
-            if (!array_key_exists($defaultRate, $this->ptsDtmfRegistered)) {
-                if (!array_key_exists($i, $this->mapLearn)) {
-                    $this->ptsDtmfRegistered[$defaultRate] = $i;
+        $lineString = "rtpmap:$pt $name/$defaultRate";
+        if ($defaultChannels > 1) {
+            $lineString .= "/$defaultChannels";
+        }
+        $mainLines[] = $lineString;
+
+        if ($name === 'opus') {
+            $v = "fmtp:$pt maxplaybackrate=24000;sprop-maxcapturerate=24000;maxaveragebitrate=64000;useinbandfec=1";
+            if ($this->stereoMode) {
+                $v .= ";stereo=1";
+            }
+            $mainLines[] = $v;
+        }
+
+        if ($pt === 18) {
+            $mainLines[] = "fmtp:$pt annexb=no";
+        }
+
+        $this->ptsRegistered[$pt] = $lineString;
+
+        if (array_key_exists($defaultRate, $this->ptsDtmfRegistered)) {
+            $ptDtmf = (int)$this->ptsDtmfRegistered[$defaultRate];
+        } else {
+            $ptDtmf = 101;
+            for ($i = 101; $i < 128; $i++) {
+                if (!array_key_exists($i, $this->mapLearn) && !array_key_exists($i, $this->ptsRegistered)) {
                     $ptDtmf = $i;
                     break;
                 }
-
             }
+            $this->ptsDtmfRegistered[$defaultRate] = $ptDtmf;
         }
-        $fmtp[] = "rtpmap:$ptDtmf telephone-event/" . $defaultRate;
 
-        $fmtp[] = "fmtp:$ptDtmf 0-15";
+        $dtmfLines = [
+            "rtpmap:$ptDtmf telephone-event/$defaultRate",
+            "fmtp:$ptDtmf 0-15",
+        ];
 
-
-        if ($pt == 18) {
-            $fmtp[] = "fmtp:$pt annexb=no";
-        }
-        $this->mapLearn[$pt] = [$lineString];
-        if (!array_key_exists($ptDtmf, $this->mapLearn)) $this->mapLearn[$ptDtmf] = $fmtp;
+        $this->mapLearn[$pt] = $mainLines;
+        $this->mapLearn[$ptDtmf] = $dtmfLines;
         $this->defaultChannels = $defaultChannels;
 
-
         return [
-            $pt => [$lineString],
-            $ptDtmf => $fmtp,
+            $pt => $mainLines,
+            $ptDtmf => $dtmfLines,
         ];
     }
 
@@ -1348,15 +1396,16 @@ class trunkController
 
         $sdp = [
             "v" => ["0"],
-            "o" => ["{$this->ssrc} 0 0 IN IP4 {$this->localIp}"],
+            "o" => ["{$this->callerId} 0 0 IN IP4 {$this->localIp}"],
             "s" => [$this->userAgent],
             "c" => ["IN IP4 {$this->localIp}"],
             "t" => ["0 0"],
             "m" => ["audio {$this->rtpSocket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn))],
             "a" => [
-                //'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->localIp}",
+                'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->localIp}",
                 ...$this->codecRtpMap,
                 'ptime:20',
+
                 'sendrecv',
             ],
         ];
@@ -1868,6 +1917,11 @@ class trunkController
                 }
             }
             $parser = trunkController::getSDPModelCodecs($this->sdpReceived['a']);
+            if (array_key_exists('config', $parser) && array_key_exists('config', $parser['config']) && array_key_exists('stereo', $parser['config']['config'])) {
+                $this->defaultChannels = $parser['config']['config']['stereo'] ? 2 : 1;
+            } else {
+                $this->defaultChannels = 1;
+            }
 
 
             $this->mediaChannel->addMember([
