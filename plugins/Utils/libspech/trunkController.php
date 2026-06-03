@@ -2478,12 +2478,11 @@ class trunkController
     public function bye(): void
     {
         if ($this->byeSent) return;
+        $this->byeSent=true;
         if (empty($this->headers200)) {
-            $this->cancel();
             return;
         }
         $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
-        $this->byeSent=true;
         $this->mediaChannel->close();
     }
 
