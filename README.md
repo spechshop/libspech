@@ -25,13 +25,17 @@ libspech fornece:
 
 > 📘 **Nova Documentação**: Veja **[SIGNALING_ARRAYS.md](SIGNALING_ARRAYS.md)** para entender em profundidade como os arrays de sinalização SIP são construídos e processados.
 
-Este README reflete o repositório a partir de 2025-11-24.
+Este README reflete o repositório a partir de 2026-06-02.
 
 ## Índice
 
 - [Stack](#stack)
 - [Requisitos](#requisitos)
 - [Instalação](#instalação)
+- [Environment Variables](#environment-variables)
+- [Scripts and Entry Points](#scripts-and-entry-points)
+- [Tests](#tests)
+- [Project Structure](#project-structure)
 - [Guia de Aprendizado Progressivo](#guia-de-aprendizado-progressivo)
   - [Sessão 1: Configurações Iniciais](#sessão-1-configurações-iniciais)
   - [Sessão 2: Inicialização do Ambiente de Corotina](#sessão-2-inicialização-do-ambiente-de-corotina)
@@ -75,6 +79,61 @@ sudo chmod +x /usr/local/bin/php
 > repositório [pcg729](https://github.com/spechshop/pcg729) e compilar normalmente — ele é uma adaptação
 > do [Static PHP CLI (SPC)](https://github.com/crazywhalecc/static-php-cli), portanto segue o mesmo processo de build com
 > as extensões desejadas.
+
+
+## Environment Variables
+
+The autoloader automatically loads variables from `.env` (creates from `.env.example` if missing).
+
+Required for SIP integration:
+- `SIP_USERNAME`
+- `SIP_PASSWORD`
+- `SIP_HOST`
+
+Optional: others may be used by extra scripts.
+
+**TODO:** Document full list of supported env vars if any beyond SIP_*.
+
+## Scripts and Entry Points
+
+Main entry points and scripts (run from project root with custom `php` binary):
+
+- `example.php` — Progressive 9-session demo of full SIP call flow.
+- `testBilling.php`, `testAudioCache.php`, `testSecureSleep.php` — Manual validation scripts.
+- `transfer.php`, `genSilenceAudio.php`, `stubGen.php` — Utility/generation scripts.
+- `extra/*.php` and subdirs (codecs/, mixing/, resample/, etc.) — Validation, examples, benchmarks, quality tools.
+- `plugins/autoloader.php` — Include-based autoloader (not run directly).
+
+All scripts require: `ini_set('memory_limit', '1024M');` + `require 'plugins/autoloader.php';` (or equivalent).
+
+## Tests
+
+- No automated test framework (e.g. PHPUnit) present.
+- "Atualmente não há testes automatizados no repositório."
+- Manual tests executed directly: `php testBilling.php` etc.
+- For new tests: follow guidelines in AGENTS.md (ini_set 256M, autoloader, class_exists checks, PASS/FAIL, exit codes).
+- Integration tests require configured `.env` and real SIP server.
+
+**TODO:** Add automated tests or run_* scripts if implemented in future.
+
+## Project Structure
+
+```
+libspech/
+├── example.php
+├── test*.php, transfer.php, genSilenceAudio.php, stubGen.php
+├── plugins/
+│   ├── autoloader.php
+│   ├── configInterface.json
+│   └── Utils/...
+├── stubs/ (extension stubs for IDE)
+├── extra/ (tools, examples, validation)
+├── *.md docs (SIGNALING_ARRAYS.md, TRUNK_CONTROLLER.md, etc.)
+├── music*.wav, rec.wav, etc.
+└── LICENSE.txt, etc.
+```
+
+**TODO:** Provide full detailed tree if needed.
 
 ## Guia de Aprendizado Progressivo
 

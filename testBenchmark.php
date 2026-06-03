@@ -12,17 +12,19 @@ Runtime::enableCoroutine();
 include 'plugins/autoloader.php';
 run(function () {
     $priceMinute = '0.15';
-    $totalCalls = 30;
-    $durationSec = 30;
+    $totalCalls = 50; // Mais chamadas para benchmark de desempenho
+    $durationSec = 10; // Duração menor para foco em throughput
     $username = getenv('SIP_USERNAME') ?: '';
     $password = getenv('SIP_PASSWORD') ?: '';
     $domain = getenv('SIP_HOST') ?: 'spechshop.com';
     $host = filter_var($domain, FILTER_VALIDATE_IP) ? $domain : gethostbyname($domain);
-    $destination = '551140040104';
+    $destination = '553140040104';
     $calls = [];
     $stats = [];
-    cli::pcl("Iniciando teste com {$totalCalls} chamadas por {$durationSec}s", "yellow");
+    $startBenchmark = microtime(true);
+    cli::pcl("Iniciando BENCHMARK de desempenho com {$totalCalls} chamadas por {$durationSec}s", "yellow");
     cli::pcl("Preço por minuto: R\$ " . number_format($priceMinute, 2, ',', '.'), "yellow");
+    cli::pcl("Foco: latência, throughput, recursos", "bold_cyan");
     for ($i = 1; $i <= $totalCalls; $i++) {
         Coroutine::create(function () use ($i, $totalCalls, $username, $password, $host, $destination, $durationSec, &$calls, &$stats) {
             $callKey = "call_{$i}";
@@ -42,12 +44,14 @@ run(function () {
                 'finished' => false,
                 'started_at' => null,
                 'ended_at' => null,
+                'setup_time' => 0,
                 'seconds' => 0,
                 'bytes' => 0,
                 'error' => null
             ];
             $calls[$callKey] = $phone;
-            $registered = $phone->register();
+            $registerStart = microtime(true);
+            $registered = $phone->register(2);
             if (!$registered) {
                 $stats[$callKey]['failed'] = true;
                 $stats[$callKey]['error'] = 'Erro ao registrar';
@@ -55,7 +59,8 @@ run(function () {
                 cli::pcl("[{$callKey}] Erro ao registrar", "red");
                 return;
             }
-            cli::pcl("[{$callKey}] Registrado", "green");
+            $stats[$callKey]['setup_time'] = microtime(true) - $registerStart;
+            cli::pcl("[{$callKey}] Registrado (setup: " . round($stats[$callKey]['setup_time'], 3) . "s)", "green");
 
             $phone->onRinging(function () use ($phone, $callKey) {
                 cli::pcl("[{$callKey}] Tocando", "yellow");
@@ -64,7 +69,6 @@ run(function () {
                 cli::pcl("[{$callKey}] Recebendo SDP", "blue");
                 $phone->receiveMedia();
             });
-
 
 
 
@@ -112,12 +116,12 @@ run(function () {
                 return true;
             });
             if ($i === $totalCalls) {
-                $destination = '5569984477329';
+                //$destination = '5569984477329';
             }
             cli::pcl("[{$callKey}] Ligando para {$destination}", "cyan");
             $phone->call($destination);
         });
-        Coroutine::sleep(0.15);
+        Coroutine::sleep(0.1); // Intervalo menor para maior taxa de chamadas
     }
     $lastCpuTime = 0;
     if (file_exists('/proc/self/stat')) {
@@ -134,7 +138,7 @@ run(function () {
         $memoryPeak = memory_get_peak_usage(true);
         $now = microtime(true);
 
-        cli::pcl("===== RESOURCE DEBUG =====", "bold_cyan");
+        cli::pcl("===== RESOURCE DEBUG (BENCHMARK) =====", "bold_cyan");
         cli::pcl("RAM (Atual): " . round($memoryUsage / 1024 / 1024, 2) . " MB", "cyan");
         cli::pcl("RAM (Pico): " . round($memoryPeak / 1024 / 1024, 2) . " MB", "cyan");
 
@@ -180,7 +184,7 @@ run(function () {
 
     cli::pcl("Aguardando finalização de todas as chamadas...", "yellow");
     $startWait = time();
-    $timeout = $durationSec + 60; 
+    $timeout = $durationSec + 90;
     while (true) {
         $finishedCount = 0;
         foreach ($stats as $data) {
@@ -195,10 +199,16 @@ run(function () {
     }
     $answeredCalls = 0;
     $totalSeconds = 0;
+    $totalSetupTime = 0;
+    $setupTimes = [];
     foreach ($stats as $callKey => $data) {
         if (!empty($data['answered'])) {
             $answeredCalls++;
             $totalSeconds += $data['seconds'];
+        }
+        if (!empty($data['setup_time'])) {
+            $totalSetupTime += $data['setup_time'];
+            $setupTimes[] = $data['setup_time'];
         }
     }
     $totalMinutesReal = $totalSeconds / 60;
@@ -224,10 +234,30 @@ run(function () {
         }
     }
 
+    $endBenchmark = microtime(true);
+    $totalBenchmarkTime = $endBenchmark - $startBenchmark;
+    $callsPerSecond = $totalCalls / $totalBenchmarkTime;
+    $avgSetupTime = count($setupTimes) > 0 ? array_sum($setupTimes) / count($setupTimes) : 0;
+    $maxSetupTime = count($setupTimes) > 0 ? max($setupTimes) : 0;
+    $minSetupTime = count($setupTimes) > 0 ? min($setupTimes) : 0;
+
+    $successRate = $totalCalls > 0 ? ($answeredCalls / $totalCalls) : 0;
+    $setupScore = ($avgSetupTime > 0 && $avgSetupTime < 0.3) ? 10 : (($avgSetupTime < 0.8) ? 8 : (($avgSetupTime < 1.5) ? 6 : 4));
+    $throughputScore = min(10, max(0, $callsPerSecond * 4));
+    $failPenalty = 0;
+    foreach ($stats as $data) { if (!empty($data['failed'])) $failPenalty += 1; }
+    $failScore = max(0, 10 - $failPenalty * 2);
+    $nota = round(($successRate * 10 * 0.35 + $setupScore * 0.25 + $throughputScore * 0.25 + $failScore * 0.15));
+    $nota = max(0, min(10, $nota));
+
     cli::pcl("======================================", "cyan");
-    cli::pcl("Resumo final", "bold_green");
+    cli::pcl("RESUMO DE BENCHMARK DE DESEMPENHO", "bold_green");
+    cli::pcl("Nota de avaliação: {$nota}/10", "bold_green");
     cli::pcl("Chamadas planejadas: {$totalCalls}", "green");
     cli::pcl("Chamadas atendidas: {$answeredCalls}", "green");
+    cli::pcl("Tempo total do benchmark: " . round($totalBenchmarkTime, 2) . "s", "bold_yellow");
+    cli::pcl("Throughput: " . round($callsPerSecond, 2) . " chamadas/s", "bold_yellow");
+    cli::pcl("Setup time médio: " . round($avgSetupTime, 3) . "s (min: " . round($minSetupTime, 3) . "s, max: " . round($maxSetupTime, 3) . "s)", "cyan");
     cli::pcl("Preço por minuto: R\$ " . number_format($priceMinute, 2, ',', '.'), "green");
     cli::pcl("Tempo esperado total: {$expectedMinutes} minuto(s)", "green");
     cli::pcl("Desconto esperado: R\$ " . number_format($expectedCharge, 2, ',', '.'), "bold_green");
@@ -242,7 +272,8 @@ run(function () {
         $seconds = round($data['seconds'], 2);
         $minutes = $data['seconds'] / 60;
         $charge = $minutes * $priceMinute;
-        cli::pcl("[{$callKey}] answered=" . ($data['answered'] ? 'sim' : 'nao') . " failed=" . ($data['failed'] ? 'sim' : 'nao') . " bytes=$data[bytes] seconds={$seconds}" . " charge=R\$ " . number_format($charge, 4, ',', '.') . (!empty($data['error']) ? " error={$data['error']}" : ""), "white");
+        $setup = round($data['setup_time'] ?? 0, 3);
+        cli::pcl("[{$callKey}] answered=" . ($data['answered'] ? 'sim' : 'nao') . " failed=" . ($data['failed'] ? 'sim' : 'nao') . " bytes=$data[bytes] seconds={$seconds} setup={$setup}s" . " charge=R\$ " . number_format($charge, 4, ',', '.') . (!empty($data['error']) ? " error={$data['error']}" : ""), "white");
     }
     foreach ($calls as $phone) {
         try {
@@ -253,5 +284,5 @@ run(function () {
         }
     }
     \Swoole\Timer::clear($timerId);
-    cli::pcl("Teste finalizado", "green");
+    cli::pcl("Benchmark finalizado", "green");
 });

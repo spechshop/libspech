@@ -3621,8 +3621,27 @@ class trunkController
     }
 
 
+    /**
+     * Callback a ser executado ao receber uma SDP (Session Description Protocol).
+     *  - false (padrão): nenhuma função será chamada ao receber uma SDP.
+     *  - callable: função a ser chamada com os dados da SDP recebida.
+     */
     public mixed $onReceiveSdpCallable = false;
 
+    /**
+     * Sets a callback to be executed when an SDP (Session Description Protocol) message is received.
+     *
+     * @param Closure $param A callable function to handle the received SDP.
+     *                       The callback should define the logic to process the SDP message.
+     *
+     * @return void
+     *
+     * @example
+     * $object->onSdpReceived(function ($sdp) {
+     *     // Process the received SDP here
+     *     echo "Received SDP: " . $sdp;
+     * });
+     */
     public function onSdpReceived(Closure $param): void
     {
         $this->onReceiveSdpCallable = $param;

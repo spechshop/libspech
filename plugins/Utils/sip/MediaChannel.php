@@ -794,11 +794,7 @@ class MediaChannel
 
                     $this->socket->sendto($info['address'], $info['port'], $newPacket);
 
-                    if ($pcmData !== false) {
-                        if ($this->vadEnabled) {
-                            $this->processVAD($pcmData, $idFrom);
-                        }
-                    }
+
                 }
                 if ($this->debugEnabled) {
                     if (empty($lastDebug)) $lastDebug = microtime(true);
