@@ -24,3 +24,4 @@ audio.wav
 # Logs
 *.log
 logs/
+benchmark
