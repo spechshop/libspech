@@ -1,23 +1,42 @@
 <?php
-
 class SocketMutable extends \Co\Socket
 {
     private ?array $lastSockname = null;
+    private bool $closed = false;
 
-    public function getsockname(): array
+    public function destroy(): void
     {
-        $result = parent::getsockname();
-
-        if ($result !== false) {
-            $this->lastSockname = $result;
-            return $result;
+        if ($this->closed) {
+            return;
         }
 
-        return $this->lastSockname ?? [];
+        $this->closed = true;
+
+        try {
+            parent::close();
+        } catch (\Throwable $e) {
+            // fd já pode estar inválido
+        }
     }
 
-    public function safeRecvfrom(&$peername, mixed $int)
+    public function safeRecvfrom(&$peername, mixed $length)
     {
-        return parent::recvfrom($peername, $int);
+        if ($this->closed) {
+            return false;
+        }
+
+        $data = parent::recvfrom($peername, $length);
+
+        if ($data === false && ((int)$this->errCode === 9)) {
+            $this->destroy();
+            return false;
+        }
+
+        return $data;
+    }
+
+    public function __destruct()
+    {
+        $this->destroy();
     }
 }

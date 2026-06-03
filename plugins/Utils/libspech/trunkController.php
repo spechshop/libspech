@@ -1354,7 +1354,7 @@ class trunkController
             "t" => ["0 0"],
             "m" => ["audio {$this->rtpSocket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn))],
             "a" => [
-                'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->localIp}",
+                //'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->localIp}",
                 ...$this->codecRtpMap,
                 'ptime:20',
                 'sendrecv',
@@ -2406,7 +2406,8 @@ class trunkController
 
 
         // Limpa outras propriedades grandes
-        $this->bufferAudio = "";
+
+
         $this->bufferWriteSound = [];
         $this->box = [];
         $this->members = [];
@@ -2428,6 +2429,7 @@ class trunkController
             return;
         }
         $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
+        $this->mediaChannel->close();
     }
 
     public function modelBye(): array

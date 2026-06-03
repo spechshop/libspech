@@ -26,6 +26,8 @@ use function libspech\Sip\interruptibleSleep;
 // Habilita o suporte a corotinas do Swoole para execução assíncrona
 \Swoole\Runtime::enableCoroutine();
 
+
+
 // Carrega o autoloader para importar todas as dependências do projeto
 include 'plugins/autoloader.php';
 
@@ -39,6 +41,11 @@ include 'plugins/autoloader.php';
     // Cria uma nova corotina para executar o código SIP de forma assíncrona
     \Swoole\Coroutine::create(function () {
 
+       // $s=microtime(true);
+       // usleep(500_000);
+       // $c = round(microtime(true)-$s,3);
+       // cli::pcl("Corotina SIP iniciada em {$c} segundos", "bold_green");
+       // exit;
         // ====================================================================
         // SESSÃO 3: CONFIGURAÇÃO DE CREDENCIAIS SIP
         // ====================================================================
@@ -66,7 +73,8 @@ include 'plugins/autoloader.php';
 
 
 
-        $phone->enableAudioMemorySharing();
+
+
 
 
 
@@ -76,7 +84,7 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // Tenta registrar no servidor SIP com timeout de 10 segundos
         // Se falhar, lança uma exceção e interrompe a execução
-        if ($phone->register()) {
+        if ($phone->register(5)) {
             cli::pcl("Registrado com sucesso", "green");
         } else {
             cli::pcl("Erro ao registrar", "red");
@@ -129,6 +137,9 @@ include 'plugins/autoloader.php';
 
 
 
+        $phone->onSdpReceived(function (trunkController $phone) {
+           $phone->receiveMedia();
+        });
         $phone->onAnswer(function (trunkController $phone) {
             cli::pcl("Chamada recebida", "green");
 
@@ -163,8 +174,7 @@ include 'plugins/autoloader.php';
 
             if ($bufferLen > 0) {
 
-                interruptibleSleep(300, $phone->receiveBye);
-                cli::pcl("Buffer possui packets: " . $bufferLen, "bold_green");
+                 cli::pcl("Buffer possui packets: " . $bufferLen, "bold_green");
                 $phone->bye();
                 return;
 
@@ -204,7 +214,7 @@ include 'plugins/autoloader.php';
         });
 
 
-        $phone->call('5569984477329');
+        $phone->call('553140040104');
 
 
 
