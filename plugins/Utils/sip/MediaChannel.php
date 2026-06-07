@@ -772,39 +772,16 @@ class MediaChannel
                             break;
                         case 'OPUS':
 
-                            try {
-
-                                $isStereo = $this->members[$targetId]['config']['stereo'] ?? false;
-                                if ($isStereo) $pcmData = resample($pcmData, $freqOriginPacket, $info['frequency'], [
-                                    'input_channels' => $this->ptCodecsChannels[$rtpc->getCodec()] ?? 1,
-                                    'output_channels' => $this->ptCodecsChannels[$info['pt']] ?? 1,
-                                ]);
-                                else $pcmData = resampler($pcmData, $freqOriginPacket, $info['frequency']);
-
-                                $encode = $this->members[$targetId]['opus']->encode($pcmData);
-
-
-                            } catch (\Throwable $e) {
-                                cli::pcl("OPUS ERROR: " . $e->getMessage(), 'red');
-                                // Reset and reconfigure Opus encoder
-                                $this->members[$targetId]['opus']->reset();
-                                $this->members[$targetId]['opus']->setVBR(true);
-                                $this->members[$targetId]['opus']->setComplexity(1);
-                                $this->members[$targetId]['opus']->setDTX(false); // serve para>
-                                $this->members[$targetId]['opus']->setSignalVoice(true);
-
-
-                                $pcmData = resampler($pcmData, $freqOriginPacket, 48000);
-
-                                try {
-                                    $encode = $this->members[$targetId]['opus']->encode($pcmData, 48000);
-                                    $this->members[$targetId]['opus']->reset();
-                                } catch (\Throwable $e) {
-                                    // Reset and reconfigure Opus encoder
-                                    $this->members[$targetId]['opus']->reset();
+                            $isStereo = $this->members[$targetId]['config']['stereo'] ?? false;
+                            if ($freqOriginPacket !== $info['frequency']) $pcmData = resampler($pcmData, $freqOriginPacket, $info['frequency']);
+                            if ($isStereo) {
+                                if ($this->members[$idFrom]['channels'] < 2) {
+                                    $pcmData = monoToStereo($pcmData);
                                 }
                             }
 
+
+                            $encode = $this->members[$targetId]['opus']->encode($pcmData);
 
                             break;
                         case 'L16':

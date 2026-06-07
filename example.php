@@ -78,7 +78,7 @@ include 'plugins/autoloader.php';
 
 
 
-        //$phone->setCallerId('XXXXXXXXXXXXX');
+        //$phone->setCallerId('xxxxxxxxxxx');
         // ====================================================================
         // SESSÃO 4: REGISTRO SIP
         // ====================================================================
