@@ -11,6 +11,7 @@ use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
 use Throwable;
 use function libspech\Sip\monoToStereo;
+use function libspech\Sip\stereoToMono;
 use function libspech\Sip\volumeAverage;
 
 
@@ -721,98 +722,140 @@ class MediaChannel
                 }
 
 
+                $sourceCodec = strtoupper((string)$codec);
+                $sourceMember = $this->members[$idFrom] ?? [];
+                $sourceFrequency = (int)($sourceMember['frequency'] ?? $this->ptCodecsFrequency[$sourceCodec] ?? $this->resolveFrequencyFromPt($pt) ?? 8000);
+                if ($sourceFrequency <= 0) $sourceFrequency = 8000;
+
+                $sourceChannels = (int)($sourceMember['channels'] ?? $this->ptCodecsChannels[$pt] ?? 1);
+                if ($sourceChannels <= 0) $sourceChannels = 1;
+
+                $sourcePcmData = $pcmData;
+
                 foreach ($this->members as $targetId => $info) {
                     if ($targetId === $idFrom) continue;
 
+                    $targetCodec = strtoupper((string)($info['codec'] ?? ''));
+                    $targetPt = (int)($info['pt'] ?? 0);
+                    $memberFrequency = (int)($info['frequency'] ?? $this->ptCodecsFrequency[$targetCodec] ?? 8000);
+                    if ($memberFrequency <= 0) $memberFrequency = 8000;
 
-                    $freqOriginPacket = (int)($this->members[$idFrom]['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000);
+                    $memberChannels = (int)($info['channels'] ?? $this->ptCodecsChannels[$targetPt] ?? 1);
+                    if ($memberChannels <= 0) $memberChannels = 1;
 
+                    $targetFrequency = match ($targetCodec) {
+                        'PCMU', 'PCMA', 'G729' => 8000,
+                        default => $memberFrequency,
+                    };
 
-                    //   else var_dump($rtpc);
+                    $targetChannels = match ($targetCodec) {
+                        'PCMU', 'PCMA', 'G729' => 1,
+                        default => $memberChannels,
+                    };
 
+                    $canPassthrough = $sourceCodec === $targetCodec
+                        && $sourceFrequency === $targetFrequency
+                        && $sourceChannels === $targetChannels;
 
-                    //  }
-
-
+                    $pcmForTarget = $sourcePcmData;
                     $encode = null;
-                    $frequencyMember = $info['frequency'] ?? $this->ptCodecsFrequency[$info['codec']] ?? 8000;
 
+                    try {
+                        if (!$canPassthrough) {
+                            $pcmChannels = $sourceChannels;
 
-                    switch (strtoupper($info['codec'])) {
-                        case 'PCMU':
-                            if (strtoupper($codec) === strtoupper($info['codec'])) {
-                                $encode = $rtpc->payloadRaw;
-                                break;
+                            if ($pcmChannels > 1 && $targetChannels === 1) {
+                                $pcmForTarget = stereoToMono($pcmForTarget);
+                                $pcmChannels = 1;
+                            } elseif ($pcmChannels === 1 && $targetChannels > 1) {
+                                $pcmForTarget = monoToStereo($pcmForTarget);
+                                $pcmChannels = 2;
                             }
-                            if ($freqOriginPacket !== 8000) $pcmData = resampler($pcmData, $freqOriginPacket, 8000);
-                            $encode = encodePcmToPcmu($pcmData);
-                            break;
-                        case 'PCMA':
-                            if (strtoupper($codec) === strtoupper($info['codec'])) {
-                                $encode = $rtpc->payloadRaw;
-                                break;
-                            }
-                            if ($freqOriginPacket !== 8000) $pcmData = resampler($pcmData, $freqOriginPacket, 8000);
-                            $encode = encodePcmToPcma($pcmData);
-                            break;
-                        case 'G729':
-                            if (strtoupper($codec) === strtoupper($info['codec'])) {
-                                $encode = $rtpc->payloadRaw;
-                                break;
-                            }
-                            if (!array_key_exists('bcg729Channel', $this->members[$targetId]))
-                                $this->members[$targetId]['bcg729Channel'] = new bcg729Channel();
 
-
-                            if ($codec == 'G729') {
-                                $encode = $rtpc->payloadRaw;
-                            } else {
-                                $encode = $this->members[$idFrom]['rtpChannel']->bcg729Channel->encode($pcmData);
-                            }
-                            break;
-                        case 'OPUS':
-
-                            $isStereo = $this->members[$targetId]['config']['stereo'] ?? false;
-                            if ($freqOriginPacket !== $info['frequency']) $pcmData = resampler($pcmData, $freqOriginPacket, $info['frequency']);
-                            if ($isStereo) {
-                                if ($this->members[$idFrom]['channels'] < 2) {
-                                    $pcmData = monoToStereo($pcmData);
+                            if ($pcmChannels !== $targetChannels) {
+                                if ($this->debugEnabled) {
+                                    cli::pcl("{$this->callId} MediaChannel unsupported channel conversion {$sourceCodec}->{$targetCodec}: {$pcmChannels}ch->{$targetChannels}ch", 'red');
                                 }
+                                continue;
                             }
 
-
-                            $encode = $this->members[$targetId]['opus']->encode($pcmData);
-
-                            break;
-                        case 'L16':
-
-                            if ($this->ptCodecsChannels[$info['pt']] > 1) {
-                                // Converte mono para estéreo e resample para a frequência do destino
-                                //$encode = resample($pcmData, $frequencyPacket, $info['frequency'], [
-                                //    'input_channels' => 1,
-                                //    'output_channels' => 2,
-                                //    'work_channels' => 1,
-                                //]);
-                                $encode = monoToStereo($pcmData);
-                                $encode = resampler($encode, $freqOriginPacket, $info['frequency'], 1);
-                            } else {
-                                $encode = resampler($pcmData, $freqOriginPacket, $info['frequency'], 1);
+                            if ($sourceFrequency !== $targetFrequency) {
+                                if (strtoupper($targetCodec)=='L16') $toBigEndian = true; else $toBigEndian = false;
+                                $pcmForTarget = resampler($pcmForTarget, $sourceFrequency, $targetFrequency, $toBigEndian);
                             }
-                            break;
-                        default:
-                            $encode = $rtpc->payloadRaw;
-                            break;
+                        }
+
+                        switch ($targetCodec) {
+                            case 'PCMU':
+                                if ($canPassthrough) {
+                                    $encode = $rtpc->payloadRaw;
+                                    break;
+                                }
+
+                                $encode = encodePcmToPcmu($pcmForTarget);
+                                break;
+
+                            case 'PCMA':
+                                if ($canPassthrough) {
+                                    $encode = $rtpc->payloadRaw;
+                                    break;
+                                }
+
+                                $encode = encodePcmToPcma($pcmForTarget);
+                                break;
+
+                            case 'G729':
+                                if ($canPassthrough) {
+                                    $encode = $rtpc->payloadRaw;
+                                    break;
+                                }
+
+                                if (!isset($this->members[$targetId]['bcg729Channel']) || !$this->members[$targetId]['bcg729Channel'] instanceof bcg729Channel) {
+                                    $this->members[$targetId]['bcg729Channel'] = new bcg729Channel();
+                                }
+
+                                $encode = $this->members[$targetId]['bcg729Channel']->encode($pcmForTarget);
+                                break;
+
+                            case 'OPUS':
+                                if (!isset($this->members[$targetId]['opus'])) {
+                                    break;
+                                }
+
+                                if ($canPassthrough) {
+                                    $encode = $rtpc->payloadRaw;
+                                    break;
+                                }
+
+                                $encode = $this->members[$targetId]['opus']->encode($pcmForTarget);
+                                break;
+
+                            case 'L16':
+                                if ($canPassthrough) {
+                                    $encode = $rtpc->payloadRaw;
+                                    break;
+                                }
+
+                                $encode = $pcmForTarget;
+                                break;
+
+                            default:
+                                $encode = $rtpc->payloadRaw;
+                                break;
+                        }
+                    } catch (Throwable $e) {
+                        if ($this->debugEnabled) {
+                            cli::pcl("{$this->callId} MediaChannel transcode {$sourceCodec}->{$targetCodec}: {$e->getMessage()}", 'red');
+                        }
+                        continue;
                     }
 
-                    // Calcular incremento de timestamp baseado na frequência e tipo de payload
-
+                    if ($encode === null || $encode === false || $encode === '') {
+                        continue;
+                    }
 
                     $newPacket = $this->members[$targetId]['rtpChannel']->buildAudioPacket($encode);
-
-
                     $this->socket->sendto($info['address'], $info['port'], $newPacket);
-
-
                 }
                 if ($this->debugEnabled) {
                     if (empty($lastDebug)) $lastDebug = microtime(true);
@@ -851,7 +894,6 @@ class MediaChannel
 
         if (empty($peer['config']['stereo'])) $nc = 1;
         $peer['opus'] = new opusChannel(48000, $nc);
-
 
 
         // $peer['LPCM_MONO'] = new LPCM(1, 16);
