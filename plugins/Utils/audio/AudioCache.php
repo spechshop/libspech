@@ -116,7 +116,7 @@ class AudioCache
 
     public static function touchEncoded(string $key): void
     {
-        $bucket = cache::global()[self::KEY_ENCODED] ?? null;
+        $bucket = cache::get(self::KEY_ENCODED) ?? null;
         if (is_array($bucket) && isset($bucket[$key]) && is_array($bucket[$key])) {
             $bucket[$key]['lastUsed'] = time();
             cache::subDefine(self::KEY_ENCODED, $key, $bucket[$key]);

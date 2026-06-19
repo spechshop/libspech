@@ -3192,7 +3192,7 @@ class trunkController
 
     public bool $audioRecordingEnabled = false;
 
-    public bool $audioMemorySharingEnabled = false;
+    public bool $audioMemorySharingEnabled = true;
 
     /**
      * Modo de resample para reprodução de áudio (defineAudioFile).
