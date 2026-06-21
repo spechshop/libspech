@@ -131,7 +131,14 @@ class MediaChannel
         'first_arrival' => 0.0,
         'last_arrival' => 0.0,
         'max_seq_gap' => 0,
+        'late_packets' => 0,
         'codecs' => [],
+    ];
+    // Métricas de DTMF mantidas separadas das métricas de áudio para que
+    // telephone-event nunca seja contabilizado como perda/jitter de mídia.
+    public array $dtmfMetrics = [
+        'total_packets' => 0,
+        'events' => 0,
     ];
     // Estado por ssrc para cálculo barato de perda/jitter (RFC 3550), sem funções pesadas
     private array $rtpStats = [];
@@ -298,14 +305,23 @@ class MediaChannel
         $this->onStartCallable = $callable;
     }
 
+    // Âncora de timestamp por evento DTMF em forward, por destino.
+    // Chave: "{$targetId}|{$idFrom}" -> timestamp (na timeline do destino) do
+    // primeiro pacote do evento. Mantém o timestamp constante durante o evento.
+    private array $dtmfForwardAnchor = [];
+
     /**
-     * Faz forward de pacotes DTMF (telephone-event) para todos os membros
-     * Mantém o timestamp original do evento DTMF e ajusta o PT conforme necessário
+     * Faz forward de pacotes DTMF (telephone-event) para todos os membros.
+     *
+     * Em bridge/transcoder o destino deve usar a SUA própria timeline RTP, e não
+     * o timestamp da perna de origem. Por isso o timestamp do evento é ancorado
+     * na timeline do canal de saída do destino no primeiro pacote (marker bit) e
+     * reutilizado até o fim do evento; ao terminar, a timeline avança pela
+     * duração do evento para permanecer contínua.
      *
      * @param rtpc $rtpc Pacote RTP original com evento DTMF
      * @param array $peer Informações do peer de origem ['address' => string, 'port' => int]
      * @param string $idFrom Identificador do membro de origem (address:port)
-     * @param array $destinationChannels Array de canais RTP por destino (passado por referência)
      */
     private function forwardDtmfToMembers(rtpc $rtpc, array $peer, string $idFrom): void
     {
@@ -338,21 +354,45 @@ class MediaChannel
             // Encontrar o PT correto do telephone-event para este destino
             $telephoneEventPt = $this->findTelephoneEventPt($frequencyMember);
 
-            // Configurar o PT do telephone-event no canal de destino
-            $this->members[$targetId]['rtpChannel']->setNewPtDTMF($telephoneEventPt);
-
             // Detectar se é o primeiro pacote do evento (marker bit)
             $isFirstPacket = ($rtpc->marker === 1);
+            $anchorKey = "{$targetId}|{$idFrom}";
 
+            // Tudo que mexe no estado de saída do destino (PT do DTMF, sequence e
+            // timestamp) e o envio do pacote ocorre sob o writer único do destino.
+            $this->acquireWriteLock($targetId);
+            try {
+                $rtpChannel = $this->members[$targetId]['rtpChannel'];
 
-            // Construir e enviar pacote DTMF preservando timestamp original
-            $outPacket = $this->members[$targetId]['rtpChannel']->buildDtmfForwardPacket(
-                $rtpc->payloadRaw,
-                $rtpc->timestamp,
-                $isFirstPacket
-            );
+                // Configurar o PT do telephone-event no canal de destino
+                $rtpChannel->setNewPtDTMF($telephoneEventPt);
 
-            $this->socket->sendto($info['address'], $info['port'], $outPacket);
+                // Ancorar o timestamp do evento na timeline do PRÓPRIO destino.
+                if ($isFirstPacket || !isset($this->dtmfForwardAnchor[$anchorKey])) {
+                    $this->dtmfForwardAnchor[$anchorKey] = (int)$rtpChannel->timestamp;
+                }
+                $eventTs = $this->dtmfForwardAnchor[$anchorKey];
+                $this->dtmfInUseByMember[$targetId] = true;
+
+                // Construir e enviar usando o timestamp da timeline do destino.
+                $outPacket = $rtpChannel->buildDtmfForwardPacket(
+                    $rtpc->payloadRaw,
+                    $eventTs,
+                    $isFirstPacket
+                );
+
+                $this->socket->sendto($info['address'], $info['port'], $outPacket);
+
+                // Fim do evento: avança a timeline do destino pela duração do
+                // evento e libera a âncora/estado de DTMF deste destino.
+                if ($end === 1) {
+                    $rtpChannel->timestamp = ($eventTs + $duration) & 0xFFFFFFFF;
+                    unset($this->dtmfForwardAnchor[$anchorKey]);
+                    $this->dtmfInUseByMember[$targetId] = false;
+                }
+            } finally {
+                $this->releaseWriteLock($targetId);
+            }
         }
     }
 
@@ -587,41 +627,13 @@ class MediaChannel
                 $codec = $this->resolveCodecNameFromPt($pt) ?? $pt;
 
 
-                // Métricas baratas por pacote: contagem por codec, perda e jitter (RFC 3550)
-                // Reaproveita valores já disponíveis (sequence/timestamp do rtpc e currentTime),
-                // sem chamar funções pesadas como volumeAverage.
+                // Classificação do pacote logo após o parse: RTCP já foi tratado acima.
+                // Aqui separamos DTMF (telephone-event) de áudio para que cada tipo
+                // siga um fluxo independente (métricas, jitter buffer e writer próprios).
+                $isDtmf = (strtolower((string)$codec) === 'telephone-event');
+
+                // Contagem por codec é barata e vale para qualquer tipo de pacote.
                 $this->audioMetrics['codecs'][$codec] = ($this->audioMetrics['codecs'][$codec] ?? 0) + 1;
-
-                $freqStat = (int)($this->ptCodecsFrequency[$codec] ?? 8000);
-                $arrivalTs = $currentTime * $freqStat;
-                if (isset($this->rtpStats[$ssrc])) {
-                    $prev = $this->rtpStats[$ssrc];
-
-                    // Perda estimada via lacuna no sequence number (wrap de 16 bits)
-                    $expectedSeq = ($prev['seq'] + 1) & 0xFFFF;
-                    $seqGap = ($rtpc->sequence - $expectedSeq) & 0xFFFF;
-                    if ($seqGap > 0 && $seqGap < 1000) {
-                        $this->audioMetrics['lost_packets'] += $seqGap;
-                        if ($seqGap > $this->audioMetrics['max_seq_gap']) {
-                            $this->audioMetrics['max_seq_gap'] = $seqGap;
-                        }
-                    }
-
-                    // Jitter interarrival (RFC 3550): J += (|D| - J) / 16
-                    $transit = $arrivalTs - $rtpc->timestamp;
-                    $d = $transit - $prev['transit'];
-                    if ($d < 0) $d = -$d;
-                    $this->audioMetrics['jitter'] += ($d - $this->audioMetrics['jitter']) / 16;
-
-                    $this->rtpStats[$ssrc]['seq'] = $rtpc->sequence;
-                    $this->rtpStats[$ssrc]['transit'] = $transit;
-                } else {
-                    $this->rtpStats[$ssrc] = [
-                        'seq' => $rtpc->sequence,
-                        'transit' => $arrivalTs - $rtpc->timestamp,
-                    ];
-                }
-
 
                 if (!array_key_exists($ssrc, $this->rtpChans)) {
                     $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->ptCodecsFrequency[$codec] ?? 8000, 20, $ssrc);
@@ -646,13 +658,22 @@ class MediaChannel
                 }
 
 
-                $pcmData = false;
+                // DTMF é tratado como evento RTP separado: não entra no jitter buffer de
+                // áudio, não contamina perda/jitter/max_seq_gap e não dispara onReceive.
+                if ($isDtmf) {
+                    $this->dtmfMetrics['total_packets']++;
+                    if ($rtpc->marker === 1) {
+                        $this->dtmfMetrics['events']++;
+                    }
+                    $this->audioMetrics['dtmf_events']++;
+                    $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
 
 
-                if ($this->onReceiveCallable) {
-                    go(function () use ($rtpc, $peer, $ssrc) {
-                        call_user_func($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
+                    $this->processDtmf($rtpc, $peer, function () {
+
                     });
+
+                    continue;
                 }
 
 
@@ -665,18 +686,66 @@ class MediaChannel
 
                 $pt = $rtpc->getCodec();
 
+                // --- A partir daqui só áudio ---
 
-                if (strtolower($codec) === 'telephone-event') {
-                    //cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
-                    $this->audioMetrics['dtmf_events']++;
-                    $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
+                // Métricas de áudio (perda/jitter/max_seq_gap) usando o SSRC realmente
+                // recebido como chave (RFC 3550), não o SSRC determinístico por IP:porta.
+                // Detecta troca de SSRC (reinício de mídia) reinicializando o estado.
+                $statKey = (int)$rtpc->ssrc;
+                $freqStat = (int)($this->ptCodecsFrequency[$codec] ?? 8000);
+                $arrivalTs = $currentTime * $freqStat;
+                $isLatePacket = false;
+                if (isset($this->rtpStats[$statKey])) {
+                    $prev = $this->rtpStats[$statKey];
 
+                    // Política explícita de pacote atrasado: se o sequence é anterior ao
+                    // último processado (fora da janela de wrap), descarta para não
+                    // contaminar o PCM/bridge com áudio fora de ordem.
+                    $forwardGap = ($rtpc->sequence - $prev['seq']) & 0xFFFF;
+                    if ($forwardGap === 0 || $forwardGap > 0x8000) {
+                        $isLatePacket = true;
+                        $this->audioMetrics['late_packets']++;
+                    } else {
+                        // Perda estimada via lacuna no sequence number (wrap de 16 bits)
+                        $seqGap = $forwardGap - 1;
+                        if ($seqGap > 0 && $seqGap < 1000) {
+                            $this->audioMetrics['lost_packets'] += $seqGap;
+                            if ($seqGap > $this->audioMetrics['max_seq_gap']) {
+                                $this->audioMetrics['max_seq_gap'] = $seqGap;
+                            }
+                        }
 
-                    $this->processDtmf($rtpc, $peer, function () {
+                        // Jitter interarrival (RFC 3550): J += (|D| - J) / 16
+                        $transit = $arrivalTs - $rtpc->timestamp;
+                        $d = $transit - $prev['transit'];
+                        if ($d < 0) $d = -$d;
+                        $this->audioMetrics['jitter'] += ($d - $this->audioMetrics['jitter']) / 16;
 
-                    });
+                        $this->rtpStats[$statKey]['seq'] = $rtpc->sequence;
+                        $this->rtpStats[$statKey]['transit'] = $transit;
+                    }
+                } else {
+                    $this->rtpStats[$statKey] = [
+                        'seq' => $rtpc->sequence,
+                        'transit' => $arrivalTs - $rtpc->timestamp,
+                    ];
+                }
 
+                // Descarta pacote de áudio atrasado/duplicado antes de decodificar.
+                if ($isLatePacket) {
                     continue;
+                }
+
+
+                $pcmData = false;
+
+
+                // onReceive só é chamado para áudio: o DTMF já foi tratado e filtrado
+                // acima, de forma que nenhum consumidor receba telephone-event como mídia.
+                if ($this->onReceiveCallable) {
+                    go(function () use ($rtpc, $peer, $ssrc) {
+                        call_user_func($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
+                    });
                 }
 
 
@@ -854,8 +923,16 @@ class MediaChannel
                         continue;
                     }
 
-                    $newPacket = $this->members[$targetId]['rtpChannel']->buildAudioPacket($encode);
-                    $this->socket->sendto($info['address'], $info['port'], $newPacket);
+                    // Writer único por destino: montar o pacote (que avança
+                    // sequence/timestamp) e enviá-lo sob o mesmo lock, evitando
+                    // interleaving com DTMF/silêncio/forward para este membro.
+                    $this->acquireWriteLock($targetId);
+                    try {
+                        $newPacket = $this->members[$targetId]['rtpChannel']->buildAudioPacket($encode);
+                        $this->socket->sendto($info['address'], $info['port'], $newPacket);
+                    } finally {
+                        $this->releaseWriteLock($targetId);
+                    }
                 }
                 if ($this->debugEnabled) {
                     if (empty($lastDebug)) $lastDebug = microtime(true);
@@ -978,7 +1055,64 @@ class MediaChannel
         return $this->audioMetrics;
     }
 
+    /**
+     * Retorna as métricas de DTMF, mantidas separadas das de áudio.
+     */
+    public function getDtmfMetrics(): array
+    {
+        return $this->dtmfMetrics;
+    }
+
+    // Mantido por compatibilidade: indica se há qualquer DTMF em andamento.
     public bool $dtmfInUse = false;
+
+    // Estado de DTMF por destino (id = "address:port"). Um booleano global não
+    // protege nada com vários membros/concorrência; por isso o controle é por membro.
+    private array $dtmfInUseByMember = [];
+
+    // Locks de escrita por destino. Todo envio de saída (áudio, DTMF, silêncio e
+    // forward) deve passar por aqui, garantindo um único writer serializado por
+    // destino e preservando a ordem lógica de saída (sequence/timestamp/marker/SSRC).
+    private array $memberWriteLocks = [];
+
+    /**
+     * Adquire (bloqueando a corrotina) o lock de escrita do destino indicado.
+     * O mesmo lock deve ser liberado com releaseWriteLock().
+     */
+    private function acquireWriteLock(string $id): void
+    {
+        if (!isset($this->memberWriteLocks[$id])) {
+            $ch = new \Swoole\Coroutine\Channel(1);
+            $ch->push(true);
+            $this->memberWriteLocks[$id] = $ch;
+        }
+        $this->memberWriteLocks[$id]->pop();
+    }
+
+    /**
+     * Libera o lock de escrita do destino indicado.
+     */
+    private function releaseWriteLock(string $id): void
+    {
+        if (isset($this->memberWriteLocks[$id]) && $this->memberWriteLocks[$id]->isEmpty()) {
+            $this->memberWriteLocks[$id]->push(true);
+        }
+    }
+
+    /**
+     * Writer único por destino: serializa o envio de um pacote já montado para
+     * um membro específico. Garante que áudio, DTMF, silêncio e forward não
+     * disputem o socket/estado de saída do mesmo destino.
+     */
+    private function sendToMember(string $id, string $address, int $port, string $packet): void
+    {
+        $this->acquireWriteLock($id);
+        try {
+            $this->socket->sendto($address, $port, $packet);
+        } finally {
+            $this->releaseWriteLock($id);
+        }
+    }
 
     public function send2833(string $digit): void
     {
@@ -1058,82 +1192,94 @@ class MediaChannel
 
                 $ptTelephoneEvent = $this->findTelephoneEventPt((int)($member['frequency'] ?? 8000));
 
-                // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
-                $eventTs = (int)$rtpChannel->timestamp;
-                $ssrc = (int)$rtpChannel->ssrc;
+                // Writer único por destino: o dígito inteiro (com seus sleeps de 20ms)
+                // é enviado mantendo o lock do destino, de modo que nenhuma corrotina
+                // de áudio/silêncio/forward intercale pacotes no mesmo rtpChannel
+                // durante o DTMF. O estado de DTMF é controlado POR MEMBRO.
+                $this->acquireWriteLock($key);
+                $this->dtmfInUseByMember[$key] = true;
+                try {
+                    // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
+                    $eventTs = (int)$rtpChannel->timestamp;
+                    $ssrc = (int)$rtpChannel->ssrc;
 
-                // Pacotes de progresso do evento
-                for ($i = 1; $i <= $steps; $i++) {
-                    $duration = $i * $stepSamples;
-                    if ($duration > $finalDurationSamples) {
-                        $duration = $finalDurationSamples;
+                    // Pacotes de progresso do evento
+                    for ($i = 1; $i <= $steps; $i++) {
+                        $duration = $i * $stepSamples;
+                        if ($duration > $finalDurationSamples) {
+                            $duration = $finalDurationSamples;
+                        }
+
+                        $isFirst = ($i === 1);
+                        $isLast = ($duration >= $finalDurationSamples);
+
+                        // Byte 2 do payload:
+                        // bit 7 = E (não setar aqui; os pacotes End são enviados separadamente)
+                        // bits 0..5 = volume
+                        $eVol = $volume & 0x3F;
+
+                        $payload = pack(
+                            'CCn',
+                            $event,
+                            $eVol,
+                            $duration
+                        );
+
+                        // Marker bit somente no primeiro pacote
+                        $b1 = 0x80;
+                        $b2 = ($isFirst ? 0x80 : 0x00) | ($ptTelephoneEvent & 0x7F);
+
+                        $hdr = pack(
+                            'CCnNN',
+                            $b1,
+                            $b2,
+                            $rtpChannel->sequenceNumber++ & 0xFFFF,
+                            $eventTs & 0xFFFFFFFF,
+                            $ssrc & 0xFFFFFFFF
+                        );
+
+                        $this->socket->sendto($ip, $port, $hdr . $payload);
+
+                        // Dorme entre os pacotes, exceto depois do último "progresso"
+                        if (!$isLast) {
+                            Coroutine::sleep($ptimeMs / 1000);
+                        }
                     }
 
-                    $isFirst = ($i === 1);
-                    $isLast = ($duration >= $finalDurationSamples);
-
-                    // Byte 2 do payload:
-                    // bit 7 = E (não setar aqui; os pacotes End são enviados separadamente)
-                    // bits 0..5 = volume
-                    $eVol = $volume & 0x3F;
-
-                    $payload = pack(
+                    // Retransmite o último pacote com E-bit 3 vezes
+                    $payloadEnd = pack(
                         'CCn',
                         $event,
-                        $eVol,
-                        $duration
+                        0x80 | ($volume & 0x3F),
+                        $finalDurationSamples
                     );
 
-                    // Marker bit somente no primeiro pacote
-                    $b1 = 0x80;
-                    $b2 = ($isFirst ? 0x80 : 0x00) | ($ptTelephoneEvent & 0x7F);
+                    for ($r = 0; $r < $endRetransmits; $r++) {
+                        $hdr = pack(
+                            'CCnNN',
+                            0x80,
+                            $ptTelephoneEvent & 0x7F,
+                            $rtpChannel->sequenceNumber++ & 0xFFFF,
+                            $eventTs & 0xFFFFFFFF,
+                            $ssrc & 0xFFFFFFFF
+                        );
 
-                    $hdr = pack(
-                        'CCnNN',
-                        $b1,
-                        $b2,
-                        $rtpChannel->sequenceNumber++ & 0xFFFF,
-                        $eventTs & 0xFFFFFFFF,
-                        $ssrc & 0xFFFFFFFF
-                    );
+                        $this->socket->sendto($ip, $port, $hdr . $payloadEnd);
 
-                    $this->socket->sendto($ip, $port, $hdr . $payload);
-
-                    // Dorme entre os pacotes, exceto depois do último "progresso"
-                    if (!$isLast) {
-                        Coroutine::sleep($ptimeMs / 1000);
+                        if ($r < $endRetransmits - 1) {
+                            Coroutine::sleep($ptimeMs / 1000);
+                        }
                     }
+
+                    // Mantém a timeline contínua (o lock garante que nenhum áudio
+                    // avançou o timestamp deste destino enquanto o DTMF era enviado).
+                    $rtpChannel->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
+                } finally {
+                    $this->dtmfInUseByMember[$key] = false;
+                    $this->releaseWriteLock($key);
                 }
-
-                // Retransmite o último pacote com E-bit 3 vezes
-                $payloadEnd = pack(
-                    'CCn',
-                    $event,
-                    0x80 | ($volume & 0x3F),
-                    $finalDurationSamples
-                );
-
-                for ($r = 0; $r < $endRetransmits; $r++) {
-                    $hdr = pack(
-                        'CCnNN',
-                        0x80,
-                        $ptTelephoneEvent & 0x7F,
-                        $rtpChannel->sequenceNumber++ & 0xFFFF,
-                        $eventTs & 0xFFFFFFFF,
-                        $ssrc & 0xFFFFFFFF
-                    );
-
-                    $this->socket->sendto($ip, $port, $hdr . $payloadEnd);
-
-                    if ($r < $endRetransmits - 1) {
-                        Coroutine::sleep($ptimeMs / 1000);
-                    }
-                }
-
-                // Mantém a timeline contínua
-                $rtpChannel->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
-                $this->dtmfInUse = false;
             }
+            $this->dtmfInUse = false;
         } catch (\Throwable $e) {
             $this->dtmfInUse = false;
             return;
@@ -1176,13 +1322,26 @@ class MediaChannel
                 continue;
             }
 
+            // Política explícita: durante um DTMF deste destino não injetamos
+            // silêncio, para não disputar sequence/timestamp do mesmo rtpChannel.
+            if (!empty($this->dtmfInUseByMember[$idMember])) {
+                continue;
+            }
+
             try {
                 $payload = $this->makeSilencePayloadForMember($member);
                 if ($payload === null) {
                     continue;
                 }
-                $packet = $this->members[$idMember]['rtpChannel']->buildAudioPacket($payload);
-                $this->socket->sendto($member['address'], $member['port'], $packet);
+                // Writer único por destino: montar o pacote (avança a timeline) e
+                // enviar sob o mesmo lock para preservar a ordem lógica de saída.
+                $this->acquireWriteLock($idMember);
+                try {
+                    $packet = $this->members[$idMember]['rtpChannel']->buildAudioPacket($payload);
+                    $this->socket->sendto($member['address'], $member['port'], $packet);
+                } finally {
+                    $this->releaseWriteLock($idMember);
+                }
             } catch (\Throwable $e) {
             }
         }
@@ -1300,10 +1459,23 @@ class MediaChannel
             }
         }
 
+        // Fecha os locks de escrita por destino
+        foreach ($this->memberWriteLocks as $lock) {
+            try {
+                if ($lock instanceof \Swoole\Coroutine\Channel) {
+                    $lock->close();
+                }
+            } catch (\Throwable $e) {
+            }
+        }
+
         // Limpa arrays
         $this->members = [];
         $this->rtpChans = [];
         $this->openChannels = [];
+        $this->memberWriteLocks = [];
+        $this->dtmfInUseByMember = [];
+        $this->dtmfForwardAnchor = [];
 
 //        cli::pcl("MediaChannel fechado Call-ID: {$this->callId}", 'green');
     }
@@ -1318,28 +1490,49 @@ class MediaChannel
      */
     private function findTelephoneEventPt(int $frequency): int
     {
-        // Buscar nos codecs registrados com a frequência exata
-        $targetKey = 'telephone-event_' . $frequency;
-        if (isset($this->ptCodecsFrequency[$targetKey])) {
-            // Encontrar o PT correspondente
-            foreach ($this->ptCodecs as $pt => $codecName) {
-                if (strtolower($codecName) === 'telephone-event') {
-                    // Verificar se existe a chave composta para esta frequência
-                    if (isset($this->ptCodecsFrequency['telephone-event_' . $frequency])) {
-                        return $pt;
-                    }
-                }
+        $firstTelephoneEventPt = null;
+
+        // 1) Preferir o PT cuja frequência casa EXATAMENTE com a frequência alvo.
+        //    Isso evita escolher o PT errado quando existem múltiplos
+        //    telephone-event (ex.: telephone-event/8000 e telephone-event/48000,
+        //    cenário comum com OPUS ou várias m-lines).
+        //    A frequência real de cada PT vem do codecMapper (SDP) quando disponível.
+        foreach ($this->codecMapper as $pt => $entry) {
+            $parts = explode('/', (string)$entry);
+            $name = strtolower($parts[0] ?? '');
+            if ($name !== 'telephone-event') {
+                continue;
+            }
+            $ptFrequency = (int)($parts[1] ?? 8000);
+            if ($firstTelephoneEventPt === null) {
+                $firstTelephoneEventPt = (int)$pt;
+            }
+            if ($ptFrequency === $frequency) {
+                return (int)$pt;
             }
         }
 
-        // Fallback: buscar telephone-event sem verificar frequência
+        // 2) Também considerar telephone-event registrados em ptCodecs, usando
+        //    resolveFrequencyFromPt para obter a frequência associada ao PT.
         foreach ($this->ptCodecs as $pt => $codecName) {
-            if (strtolower($codecName) === 'telephone-event') {
-                return $pt;
+            if (strtolower((string)$codecName) !== 'telephone-event') {
+                continue;
+            }
+            if ($firstTelephoneEventPt === null) {
+                $firstTelephoneEventPt = (int)$pt;
+            }
+            if ($this->resolveFrequencyFromPt((int)$pt) === $frequency) {
+                return (int)$pt;
             }
         }
 
-        // Fallback final: PT 101 (padrão RFC 4733)
+        // 3) Sem casamento exato de frequência: usar o primeiro telephone-event
+        //    encontrado, se houver.
+        if ($firstTelephoneEventPt !== null) {
+            return $firstTelephoneEventPt;
+        }
+
+        // 4) Fallback final: PT 101 (padrão RFC 4733)
         return 101;
     }
 
@@ -1525,20 +1718,12 @@ class MediaChannel
             $digit = $this->translateDigit($event);
 
 
-            // Ajustar timestamps dos membros para compensar duração do DTMF
-            // RFC 4733: duration está em unidades de timestamp (samples)
-            foreach ($this->members as $idTarget => $info) {
-                if ($idTarget == "{$peer['address']}:{$peer['port']}") continue;
-                if (array_key_exists('ssrc', $info) && $info['ssrc'] == $rtpc->ssrc) {
-                    continue;
-                }
-
-                // Incrementar timestamp baseado na duração real do evento
-                // Usar duration do pacote ao invés de valor fixo
-                if (isset($this->members[$idTarget]['timestamp'])) {
-                    $this->members[$idTarget]['timestamp'] += $duration;
-                }
-            }
+            // Observação: o avanço da timeline RTP de saída por causa do DTMF é
+            // responsabilidade exclusiva de forwardDtmfToMembers(), que opera no
+            // campo real usado para montar os pacotes ($rtpChannel->timestamp) sob
+            // o writer único do destino. Ajustar aqui o campo paralelo
+            // $this->members[$id]['timestamp'] não corrigia o stream real e podia
+            // dessincronizar; por isso esse ajuste foi removido.
 
             // Disparar callback de DTMF
             $callback = $this->onDtmfCallable;

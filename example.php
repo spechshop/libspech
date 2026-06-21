@@ -123,17 +123,21 @@ include 'plugins/autoloader.php';
         });
 
 
-        $phone->defineAudioFile('music.wav');
+        $phone->mountLineCodecSDP('PCMA/8000');
+        $phone->enableAudioRecording();
+        $phone->enableAudioMemorySharing();
+
+
+        $phone->defineAudioFile('silence_5m.wav');
         // ====================================================================
         // SESSÃO 6: CONFIGURAÇÃO DE CODEC E RECURSOS DE ÁUDIO
         // ====================================================================
         // Define o codec de áudio como OPUS 48kHz mono (1 canal)
         //$phone->mountLineCodecSDP('G729/8000');
-        $phone->mountLineCodecSDP('PCMA/8000');
+
 
         // Habilita a gravação de áudio durante a chamada
-        $phone->enableAudioRecording();
-        $phone->enableAudioMemorySharing();
+
 
 
 
@@ -172,13 +176,7 @@ include 'plugins/autoloader.php';
 
 
 
-            if ($bufferLen > 0) {
 
-                 cli::pcl("Buffer possui packets: " . $bufferLen, "bold_green");
-                $phone->bye();
-                return;
-
-            }
             interruptibleSleep(7, $phone->receiveBye);
 
             $phone->send2833('*');

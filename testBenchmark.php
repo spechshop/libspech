@@ -413,3 +413,11 @@ run(function () {
 
     cli::pcl("Benchmark finalizado", "green");
 });
+
+
+
+
+
+
+
+
