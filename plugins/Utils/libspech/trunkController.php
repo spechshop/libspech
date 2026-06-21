@@ -481,7 +481,7 @@ class trunkController
 
         $dtmfLines = [
             "rtpmap:$ptDtmf telephone-event/$defaultRate",
-            "fmtp:$ptDtmf 0-15",
+            "fmtp:$ptDtmf 0-16",
         ];
 
         $this->mapLearn[$pt] = $mainLines;

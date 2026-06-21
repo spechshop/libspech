@@ -35,6 +35,11 @@ class rtpChannel
     private bool $dtmfEventActive = false;
     private int $lastDtmfTimestamp = 0;
 
+    // Estado do forward de DTMF (relay B2BUA), preserva a timeline própria do canal
+    public ?int $relayDtmfEventTs = null;
+    public bool $relayDtmfActive = false;
+    public bool $relayDtmfAdvanced = false;
+
     public bcg729Channel $bcg729Channel {
         get {
             return $this->bcg729Channel;
@@ -166,6 +171,56 @@ class rtpChannel
         // Restaurar estado
         $this->markerBit = $originalMarker;
         $this->payloadType = $originalPayloadType;
+
+        return $packet;
+    }
+
+    /**
+     * Constrói um pacote RTP de forward de DTMF mantendo a timeline (timestamp/sequence)
+     * do próprio canal de destino, evitando descontinuidades que causam
+     * "Jitter buffer empty / lost frames" no destino.
+     *
+     * Durante o evento, o timestamp é congelado no valor atual da timeline de áudio
+     * (mantendo continuidade com os pacotes de áudio anteriores) e, ao final do evento
+     * (flag E), a timeline avança pela duração do evento para que o áudio subsequente
+     * continue de forma monotônica.
+     *
+     * @param string $dtmfPayload   Payload raw do telephone-event (>= 4 bytes)
+     * @param bool   $isFirstPacket Primeiro pacote do evento (marker bit = 1)
+     * @param bool   $isEnd         Pacote final do evento (flag E setada)
+     * @param int    $durationSamples Duração do evento em samples (campo duration do RFC 4733)
+     * @return string Pacote RTP completo para envio
+     */
+    public function buildRelayedDtmfPacket(string $dtmfPayload, bool $isFirstPacket = false, bool $isEnd = false, int $durationSamples = 0): string
+    {
+        // Inicia um NOVO evento somente no primeiro pacote (marker bit = 1) ou quando
+        // não há evento em andamento. Congela o timestamp atual da timeline de áudio.
+        //
+        // ATENÇÃO: o RFC 4733 retransmite o pacote final (flag E) 3x. Essas retransmissões
+        // NÃO devem reiniciar o evento — caso contrário, cada END ganharia um timestamp
+        // novo e marker bit setado, fazendo o destino interpretar como 3 teclas distintas.
+        if ($isFirstPacket || $this->relayDtmfEventTs === null) {
+            $this->relayDtmfEventTs = $this->timestamp;
+            $this->relayDtmfActive = true;
+            $this->relayDtmfAdvanced = false;
+            $this->markerBit = true;
+        } else {
+            $this->markerBit = false;
+        }
+
+        // Header com PT de telephone-event e timestamp constante durante todo o evento
+        // (inclusive nas retransmissões finais com flag E).
+        $packet = $this->buildRtpHeader($this->payloadDTMF, $this->relayDtmfEventTs) . $dtmfPayload;
+        $this->sequenceNumber++;
+
+        // Ao final do evento, avança a timeline UMA única vez para manter continuidade do
+        // áudio. As demais retransmissões END continuam reutilizando o mesmo timestamp
+        // congelado (relayDtmfEventTs) sem reiniciar o evento, evitando duplicidade no destino.
+        if ($isEnd && $this->relayDtmfActive && !$this->relayDtmfAdvanced) {
+            $advance = $durationSamples > 0 ? $durationSamples : $this->samplesPerPacket;
+            $this->timestamp = ($this->relayDtmfEventTs + $advance) & 0xFFFFFFFF;
+            $this->relayDtmfAdvanced = true;
+        }
 
         return $packet;
     }
