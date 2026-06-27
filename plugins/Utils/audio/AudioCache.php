@@ -52,7 +52,7 @@ class AudioCache
 
     public static function getEncoded(string $key): ?array
     {
-        $bucket = cache::global()[self::KEY_ENCODED] ?? null;
+        $bucket = cache::get(self::KEY_ENCODED) ?? null;
         if (is_array($bucket) && isset($bucket[$key]) && is_array($bucket[$key])) {
             return $bucket[$key];
         }
@@ -78,7 +78,7 @@ class AudioCache
 
     public static function hasEncoded(string $key): bool
     {
-        $bucket = cache::global()[self::KEY_ENCODED] ?? null;
+        $bucket = cache::get(self::KEY_ENCODED) ?? null;
         return is_array($bucket) && isset($bucket[$key]);
     }
 
@@ -102,7 +102,7 @@ class AudioCache
 
     public static function isBuilding(string $key): bool
     {
-        $bucket = cache::global()[self::KEY_BUILDING] ?? null;
+        $bucket = cache::get(self::KEY_BUILDING) ?? null;
         if (!is_array($bucket) || !isset($bucket[$key])) {
             return false;
         }
@@ -125,7 +125,7 @@ class AudioCache
 
     public static function cleanup(int $maxItems = 32, int $ttlSeconds = 3600): void
     {
-        $bucket = cache::global()[self::KEY_ENCODED] ?? null;
+        $bucket = cache::get(self::KEY_ENCODED) ?? null;
         if (!is_array($bucket) || empty($bucket)) {
             return;
         }

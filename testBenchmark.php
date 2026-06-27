@@ -60,8 +60,8 @@ run(function () {
         mkdir('benchmark', 0755, true);
     }
     shell_exec('rm benchmark/*');
-    $totalCalls  = 50;
-    $durationSec = 20;
+    $totalCalls  = 5;
+    $durationSec = 10;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
     $domain      = getenv('SIP_HOST') ?: 'spechshop.com';
@@ -91,7 +91,7 @@ run(function () {
         ) {
             $callKey = "call_{$i}";
             $phone   = new trunkController($username, $password, $host);
-            $phone->mountLineCodecSDP('PCMU/8000');
+            $phone->mountLineCodecSDP('G729/8000');
             $phone->enableAudioMemorySharing();
             $phone->enableAudioRecording();
 
@@ -234,7 +234,7 @@ run(function () {
             $phone->call($destination);
 
 
-            $phone->saveBufferToWavFile($stats[$callKey]['output_rec'], $phone->getBuffer());
+
 
 
         });
@@ -412,10 +412,24 @@ run(function () {
     }
 
     cli::pcl("Benchmark finalizado", "green");
+    $cacheGlobal = \libspech\Cache\cache::global();
+    debugArrayRecursive($cacheGlobal);
 });
 
 
+function debugArrayRecursive($array)
+{
+    if (is_array($array)) {
 
+        foreach ($array as $key => $value) {
+            $count = count($array);
+            echo "[$key elements: $count] => ";
+            debugArrayRecursive($value);
+        }
+    } else {
+        //echo $array . "\n";
+    }
+}
 
 
 
