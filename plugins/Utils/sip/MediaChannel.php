@@ -681,9 +681,9 @@ class MediaChannel
                 }
 
                 if ($this->onReceiveCallable) {
-                    go(function () use ($rtpc, $peer, $ssrc) {
-                        call_user_func($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
-                    });
+
+                        go($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
+
                 }
 
                 try {

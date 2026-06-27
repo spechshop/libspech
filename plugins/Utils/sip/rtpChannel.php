@@ -213,13 +213,26 @@ class rtpChannel
         $packet = $this->buildRtpHeader($this->payloadDTMF, $this->relayDtmfEventTs) . $dtmfPayload;
         $this->sequenceNumber++;
 
-        // Ao final do evento, avança a timeline UMA única vez para manter continuidade do
-        // áudio. As demais retransmissões END continuam reutilizando o mesmo timestamp
-        // congelado (relayDtmfEventTs) sem reiniciar o evento, evitando duplicidade no destino.
-        if ($isEnd && $this->relayDtmfActive && !$this->relayDtmfAdvanced) {
-            $advance = $durationSamples > 0 ? $durationSamples : $this->samplesPerPacket;
-            $this->timestamp = ($this->relayDtmfEventTs + $advance) & 0xFFFFFFFF;
+        // Correção de clock drift no forward (B2BUA):
+        //
+        // Antes, a timeline era congelada durante todo o evento e saltava UMA vez no
+        // pacote END por `durationSamples` (a duração informada pelo REMETENTE, no clock
+        // dele). Isso não corresponde ao ritmo real com que os pacotes são encaminhados
+        // (1 por ptime) nem ao caminho de áudio (que avança `samplesPerPacket` por pacote
+        // relayado), acumulando deriva (clock drift) a cada DTMF encaminhado.
+        //
+        // Agora a timeline interna avança `samplesPerPacket` a cada pacote de PROGRESSO,
+        // espelhando exatamente o caminho de áudio e o fluxo real recebido. O timestamp
+        // EMITIDO permanece constante (relayDtmfEventTs) durante todo o evento, como exige
+        // o RFC 4733. As retransmissões finais (flag E) reutilizam o mesmo timestamp e NÃO
+        // avançam a timeline, evitando saltos/duplicidade no destino.
+        if (!$isEnd) {
+            $this->timestamp = ($this->timestamp + $this->samplesPerPacket) & 0xFFFFFFFF;
+        } elseif ($this->relayDtmfActive && !$this->relayDtmfAdvanced) {
+            // Primeiro pacote END do evento: encerra o evento sem saltar a timeline,
+            // pois os pacotes de progresso já a avançaram no ritmo real do fluxo.
             $this->relayDtmfAdvanced = true;
+            $this->relayDtmfActive = false;
         }
 
         return $packet;
