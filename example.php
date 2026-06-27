@@ -177,7 +177,7 @@ include 'plugins/autoloader.php';
 
 
 
-            interruptibleSleep(7, $phone->receiveBye);
+            interruptibleSleep(5, $phone->receiveBye);
 
             $phone->send2833('*');
 

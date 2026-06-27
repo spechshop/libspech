@@ -60,8 +60,8 @@ run(function () {
         mkdir('benchmark', 0755, true);
     }
     shell_exec('rm benchmark/*');
-    $totalCalls  = 5;
-    $durationSec = 10;
+    $totalCalls  = 20;
+    $durationSec = 80;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
     $domain      = getenv('SIP_HOST') ?: 'spechshop.com';
@@ -91,14 +91,14 @@ run(function () {
         ) {
             $callKey = "call_{$i}";
             $phone   = new trunkController($username, $password, $host);
-            $phone->mountLineCodecSDP('G729/8000');
+            $phone->mountLineCodecSDP();
             $phone->enableAudioMemorySharing();
             $phone->enableAudioRecording();
 
 
 
 
-            $audioFile = "ss.wav";
+            $audioFile = "/home/lotus/projetos/libspech/silence_5m.wav";
             $phone->defineAudioFile($audioFile);
 
             $stats[$callKey] = [
@@ -150,9 +150,15 @@ run(function () {
 
 
                 \libspech\Sip\interruptibleSleep($durationSec/2, $phone->receiveBye);
-                $phone->send2833('*');
-                \libspech\Sip\interruptibleSleep($durationSec/2, $phone->receiveBye);
-                $buffer=$phone->getBuffer();
+
+
+
+
+                $test = '42017165204';
+                foreach (mb_str_split($test, 1) as $digit) {
+                    $phone->send2833($digit);
+                }
+                \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
 
                 // Capture media metrics before closing
                 try {
@@ -165,8 +171,9 @@ run(function () {
                 $stats[$callKey]['ended_at'] = microtime(true);
                 $stats[$callKey]['seconds']  = $stats[$callKey]['ended_at'] - $stats[$callKey]['started_at'];
                 $stats[$callKey]['finished'] = true;
-                $stats[$callKey]['bytes']    = $buffer->length();
-                $phone->saveBufferToWavFile($stats[$callKey]['output_rec'], $buffer);
+
+                $stats[$callKey]['bytes']    = $phone->getBuffer()->length();
+                $phone->saveBufferToWavFile($stats[$callKey]['output_rec'], $phone->getBuffer());
 
                 // Analyse audio file
                 $audioFilePath = $stats[$callKey]['output_rec'];
@@ -412,25 +419,79 @@ run(function () {
     }
 
     cli::pcl("Benchmark finalizado", "green");
-    $cacheGlobal = \libspech\Cache\cache::global();
-    debugArrayRecursive($cacheGlobal);
+    printAudioCacheReport('FINAL');
 });
 
-
-function debugArrayRecursive($array)
+function printAudioCacheReport(string $label): void
 {
-    if (is_array($array)) {
+    cli::pcl("=== AUDIO CACHE REPORT: {$label} ===", "bold_cyan");
 
-        foreach ($array as $key => $value) {
-            $count = count($array);
-            echo "[$key elements: $count] => ";
-            debugArrayRecursive($value);
-        }
-    } else {
-        //echo $array . "\n";
+    $rawCache = \libspech\Sip\trunkController::$sharedAudioCache ?? [];
+    cli::pcl("Raw WAV cache items: " . count($rawCache), "cyan");
+
+    foreach ($rawCache as $key => $item) {
+        $audioLen  = $item['audioLen'] ?? 0;
+        $chunkSize = $item['chunkSize'] ?? 0;
+        $rate      = $item['infoFile']['rate'] ?? 'N/A';
+        $channels  = $item['infoFile']['numChannels'] ?? 'N/A';
+        $bitDepth  = $item['infoFile']['bitDepth'] ?? 'N/A';
+
+        cli::pcl(
+            "RAW key=" . substr((string)$key, 0, 12) .
+            " audioLen={$audioLen}" .
+            " chunkSize={$chunkSize}" .
+            " rate={$rate}" .
+            " channels={$channels}" .
+            " bitDepth={$bitDepth}",
+            "white"
+        );
     }
-}
 
+    $encodedCache = \libspech\Cache\cache::get('libspechAudioEncodedCache');
+    $building     = \libspech\Cache\cache::get('libspechAudioEncodedBuilding');
+
+    $encodedCache = is_array($encodedCache) ? $encodedCache : [];
+    $building     = is_array($building) ? $building : [];
+
+    cli::pcl("Encoded cache items: " . count($encodedCache), "cyan");
+    cli::pcl("Encoded cache building locks: " . count($building), "cyan");
+
+    foreach ($encodedCache as $key => $item) {
+        $chunks     = isset($item['chunks']) && is_array($item['chunks']) ? count($item['chunks']) : 0;
+        $frameCount = $item['frameCount'] ?? 0;
+        $codec      = $item['codec'] ?? 'N/A';
+        $frequency  = $item['frequency'] ?? 'N/A';
+        $channels   = $item['channels'] ?? 'N/A';
+        $chunkSize  = $item['chunkSize'] ?? 'N/A';
+        $complete   = !empty($item['complete']) ? 'sim' : 'nao';
+        $createdAt  = (int)($item['createdAt'] ?? 0);
+        $lastUsed   = (int)($item['lastUsed'] ?? 0);
+
+        $hitStatus = 'inconclusivo';
+        if ($lastUsed > $createdAt) {
+            $hitStatus = 'sim';
+        } elseif ($complete === 'sim' && $chunks > 0) {
+            $hitStatus = 'cache criado, hit nao provado';
+        }
+
+        cli::pcl(
+            "ENC key=" . substr((string)$key, 0, 12) .
+            " codec={$codec}" .
+            " freq={$frequency}" .
+            " channels={$channels}" .
+            " chunkSize={$chunkSize}" .
+            " complete={$complete}" .
+            " chunks={$chunks}" .
+            " frameCount={$frameCount}" .
+            " createdAt={$createdAt}" .
+            " lastUsed={$lastUsed}" .
+            " hit={$hitStatus}",
+            "white"
+        );
+    }
+
+    cli::pcl("================================", "bold_cyan");
+}
 
 
 

@@ -655,11 +655,6 @@ class MediaChannel
                 $pcmData = false;
 
 
-                if ($this->onReceiveCallable) {
-                    go(function () use ($rtpc, $peer, $ssrc) {
-                        call_user_func($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
-                    });
-                }
 
 
                 if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
@@ -685,6 +680,11 @@ class MediaChannel
                     continue;
                 }
 
+                if ($this->onReceiveCallable) {
+                    go(function () use ($rtpc, $peer, $ssrc) {
+                        call_user_func($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
+                    });
+                }
 
                 try {
                     $pcmData = match (strtoupper($codec)) {
@@ -860,6 +860,13 @@ class MediaChannel
                         continue;
                     }
 
+                    // Durante o envio de DTMF (RFC 4733) o relay de áudio é suspenso
+                    // para não sobrepor pacotes de áudio aos pacotes telephone-event
+                    // na mesma SSRC, o que causava chiado, cortes e perda de pacotes.
+                    if ($this->dtmfInUse) {
+                        continue;
+                    }
+
                     $newPacket = $this->members[$targetId]['rtpChannel']->buildAudioPacket($encode);
                     $this->socket->sendto($info['address'], $info['port'], $newPacket);
                 }
@@ -988,52 +995,59 @@ class MediaChannel
 
     public function send2833(string $digit): void
     {
+        if ($this->socket->isClosed()) {
+            return;
+        }
+
+        if (empty($this->members)) {
+            return;
+        }
+
+        $event = match (strtoupper($digit)) {
+            '0' => 0,
+            '1' => 1,
+            '2' => 2,
+            '3' => 3,
+            '4' => 4,
+            '5' => 5,
+            '6' => 6,
+            '7' => 7,
+            '8' => 8,
+            '9' => 9,
+            '*' => 10,
+            '#' => 11,
+            'A' => 12,
+            'B' => 13,
+            'C' => 14,
+            'D' => 15,
+            default => null,
+        };
+
+        if ($event === null) {
+            cli::pcl("[DTMF] Dígito inválido: {$digit}", "bold_red");
+            return;
+        }
+
+        // Snapshot das chaves dos membros para iterar de forma estável.
+        $memberKeys = array_keys($this->members);
+
+        // Envio SÍNCRONO (sem coroutine separada): garante que múltiplos dígitos
+        // enviados em sequência cheguem na ORDEM correta. Os Coroutine::sleep()
+        // abaixo apenas cedem o controle para o agendador (o loop de mídia roda
+        // em outra coroutine), portanto não bloqueiam o áudio. Enquanto o tom é
+        // transmitido, a flag dtmfInUse suspende o relay de áudio para não
+        // sobrepor pacotes na mesma SSRC (causa de chiado e perda de pacotes).
         try {
-            if ($this->socket->isClosed()) {
-                return;
-            }
-
-            if (empty($this->members)) {
-                return;
-            }
-
-            $event = match (strtoupper($digit)) {
-                '0' => 0,
-                '1' => 1,
-                '2' => 2,
-                '3' => 3,
-                '4' => 4,
-                '5' => 5,
-                '6' => 6,
-                '7' => 7,
-                '8' => 8,
-                '9' => 9,
-                '*' => 10,
-                '#' => 11,
-                'A' => 12,
-                'B' => 13,
-                'C' => 14,
-                'D' => 15,
-                default => null,
-            };
-
-            if ($event === null) {
-                cli::pcl("[DTMF] Dígito inválido: {$digit}", "bold_red");
-                return;
-            }
             $this->dtmfInUse = true;
 
-            // MicroSIP usa PJSIP; o default do PJSIP é:
-            // - volume = 10
-            // - duração total = 1600 timestamps (200ms em telephone-event/8000)
-            // - retransmissão do pacote final com E-bit = 3 vezes
-            // - primeiro pacote com marker bit = 1
-            // - timestamp do evento fixo durante todo o dígito
+            // RFC 4733: volume=10, duração=160ms (1280 samples@8kHz), ptime=20ms.
+            // 160ms é mais compatível com a maioria dos endpoints SIP/PJSIP e evita
+            // que o evento se arraste por tempo demais em relação a outros clientes.
             $volume = 10;
             $endRetransmits = 3;
             $eventClockRate = 8000;
             $ptimeMs = 20;
-            $durationMs = 200;
+            $durationMs = 160;
 
             $stepSamples = (int)round(($eventClockRate * $ptimeMs) / 1000);
             if ($stepSamples <= 0) {
@@ -1042,7 +1056,7 @@ class MediaChannel
 
             $finalDurationSamples = (int)round(($eventClockRate * $durationMs) / 1000);
             if ($finalDurationSamples <= 0) {
-                $finalDurationSamples = 1600;
+                $finalDurationSamples = 1280;
             }
 
             $steps = (int)ceil($finalDurationSamples / $stepSamples);
@@ -1050,7 +1064,12 @@ class MediaChannel
                 $steps = 1;
             }
 
-            foreach ($this->members as $key => $member) {
+            foreach ($memberKeys as $key) {
+                $member = $this->members[$key] ?? null;
+                if ($member === null) {
+                    continue;
+                }
+
                 $ip = $member['address'] ?? null;
                 $port = $member['port'] ?? null;
                 if (empty($ip) || empty($port)) {
@@ -1064,12 +1083,16 @@ class MediaChannel
 
                 $ptTelephoneEvent = $this->findTelephoneEventPt((int)($member['frequency'] ?? 8000));
 
-                // Timestamp do evento deve ficar constante em todos os pacotes do mesmo dígito
+                // Timestamp do evento fixo em todos os pacotes do mesmo dígito (RFC 4733)
                 $eventTs = (int)$rtpChannel->timestamp;
                 $ssrc = (int)$rtpChannel->ssrc;
 
                 // Pacotes de progresso do evento
                 for ($i = 1; $i <= $steps; $i++) {
+                    if ($this->socket->isClosed()) {
+                        return;
+                    }
+
                     $duration = $i * $stepSamples;
                     if ($duration > $finalDurationSamples) {
                         $duration = $finalDurationSamples;
@@ -1078,25 +1101,14 @@ class MediaChannel
                     $isFirst = ($i === 1);
                     $isLast = ($duration >= $finalDurationSamples);
 
-                    // Byte 2 do payload:
-                    // bit 7 = E (não setar aqui; os pacotes End são enviados separadamente)
-                    // bits 0..5 = volume
-                    $eVol = $volume & 0x3F;
-
-                    $payload = pack(
-                        'CCn',
-                        $event,
-                        $eVol,
-                        $duration
-                    );
+                    // Byte 2 do payload: bit 7 = E (não setar aqui); bits 0..5 = volume
+                    $payload = pack('CCn', $event, $volume & 0x3F, $duration);
 
                     // Marker bit somente no primeiro pacote
-                    $b1 = 0x80;
                     $b2 = ($isFirst ? 0x80 : 0x00) | ($ptTelephoneEvent & 0x7F);
-
                     $hdr = pack(
                         'CCnNN',
-                        $b1,
+                        0x80,
                         $b2,
                         $rtpChannel->sequenceNumber++ & 0xFFFF,
                         $eventTs & 0xFFFFFFFF,
@@ -1112,14 +1124,13 @@ class MediaChannel
                 }
 
                 // Retransmite o último pacote com E-bit 3 vezes
-                $payloadEnd = pack(
-                    'CCn',
-                    $event,
-                    0x80 | ($volume & 0x3F),
-                    $finalDurationSamples
-                );
+                $payloadEnd = pack('CCn', $event, 0x80 | ($volume & 0x3F), $finalDurationSamples);
 
                 for ($r = 0; $r < $endRetransmits; $r++) {
+                    if ($this->socket->isClosed()) {
+                        return;
+                    }
+
                     $hdr = pack(
                         'CCnNN',
                         0x80,
@@ -1136,13 +1147,13 @@ class MediaChannel
                     }
                 }
 
-                // Mantém a timeline contínua
+                // Mantém a timeline de áudio contínua após o evento DTMF
                 $rtpChannel->timestamp = ($eventTs + $finalDurationSamples) & 0xFFFFFFFF;
-                $this->dtmfInUse = false;
             }
         } catch (\Throwable $e) {
+            // silencioso: não interrompe o fluxo de áudio da chamada
+        } finally {
             $this->dtmfInUse = false;
-            return;
         }
     }
 
