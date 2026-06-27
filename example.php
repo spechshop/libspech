@@ -168,7 +168,7 @@ include 'plugins/autoloader.php';
 
 
             $phone->waitSilence(false, 10);
-            interruptibleSleep(5, $phone->receiveBye);
+            interruptibleSleep(7, $phone->receiveBye);
 
 
             $buffer = $phone->getBuffer();
@@ -177,9 +177,9 @@ include 'plugins/autoloader.php';
 
 
 
-            interruptibleSleep(5, $phone->receiveBye);
 
-            $phone->send2833('*');
+
+            $phone->send2833('#');
 
 
             $cpf = '42017165204';
