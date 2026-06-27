@@ -57,11 +57,8 @@ class rtpChannel
         $this->validateSampleRate($sampleRate);
         $this->validatePacketTime($packetTimeMs);
         $this->bcg729Channel = new bcg729Channel;
-        $opus = new opusChannel(48000, 1);
-        $opus->setBitrate(24000);
-        $opus->setSignalVoice(true);
-        $opus->setDTX(true);
-        $this->opusChannel = $opus;
+
+
 
 
         $this->payloadType = $payloadType;

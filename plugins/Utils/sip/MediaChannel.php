@@ -896,6 +896,7 @@ class MediaChannel
     {
 
 
+
         if ($peer['config'] ?? ['stereo'] ?? false) {
             $channels = $peer['config']['stereo'] ?? false;
         } else {
@@ -931,7 +932,7 @@ class MediaChannel
                 $config = $peer['config'];
                 if (!empty($config['userdtx'])) $peer['opus']->setDTX(true);
                 if (!empty($config['cbr'])) $peer['opus']->setVBR(true);
-                $peer['opus']->setComplexity(2);
+                $peer['opus']->setComplexity(8);
                 $peer['opus']->setSignalVoice(true);
                 $peer['opus']->setDTX(true);
 

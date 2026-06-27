@@ -123,7 +123,7 @@ include 'plugins/autoloader.php';
         });
 
 
-        $phone->mountLineCodecSDP('PCMA/8000');
+        $phone->mountLineCodecSDP('OPUS/48000/2');
         $phone->enableAudioRecording();
         $phone->enableAudioMemorySharing();
 
@@ -149,7 +149,7 @@ include 'plugins/autoloader.php';
 
             cli::pcl("IP remoto: " . $phone->audioRemoteIp. ':' . $phone->audioRemotePort, "yellow");
             // Inicia o recebimento de mídia (áudio RTP)
-            $phone->receiveMedia();
+
 
 
 
@@ -168,11 +168,11 @@ include 'plugins/autoloader.php';
 
 
             $phone->waitSilence(false, 10);
-            interruptibleSleep(7, $phone->receiveBye);
 
 
             $buffer = $phone->getBuffer();
             $bufferLen = $buffer->length();
+
 
 
 
@@ -191,7 +191,7 @@ include 'plugins/autoloader.php';
             cli::pcl("Digitado: " . $cpf, "green");
             $phone->waitSilence(false, 10);
 
-            interruptibleSleep(10, $phone->receiveBye);
+            interruptibleSleep(3, $phone->receiveBye);
 
 
             $phone->bye();
@@ -210,6 +210,7 @@ include 'plugins/autoloader.php';
             $phone->close();
             return true;
         });
+        $phone->enableStereoSound();
 
 
         $phone->call('553140040104');

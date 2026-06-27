@@ -391,7 +391,9 @@ class trunkController
         unset($this->ptsRegistered[$ptFind]);
         unset($this->ptsRegistered[$dtmf48k]);
         $this->stereoMode=true;
+
         $this->mountLineCodecSDP('OPUS/48000/2');
+        $this->defaultChannels=2;
     }
     public bool $stereoMode=false;
 
@@ -1915,12 +1917,12 @@ class trunkController
                 }
             }
             $parser = trunkController::getSDPModelCodecs($this->sdpReceived['a']);
-            if (array_key_exists('config', $parser) && array_key_exists('config', $parser['config']) && array_key_exists('stereo', $parser['config']['config'])) {
-                $this->defaultChannels = $parser['config']['config']['stereo'] ? 2 : 1;
+
+            if (array_key_exists('config', $parser) && array_key_exists('stereo', $parser['config'][$this->ptUse])) {
+                $this->defaultChannels = $parser['config'][$this->ptUse]['stereo'] ? 2 : 1;
             } else {
                 $this->defaultChannels = 1;
             }
-
 
             $this->mediaChannel->addMember([
                 'address' => $this->audioRemoteIp,
@@ -1928,7 +1930,7 @@ class trunkController
                 'codec' => $this->codecName,
                 'pt' => $this->ptUse,
                 'timestamp' => time(),
-                'config' => $parser['config'] ?? [],
+                'config' => $parser['config'][$this->ptUse] ?? [],
                 'ssrc' => $audioAttributes['ssrc'] ?? $this->ssrc,
                 'frequency' => $this->frequencyCall,
                 'channels' => $this->defaultChannels,
@@ -1991,6 +1993,8 @@ class trunkController
                             return;
                         }
 
+
+
                         $pcmData = $this->mediaChannel
                             ->members[$targetId]['opus']
                             ->decode($rtpc->payloadRaw);
@@ -2013,6 +2017,7 @@ class trunkController
                 if ($channel->recordingEnabled || $hasPcmCallback) {
                     $frequencyPacket = $channel->getFrequencyFromPtCodec($rtpc->payloadType);
                 }
+
 
                 if ($this->waitingSilence) {
                     $time = microtime(true);
@@ -2248,6 +2253,7 @@ class trunkController
 
             foreach ($freq as $freqPacket => $codec) {
                 foreach ($codec as $codecName => $pcm) {
+                    if ($this->defaultChannels > 1) $pcm= stereoToMono($pcm);
                     switch ($codecName) {
                         case 'G729':
                             $channels[] = $pcm;
@@ -2272,7 +2278,10 @@ class trunkController
                 }
             }
         }
-        return mixAudioChannels($channels);
+
+        $mixed=mixAudioChannels($channels);
+        if ($this->defaultChannels > 1) $mixed=monoToStereo($mixed);
+        return $mixed;
     }
 
 

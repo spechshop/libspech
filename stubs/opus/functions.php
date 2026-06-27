@@ -342,27 +342,61 @@ declare(strict_types=1);
     }
 
 
-    function writestubfile($namespace, $className, $code) {
-        return class_exists(\mixed::class) ? \mixed::class : \stdClass::class;
+    function writestubfile($namespace, $className, $code): \void {
+        return;
     }
 
 
-    function generatefunctionstubs(string $ext) {
+    function generatefunctionstubs(string $ext): \void {
+        return;
+    }
+
+/**
+ * @param string $ext
+ * @return string[]|void
+ */
+    function getexplode(string $ext) {
         return class_exists(\mixed::class) ? \mixed::class : \stdClass::class;
     }
 
-
-    function generateextensionconstants(string $ext) {
-        return class_exists(\mixed::class) ? \mixed::class : \stdClass::class;
+/**
+ * @param ReflectionParameter $p
+ * @param string $s
+ * @param array $params
+ * @return array
+ */
+    function getarr(ReflectionParameter $p, string $s, array $params): \array {
+        return [];
     }
 
 
-    function generateclassstubs(array $allowFilters) {
-        return class_exists(\mixed::class) ? \mixed::class : \stdClass::class;
+    function generateextensionconstants(string $ext): \void {
+        return;
+    }
+
+/**
+ * @param string $ext
+ * @return void
+ */
+    function extracted(string $ext): \void {
+        return;
     }
 
 
-    function liststubfolders($dir = '/home/lotus/projetos/libspech/stubs') {
-        return class_exists(\mixed::class) ? \mixed::class : \stdClass::class;
+    function generateclassstubs(array $allowFilters): \void {
+        return;
+    }
+
+/**
+ * @param array $allowFilters
+ * @return string[]
+ */
+    function getexplode1(array $allowFilters): \array {
+        return [];
+    }
+
+
+    function liststubfolders($dir = '/home/lotus/projetos/libspech/stubs'): \void {
+        return;
     }
 
