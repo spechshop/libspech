@@ -6,7 +6,8 @@
     "Utils/sip",
     "Utils/libspech",
     "Utils/network",
-    "Packet/controller"
+    "Packet/controller",
+    "Utils/Coroutine"
   ],
   "reloadCaseFileModify": []
 }
