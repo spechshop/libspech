@@ -1471,6 +1471,15 @@ class MediaChannel
                 if ($cached['processed'] && $isEnd) {
                     // RFC: últimos 3 pacotes são idênticos com flag E set
                     $closure(); // Fazer forward do pacote mesmo sendo duplicado
+                    // Disparar callback de DTMF
+                    $callback = $this->onDtmfCallable;
+                    if (is_callable($callback)) {
+                        if (($rtpc->sequence - $cached['sequence']) == 1) {
+                            go($callback, $event, $peer, $event, $this);
+                        }
+
+
+                    }
                     return;
                 }
 
@@ -1574,11 +1583,7 @@ class MediaChannel
             }
             $this->dtmfFiredGuard[$ssrc] = ['event' => $event, 'time' => $nowMs];
 
-            // Disparar callback de DTMF
-            $callback = $this->onDtmfCallable;
-            if (is_callable($callback)) {
-                go($callback, $digit, $peer, $event, $this);
-            }
+
 
             // Limpar cache antigo (> 5 segundos)
             $currentTime = microtime(true);
