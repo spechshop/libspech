@@ -1171,6 +1171,7 @@ function analyzeRingPcm(
     };
 
     return [
+        'version' => '20j.1522',
         'has_ring_pattern' => $hasRingPattern,
         'ring_from_start_to_end' =>
             $ringFromStartToEnd,
