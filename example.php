@@ -61,7 +61,7 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // SESSÃO 5: CONFIGURAÇÃO DE ÁUDIO E AMD
         // ====================================================================
-        $phone->mountLineCodecSDP('PCMU/8000');
+        $phone->mountLineCodecSDP('G729/8000');
         // $phone->mountLineCodecSDP('OPUS/48000/2');
 
         $phone->enableAudioRecording();
@@ -231,7 +231,7 @@ include 'plugins/autoloader.php';
 
         $phone->onAnswer(
             function (trunkController $phone) use ($detector): void {
-                $detector->markAnswered();
+
 
                 cli::pcl('Chamada recebida', 'green');
                 cli::pcl(
@@ -243,6 +243,7 @@ include 'plugins/autoloader.php';
                 // SESSÃO 7: FLUXO DE INTERAÇÃO NA CHAMADA
                 // ============================================================
                 $phone->waitSilence(false, 10);
+                $detector->markAnswered();
 
                 $buffer = $phone->getBuffer();
                 $bufferLen = $buffer->length();
@@ -300,7 +301,7 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // SESSÃO 8: ORIGINAÇÃO
         // ====================================================================
-        $phone->call('5569984477329');
+        $phone->call('553140040104');
 
         $detector->finish('call_returned');
         cli::pcl("Chamada originada", 'bold_green');
