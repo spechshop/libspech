@@ -740,13 +740,20 @@ function analyzeRingPcm(
         1500.0,
     ];
 
-    $ringCandidates = [
-        $ringFrequencyHz - 10.0,
-        $ringFrequencyHz - 5.0,
-        $ringFrequencyHz,
-        $ringFrequencyHz + 5.0,
-        $ringFrequencyHz + 10.0,
-    ];
+    /*
+     * O tom nominal e 425 Hz, mas centrais e gateways podem entrega-lo
+     * deslocado. A faixa abaixo cobre de 395 a 460 Hz para o valor padrao,
+     * sem precisar reduzir os limiares de energia e proeminencia.
+     */
+    $ringCandidates = [];
+
+    for (
+        $candidateFrequency = $ringFrequencyHz - 30.0;
+        $candidateFrequency <= $ringFrequencyHz + 35.0;
+        $candidateFrequency += 5.0
+    ) {
+        $ringCandidates[] = $candidateFrequency;
+    }
 
     $minimumRingLevelDbfs = -48.0;
     $minimumRingProminenceDb = 10.0;
