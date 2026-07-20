@@ -276,6 +276,7 @@ function getExplode1(array $allowFilters): array
 // 🔧 Qual extensão você quer gerar stub
 generateFunctionStubs('bcg729');
 generateFunctionStubs('opus');
+generateFunctionStubs('swoole');
 generateFunctionStubs('psampler');
 
 generateExtensionConstants('bcg729');
@@ -283,7 +284,7 @@ generateExtensionConstants('opusChannel');
 generateExtensionConstants('psampler');
 
 // 🔧 Filtrar classes permitidas
-generateClassStubs(['bcg729', 'MultibyteStringObject', 'lpcm', 'sampler', 'bcg729Channel', 'opusChannel', 'psampler']);
+generateClassStubs(['bcg729','Swoole', 'MultibyteStringObject', 'lpcm', 'sampler', 'bcg729Channel', 'opusChannel', 'psampler']);
 
 function listStubFolders($dir = __DIR__ . '/stubs'): void
 {
