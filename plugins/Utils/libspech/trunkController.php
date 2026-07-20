@@ -171,7 +171,7 @@ class trunkController
     private ?string $currentProxyId = null;
     public string $userAgent = 'SPECHSHOP LIB';
     private string|int|null $ptTelephoneEvent;
-    private string|int|null $ptUse;
+    private string|int|null $ptUse=8;
     public array $sdp;
     public $bcgChannel;
     public bool $closing = false;
@@ -3128,7 +3128,7 @@ class trunkController
 
     /**
      * Define o callback para processamento do áudio recebido
-     * @param callable $param Função com a assinatura function(string $pcmData, array $peer, trunkController $phone): void}
+     * @param callable $param Função com a assinatura function(string $pcmData, array $peer, trunkController $phone): void {}
      */
     public function onReceivePcm(callable $param)
     {

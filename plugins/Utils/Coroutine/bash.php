@@ -9,14 +9,7 @@ class bash
 {
     public static function command(string $command, ?callable $onExit = null): void
     {
-        // Comportamento "como abrir outro terminal": o filho herda os
-        // descritores reais STDIN/STDOUT/STDERR, então a saída aparece ao vivo
-        // (em tempo real) e o readline/entrada interativa funcionam normalmente.
-        //
-        // Para não bloquear o event loop, ativamos o hook de processos do
-        // Swoole: com SWOOLE_HOOK_PROC, proc_open/proc_get_status/proc_close
-        // passam a ser gerenciados pelo escalonador de corrotinas. O filho é
-        // reapeado com proc_close ao término, então não há processos zumbis.
+
         if (class_exists(Runtime::class) && defined('SWOOLE_HOOK_PROC')) {
             Runtime::enableCoroutine(SWOOLE_HOOK_PROC);
         }

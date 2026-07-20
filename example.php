@@ -19,7 +19,6 @@ ini_set('memory_limit', '1024M');
 
 // Importa as classes necessárias do sistema
 use libspech\Cli\cli;
-use libspech\Sip\sip;
 use libspech\Sip\trunkController;
 use function libspech\Sip\interruptibleSleep;
 
@@ -27,10 +26,8 @@ use function libspech\Sip\interruptibleSleep;
 \Swoole\Runtime::enableCoroutine();
 
 
-
 // Carrega o autoloader para importar todas as dependências do projeto
 include 'plugins/autoloader.php';
-
 
 
 // ============================================================================
@@ -41,11 +38,11 @@ include 'plugins/autoloader.php';
     // Cria uma nova corotina para executar o código SIP de forma assíncrona
     \Swoole\Coroutine::create(function () {
 
-       // $s=microtime(true);
-       // usleep(500_000);
-       // $c = round(microtime(true)-$s,3);
-       // cli::pcl("Corotina SIP iniciada em {$c} segundos", "bold_green");
-       // exit;
+        // $s=microtime(true);
+        // usleep(500_000);
+        // $c = round(microtime(true)-$s,3);
+        // cli::pcl("Corotina SIP iniciada em {$c} segundos", "bold_green");
+        // exit;
         // ====================================================================
         // SESSÃO 3: CONFIGURAÇÃO DE CREDENCIAIS SIP
         // ====================================================================
@@ -66,16 +63,8 @@ include 'plugins/autoloader.php';
 
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $host);
-       //$phone->enableVAD();
-       //$phone->voiceActivityTimeout(3);
-
-
-
-
-
-
-
-
+        //$phone->enableVAD();
+        //$phone->voiceActivityTimeout(3);
 
 
         //$phone->setCallerId('xxxxxxxxxxx');
@@ -95,24 +84,37 @@ include 'plugins/autoloader.php';
         // SESSÃO 5: CONFIGURAÇÃO DE CALLBACKS DE EVENTOS
         // ====================================================================
 
+
+        $phone->mountLineCodecSDP('PCMU/8000');
+        //$phone->mountLineCodecSDP('OPUS/48000/2');
+        $phone->enableAudioRecording();
+        $phone->enableAudioMemorySharing();
+        $phone->defineAudioFile('silence_5m.wav');
+        $saved=false;
+
+        // Habilita a gravação de áudio durante a chamada
+
+
         // Callback executado quando uma chamada está tocando (ringing)
         $phone->onRinging(function () use (&$phone) {
-           if ($phone->audioRemoteIp)  $phone->receiveMedia();
-
-
-            cli::pcl("Chamada TOCANDO", "yellow");
+            cli::pcl($phone->lastPacket['method'] . " Chamada TOCANDO " . microtime(true), "yellow");
             //\Swoole\Coroutine::sleep(5);
             //$phone->cancel();
         });
-
-
-        // Callback executado quando a chamada é desligada (hangup/bye)
-
-
-        $phone->onFailed(function ($message) use ($phone) {
+        $phone->onFailed(function ($message) use (&$saved, $phone) {
             cli::pcl("Chamada falhou: $message", "red");
-        });
+            if ($saved)return;
+            $method = (int)$phone->lastPacket['method'];
 
+            if ($method > 199) {
+                $phone->saveBufferToWavFile('rec_after_onfailed.wav', $phone->getBuffer());
+                cli::pcl("Method: $method - buffer: ".$phone->getBuffer()->length(), 'yellow');
+                $phone->clearAudioBuffer();
+                $saved=true;
+            } else {
+                cli::pcl("Method: $method - buffer: ".$phone->getBuffer()->length());
+            }
+        });
         $phone->onHangup(function (trunkController $phone) {
             // Salva o buffer de áudio gravado em um arquivo WAV
             $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
@@ -121,39 +123,19 @@ include 'plugins/autoloader.php';
             cli::pcl("Bye recebido", "red");
 
         });
-
-
-        $phone->mountLineCodecSDP('OPUS/48000/2');
-        $phone->enableAudioRecording();
-        $phone->enableAudioMemorySharing();
-
-
-        $phone->defineAudioFile('silence_5m.wav');
-        // ====================================================================
-        // SESSÃO 6: CONFIGURAÇÃO DE CODEC E RECURSOS DE ÁUDIO
-        // ====================================================================
-        // Define o codec de áudio como OPUS 48kHz mono (1 canal)
-        //$phone->mountLineCodecSDP('G729/8000');
-
-
-        // Habilita a gravação de áudio durante a chamada
-
-
-
-
         $phone->onSdpReceived(function (trunkController $phone) {
-           $phone->receiveMedia();
+            cli::pcl("SDP recebido " . microtime(true), "green");
+            $phone->receiveMedia();
         });
         $phone->onAnswer(function (trunkController $phone) {
+            $phone->saveBufferToWavFile('rec_before_200_ok.wav', $phone->getBuffer());
+            $phone->clearAudioBuffer();
+
+
             cli::pcl("Chamada recebida", "green");
 
-            cli::pcl("IP remoto: " . $phone->audioRemoteIp. ':' . $phone->audioRemotePort, "yellow");
+            cli::pcl("IP remoto: " . $phone->audioRemoteIp . ':' . $phone->audioRemotePort, "yellow");
             // Inicia o recebimento de mídia (áudio RTP)
-
-
-
-
-
 
 
             // ================================================================
@@ -166,17 +148,11 @@ include 'plugins/autoloader.php';
             // Envia DTMF (tom de teclado) - caractere '*' com duração de 160ms
 
 
-
             $phone->waitSilence(false, 10);
 
 
             $buffer = $phone->getBuffer();
             $bufferLen = $buffer->length();
-
-
-
-
-
 
 
             $phone->send2833('#');
@@ -202,7 +178,7 @@ include 'plugins/autoloader.php';
             $phone->callActive = false;
         });
         $phone->onKeyPress(function ($event, $peer) use ($phone) {
-            //cli::pcl("Digitando: " . $event, "yellow");
+            cli::pcl("$phone->calledNumber Digitou: " . $event, "yellow");
         });
         $phone->onPacketOnTimeoutMedia(function ($peer) use ($phone) {
             cli::pcl("Timeout de mídia atingido, encerrando chamada", 'bold_red');
@@ -210,17 +186,29 @@ include 'plugins/autoloader.php';
             $phone->close();
             return true;
         });
-        $phone->enableStereoSound();
 
 
-        $phone->call('553140040104');
+        $phone->onReceivePcm(function (string $pcmData, array $peer, trunkController $phone) use(&$saved):void {
+            if ($saved)return;
+            $method = (int)$phone->lastPacket['method'];
+
+            if ($method > 199) {
+                $phone->saveBufferToWavFile('rec_after_200_ok_onreceive.wav', $phone->getBuffer());
+                cli::pcl("Method: $method - buffer: ".$phone->getBuffer()->length(), 'yellow');
+                $phone->clearAudioBuffer();
+                $saved=true;
+            } else {
+                cli::pcl("Method: $method - buffer: ".$phone->getBuffer()->length());
+            }
+
+        });
+        //$phone->enableStereoSound();
 
 
-
+        $phone->call('556921815878');
 
 
         $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
-
 
 
         // ====================================================================
@@ -237,3 +225,4 @@ include 'plugins/autoloader.php';
 
 // Mensagem final indicando que o processo de corotina foi encerrado
 cli::pcl("Processo encerrado com sucesso", "green");
+
