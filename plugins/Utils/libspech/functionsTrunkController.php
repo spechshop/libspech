@@ -548,13 +548,13 @@ function analyzeRingPcm(
 ): array
 {
     if ($sampleRate <= 0) {
-        throw new InvalidArgumentException(
+        throw new \InvalidArgumentException(
             'sampleRate deve ser maior que zero.'
         );
     }
 
     if ($frameDurationMs <= 0) {
-        throw new InvalidArgumentException(
+        throw new \InvalidArgumentException(
             'frameDurationMs deve ser maior que zero.'
         );
     }
@@ -576,7 +576,7 @@ function analyzeRingPcm(
     }
 
     if ((strlen($pcmData) % 2) !== 0) {
-        throw new InvalidArgumentException(
+        throw new \InvalidArgumentException(
             'O PCM16 precisa possuir quantidade par de bytes.'
         );
     }
@@ -588,9 +588,21 @@ function analyzeRingPcm(
     $frameBytes = $samplesPerFrame * 2;
 
     if (strlen($pcmData) < $frameBytes) {
-        throw new InvalidArgumentException(
-            'O buffer PCM é muito curto para análise.'
-        );
+        return [
+            'has_ring_pattern' => false,
+            'ring_from_start_to_end' => false,
+            'reason' => 'pcm_muito_curto',
+            'confidence' => 0.0,
+            'duration_ms' => (int)floor(
+                ((strlen($pcmData) / 2) / $sampleRate) * 1000
+            ),
+            'pulses' => [],
+            'matched_pulses' => [],
+            'periods_ms' => [],
+            'disturbance_at_ms' => null,
+            'disturbance_duration_ms' => 0,
+            'frames' => [],
+        ];
     }
 
     $decodePcm16Le = static function (string $pcm): array {
@@ -1005,14 +1017,13 @@ function analyzeRingPcm(
     }
 
     /*
-     * É necessário ao menos:
-     *
-     * pulso 1
-     * + aproximadamente 5 segundos
-     * + pulso 2
+     * Um pulso tonal sustentado já caracteriza ringback. A cadência
+     * de aproximadamente cinco segundos aumenta a confiança, mas não
+     * pode ser obrigatória: gravações curtas podem terminar antes do
+     * segundo toque.
      */
-    $hasRingPattern =
-        count($matchedPulses) >= 2;
+    $hasRingPattern = $pulses !== [];
+    $hasConfirmedCadence = count($matchedPulses) >= 2;
 
     /*
      * Protege as bordas dos pulsos para que o início e o fim
@@ -1123,13 +1134,14 @@ function analyzeRingPcm(
         $hasRingPattern &&
         $disturbanceAtMs === null;
 
-    $cycleScore = min(
-        1.0,
-        max(
-            0,
-            count($matchedPulses) - 1
-        ) / 2
-    );
+    $cycleScore = $hasConfirmedCadence
+        ? min(
+            1.0,
+            0.70 + (
+                max(0, count($matchedPulses) - 2) * 0.15
+            )
+        )
+        : ($hasRingPattern ? 0.45 : 0.0);
 
     $cleanScore =
         $disturbanceAtMs === null
@@ -1148,11 +1160,11 @@ function analyzeRingPcm(
         count($pulses) === 0 =>
         'nenhum_pulso_425hz',
 
-        count($matchedPulses) < 2 =>
-        'periodicidade_de_5_segundos_nao_confirmada',
-
         $disturbanceAtMs !== null =>
         'ring_perturbado_por_outro_audio',
+
+        !$hasConfirmedCadence =>
+        'ring_detectado_cadencia_nao_confirmada',
 
         default =>
         'ring_presente_do_inicio_ao_fim',
