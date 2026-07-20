@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 namespace libspech\audio;
+
 use Closure;
 use InvalidArgumentException;
 
@@ -24,6 +25,23 @@ final class EarlyGreetingDetector
     private int $voiceFramesMs = 0;
     private int $voiceGapMs = 0;
     private bool $greetingReported = false;
+    private bool $earlyGreetingDetected = false;
+
+    private int $postAnswerElapsedMs = 0;
+    private bool $postAnswerVoiceActive = false;
+    private int $postAnswerVoiceStartedAtMs = 0;
+    private int $postAnswerCurrentVoiceMs = 0;
+    private int $postAnswerCurrentGapMs = 0;
+    private int $postAnswerLastSpeechMs = 0;
+    private int $postAnswerSilenceAfterSpeechMs = 0;
+    private int $postAnswerSpeechSegments = 0;
+    private int $postAnswerTotalVoiceMs = 0;
+    private int $postAnswerLongestVoiceMs = 0;
+    private bool $voiceCrossedAnswer = false;
+    private int $earlyVoiceAtAnswerMs = 0;
+
+    private ?string $amdResult = null;
+    private ?string $amdReason = null;
 
     private float $noiseFloorDbfs = -65.0;
 
@@ -32,36 +50,66 @@ final class EarlyGreetingDetector
     private ?Closure $onGreetingDetected = null;
     private ?Closure $onAnalysis = null;
     private ?Closure $onAnswerBoundary = null;
+    private ?Closure $onHumanLikely = null;
+    private ?Closure $onMachineLikely = null;
+    private ?Closure $onUnknown = null;
+    private ?Closure $onAmdResult = null;
 
     public function __construct(
-        private readonly int   $sampleRate = 8000,
-        private readonly int   $frameDurationMs = 20,
-        private readonly int   $analysisWindowMs = 200,
-        private readonly int   $minimumGreetingVoiceMs = 800,
-        private readonly int   $maximumInternalGapMs = 120,
+        private readonly int $sampleRate = 8000,
+        private readonly int $frameDurationMs = 20,
+        private readonly int $analysisWindowMs = 200,
+        private readonly int $minimumGreetingVoiceMs = 800,
+        private readonly int $maximumInternalGapMs = 120,
         private readonly float $minimumVoiceDbfs = -42.0,
         private readonly float $noiseMarginDb = 10.0,
         private readonly float $tone425MinimumDbfs = -45.0,
         private readonly float $tone425MinimumProminenceDb = 14.0,
-    )
-    {
+        private readonly int $humanMinimumSpeechMs = 200,
+        private readonly int $humanMaximumSpeechMs = 1200,
+        private readonly int $humanSilenceAfterSpeechMs = 600,
+        private readonly int $machineGreetingVoiceMs = 2000,
+        private readonly int $postAnswerAnalysisTimeoutMs = 6000,
+    ) {
         if ($this->sampleRate <= 0) {
-            throw new InvalidArgumentException(
-                'sampleRate deve ser maior que zero.'
-            );
+            throw new InvalidArgumentException('sampleRate deve ser maior que zero.');
         }
 
         if ($this->frameDurationMs <= 0) {
+            throw new InvalidArgumentException('frameDurationMs deve ser maior que zero.');
+        }
+
+        if ($this->analysisWindowMs < $this->frameDurationMs) {
             throw new InvalidArgumentException(
-                'frameDurationMs deve ser maior que zero.'
+                'analysisWindowMs deve ser maior ou igual a frameDurationMs.'
             );
         }
 
-        $frameSamples = (int)round(
+        if ($this->humanMinimumSpeechMs < 0) {
+            throw new InvalidArgumentException('humanMinimumSpeechMs não pode ser negativo.');
+        }
+
+        if ($this->humanMaximumSpeechMs < $this->humanMinimumSpeechMs) {
+            throw new InvalidArgumentException(
+                'humanMaximumSpeechMs deve ser maior ou igual a humanMinimumSpeechMs.'
+            );
+        }
+
+        if ($this->machineGreetingVoiceMs <= 0) {
+            throw new InvalidArgumentException('machineGreetingVoiceMs deve ser maior que zero.');
+        }
+
+        if ($this->postAnswerAnalysisTimeoutMs <= 0) {
+            throw new InvalidArgumentException(
+                'postAnswerAnalysisTimeoutMs deve ser maior que zero.'
+            );
+        }
+
+        $frameSamples = (int) round(
             $this->sampleRate * ($this->frameDurationMs / 1000)
         );
 
-        $analysisSamples = (int)round(
+        $analysisSamples = (int) round(
             $this->sampleRate * ($this->analysisWindowMs / 1000)
         );
 
@@ -105,6 +153,34 @@ final class EarlyGreetingDetector
         return $this;
     }
 
+    public function onHumanLikely(callable $callback): self
+    {
+        $this->onHumanLikely = Closure::fromCallable($callback);
+
+        return $this;
+    }
+
+    public function onMachineLikely(callable $callback): self
+    {
+        $this->onMachineLikely = Closure::fromCallable($callback);
+
+        return $this;
+    }
+
+    public function onUnknown(callable $callback): self
+    {
+        $this->onUnknown = Closure::fromCallable($callback);
+
+        return $this;
+    }
+
+    public function onAmdResult(callable $callback): self
+    {
+        $this->onAmdResult = Closure::fromCallable($callback);
+
+        return $this;
+    }
+
     public function push(string $pcmData): void
     {
         if ($pcmData === '') {
@@ -114,16 +190,8 @@ final class EarlyGreetingDetector
         $this->frameBuffer .= $pcmData;
 
         while (strlen($this->frameBuffer) >= $this->frameBytes) {
-            $frame = substr(
-                $this->frameBuffer,
-                0,
-                $this->frameBytes
-            );
-
-            $this->frameBuffer = substr(
-                $this->frameBuffer,
-                $this->frameBytes
-            );
+            $frame = substr($this->frameBuffer, 0, $this->frameBytes);
+            $this->frameBuffer = substr($this->frameBuffer, $this->frameBytes);
 
             $this->processFrame($frame);
         }
@@ -137,6 +205,19 @@ final class EarlyGreetingDetector
 
         $this->answered = true;
         $this->answeredAtMs = $this->elapsedMs;
+        $this->postAnswerElapsedMs = 0;
+        $this->voiceCrossedAnswer = $this->voiceActive;
+        $this->earlyVoiceAtAnswerMs = $this->voiceActive
+            ? $this->voiceFramesMs
+            : 0;
+
+        if ($this->voiceCrossedAnswer) {
+            $this->postAnswerVoiceActive = true;
+            $this->postAnswerVoiceStartedAtMs = $this->elapsedMs;
+            $this->postAnswerSpeechSegments = 1;
+            $this->postAnswerCurrentVoiceMs = 0;
+            $this->postAnswerCurrentGapMs = 0;
+        }
 
         $event = [
             'audio_ms' => $this->elapsedMs,
@@ -145,36 +226,53 @@ final class EarlyGreetingDetector
                 ? $this->voiceStartedAtMs
                 : null,
             'early_voice_ms' => $this->voiceFramesMs,
-            'greeting_detected' => $this->greetingReported,
+            'greeting_detected' => $this->earlyGreetingDetected,
+            'voice_crossed_answer' => $this->voiceCrossedAnswer,
         ];
 
         if ($this->onAnswerBoundary !== null) {
             ($this->onAnswerBoundary)($event);
         }
-
-        /*
-         * A primeira experiência termina aqui.
-         *
-         * Não apagamos os dados, porque eles ainda podem ser
-         * consultados depois do 200 OK.
-         */
     }
 
     public function finish(string $reason = 'finished'): void
     {
-        if ($this->voiceActive) {
-            $this->finishVoiceSegment($reason);
+        if (!$this->answered && $this->voiceActive) {
+            $this->finishEarlyVoiceSegment($reason);
+        }
+
+        if ($this->answered && $this->postAnswerVoiceActive) {
+            $this->finishPostAnswerVoiceSegment($reason);
+        }
+
+        if ($this->answered && $this->amdResult === null) {
+            $this->emitAmdResult('unknown', $reason);
         }
     }
 
     public function isGreetingDetected(): bool
     {
-        return $this->greetingReported;
+        return $this->earlyGreetingDetected;
+    }
+
+    public function isAnswered(): bool
+    {
+        return $this->answered;
     }
 
     public function getAnsweredAtMs(): ?int
     {
         return $this->answeredAtMs;
+    }
+
+    public function getAmdResult(): ?string
+    {
+        return $this->amdResult;
+    }
+
+    public function getAmdReason(): ?string
+    {
+        return $this->amdReason;
     }
 
     private function processFrame(string $frame): void
@@ -206,9 +304,6 @@ final class EarlyGreetingDetector
             'prominence_db' => 0.0,
         ];
 
-        /*
-         * Só analisamos o tom quando tivermos 200 ms acumulados.
-         */
         if (strlen($this->analysisBuffer) >= $this->analysisWindowBytes) {
             $analysisSamples = $this->decodePcm16LittleEndian(
                 $this->analysisBuffer
@@ -222,18 +317,11 @@ final class EarlyGreetingDetector
             $this->noiseFloorDbfs + $this->noiseMarginDb
         );
 
-        /*
-         * Ringback de 425 Hz possui energia alta e seria confundido
-         * com voz por um VAD baseado apenas em volume.
-         */
+        // O tom de ringback não deve ser contado como voz.
         $isVoice =
             $rmsDbfs >= $voiceThresholdDbfs &&
             !$tone425['detected'];
 
-        /*
-         * Atualiza o piso de ruído somente quando o frame não parece
-         * ser voz e não é o tom de 425 Hz.
-         */
         if (
             !$isVoice &&
             !$tone425['detected'] &&
@@ -254,33 +342,35 @@ final class EarlyGreetingDetector
             'voice_threshold_dbfs' => $voiceThresholdDbfs,
             'voice' => $isVoice,
             'tone_425' => $tone425,
+            'amd_result' => $this->amdResult,
         ];
 
         if ($this->onAnalysis !== null) {
             ($this->onAnalysis)($analysis);
         }
 
-        /*
-         * Para esta experiência, somente frames anteriores ao
-         * 200 OK participam da detecção de saudação antecipada.
-         */
-        if ($this->answered) {
+        if (!$this->answered) {
+            $this->updateEarlyVoiceState(
+                isVoice: $isVoice,
+                frameStartMs: $frameStartMs,
+                analysis: $analysis
+            );
+
             return;
         }
 
-        $this->updateVoiceState(
+        $this->updatePostAnswerState(
             isVoice: $isVoice,
             frameStartMs: $frameStartMs,
             analysis: $analysis
         );
     }
 
-    private function updateVoiceState(
-        bool  $isVoice,
-        int   $frameStartMs,
+    private function updateEarlyVoiceState(
+        bool $isVoice,
+        int $frameStartMs,
         array $analysis
-    ): void
-    {
+    ): void {
         if ($isVoice) {
             if (!$this->voiceActive) {
                 $this->voiceActive = true;
@@ -306,6 +396,7 @@ final class EarlyGreetingDetector
                 $this->voiceFramesMs >= $this->minimumGreetingVoiceMs
             ) {
                 $this->greetingReported = true;
+                $this->earlyGreetingDetected = true;
 
                 if ($this->onGreetingDetected !== null) {
                     ($this->onGreetingDetected)([
@@ -327,17 +418,14 @@ final class EarlyGreetingDetector
 
         $this->voiceGapMs += $this->frameDurationMs;
 
-        /*
-         * Pequenas pausas dentro da fala não encerram a saudação.
-         */
         if ($this->voiceGapMs <= $this->maximumInternalGapMs) {
             return;
         }
 
-        $this->finishVoiceSegment('silence');
+        $this->finishEarlyVoiceSegment('silence');
     }
 
-    private function finishVoiceSegment(string $reason): void
+    private function finishEarlyVoiceSegment(string $reason): void
     {
         if (!$this->voiceActive) {
             return;
@@ -350,9 +438,7 @@ final class EarlyGreetingDetector
             'gap_ms' => $this->voiceGapMs,
             'greeting_detected' => $this->greetingReported,
             'reason' => $reason,
-            'phase' => $this->answered
-                ? 'answered'
-                : 'early_media',
+            'phase' => 'early_media',
         ];
 
         if ($this->onVoiceEnd !== null) {
@@ -364,6 +450,177 @@ final class EarlyGreetingDetector
         $this->voiceFramesMs = 0;
         $this->voiceGapMs = 0;
         $this->greetingReported = false;
+    }
+
+    private function updatePostAnswerState(
+        bool $isVoice,
+        int $frameStartMs,
+        array $analysis
+    ): void {
+        if ($this->answeredAtMs === null) {
+            return;
+        }
+
+        $this->postAnswerElapsedMs = max(
+            0,
+            $this->elapsedMs - $this->answeredAtMs
+        );
+
+        if ($this->amdResult !== null) {
+            return;
+        }
+
+        if ($isVoice) {
+            if (!$this->postAnswerVoiceActive) {
+                $this->postAnswerVoiceActive = true;
+                $this->postAnswerVoiceStartedAtMs = $frameStartMs;
+                $this->postAnswerCurrentVoiceMs = 0;
+                $this->postAnswerCurrentGapMs = 0;
+                $this->postAnswerSilenceAfterSpeechMs = 0;
+                $this->postAnswerSpeechSegments++;
+
+                if ($this->onVoiceStart !== null) {
+                    ($this->onVoiceStart)([
+                        'audio_ms' => $frameStartMs,
+                        'post_answer_ms' => $this->postAnswerElapsedMs,
+                        'rms_dbfs' => $analysis['rms_dbfs'],
+                        'phase' => 'answered',
+                    ]);
+                }
+            }
+
+            $this->postAnswerCurrentVoiceMs += $this->frameDurationMs;
+            $this->postAnswerTotalVoiceMs += $this->frameDurationMs;
+            $this->postAnswerCurrentGapMs = 0;
+            $this->postAnswerSilenceAfterSpeechMs = 0;
+            $this->postAnswerLongestVoiceMs = max(
+                $this->postAnswerLongestVoiceMs,
+                $this->postAnswerCurrentVoiceMs
+            );
+
+            $continuousVoiceMs =
+                $this->postAnswerCurrentVoiceMs +
+                ($this->voiceCrossedAnswer ? $this->earlyVoiceAtAnswerMs : 0);
+
+            if ($continuousVoiceMs >= $this->machineGreetingVoiceMs) {
+                $this->emitAmdResult('machine_likely', 'long_greeting');
+
+                return;
+            }
+        } elseif ($this->postAnswerVoiceActive) {
+            $this->postAnswerCurrentGapMs += $this->frameDurationMs;
+
+            if ($this->postAnswerCurrentGapMs > $this->maximumInternalGapMs) {
+                $this->finishPostAnswerVoiceSegment('silence');
+            }
+        } elseif ($this->postAnswerSpeechSegments > 0) {
+            $this->postAnswerSilenceAfterSpeechMs += $this->frameDurationMs;
+
+            if (
+                !$this->voiceCrossedAnswer &&
+                $this->postAnswerSpeechSegments === 1 &&
+                $this->postAnswerLastSpeechMs >= $this->humanMinimumSpeechMs &&
+                $this->postAnswerLastSpeechMs <= $this->humanMaximumSpeechMs &&
+                $this->postAnswerSilenceAfterSpeechMs >= $this->humanSilenceAfterSpeechMs
+            ) {
+                $this->emitAmdResult(
+                    'human_likely',
+                    'short_greeting_followed_by_silence'
+                );
+
+                return;
+            }
+        }
+
+        if (
+            $this->amdResult === null &&
+            $this->postAnswerElapsedMs >= $this->postAnswerAnalysisTimeoutMs
+        ) {
+            $this->emitAmdResult('unknown', 'analysis_timeout');
+        }
+    }
+
+    private function finishPostAnswerVoiceSegment(string $reason): void
+    {
+        if (!$this->postAnswerVoiceActive) {
+            return;
+        }
+
+        $this->postAnswerLastSpeechMs = $this->postAnswerCurrentVoiceMs;
+        $this->postAnswerLongestVoiceMs = max(
+            $this->postAnswerLongestVoiceMs,
+            $this->postAnswerLastSpeechMs
+        );
+
+        $event = [
+            'audio_ms' => $this->elapsedMs,
+            'post_answer_ms' => $this->postAnswerElapsedMs,
+            'started_at_ms' => $this->postAnswerVoiceStartedAtMs,
+            'voiced_ms' => $this->postAnswerLastSpeechMs,
+            'gap_ms' => $this->postAnswerCurrentGapMs,
+            'speech_segments' => $this->postAnswerSpeechSegments,
+            'greeting_detected' => false,
+            'voice_crossed_answer' => $this->voiceCrossedAnswer,
+            'reason' => $reason,
+            'phase' => 'answered',
+        ];
+
+        if ($this->onVoiceEnd !== null) {
+            ($this->onVoiceEnd)($event);
+        }
+
+        $this->postAnswerVoiceActive = false;
+        $this->postAnswerVoiceStartedAtMs = 0;
+        $this->postAnswerCurrentVoiceMs = 0;
+        $this->postAnswerCurrentGapMs = 0;
+        $this->postAnswerSilenceAfterSpeechMs = 0;
+    }
+
+    private function emitAmdResult(string $classification, string $reason): void
+    {
+        if ($this->amdResult !== null) {
+            return;
+        }
+
+        $this->amdResult = $classification;
+        $this->amdReason = $reason;
+
+        $event = [
+            'audio_ms' => $this->elapsedMs,
+            'answered_at_ms' => $this->answeredAtMs,
+            'post_answer_ms' => $this->postAnswerElapsedMs,
+            'classification' => $classification,
+            'reason' => $reason,
+            'voice_crossed_answer' => $this->voiceCrossedAnswer,
+            'early_greeting_detected' => $this->earlyGreetingDetected,
+            'early_voice_at_answer_ms' => $this->earlyVoiceAtAnswerMs,
+            'speech_segments' => $this->postAnswerSpeechSegments,
+            'current_speech_ms' => $this->postAnswerCurrentVoiceMs,
+            'last_speech_ms' => $this->postAnswerLastSpeechMs,
+            'total_voice_ms' => $this->postAnswerTotalVoiceMs,
+            'longest_voice_ms' => $this->postAnswerLongestVoiceMs,
+            'silence_after_speech_ms' => $this->postAnswerSilenceAfterSpeechMs,
+        ];
+
+        if ($this->onAmdResult !== null) {
+            ($this->onAmdResult)($event);
+        }
+
+        if ($classification === 'human_likely' && $this->onHumanLikely !== null) {
+            ($this->onHumanLikely)($event);
+
+            return;
+        }
+
+        if ($classification === 'machine_likely' && $this->onMachineLikely !== null) {
+            ($this->onMachineLikely)($event);
+
+            return;
+        }
+
+        if ($classification === 'unknown' && $this->onUnknown !== null) {
+            ($this->onUnknown)($event);
+        }
     }
 
     private function analyzeTone425(array $samples): array
@@ -379,45 +636,36 @@ final class EarlyGreetingDetector
 
         $windowed = $this->applyHannWindow($samples);
 
-        /*
-         * Primeiro faz uma busca grossa.
-         */
         $bestFrequency = 425.0;
         $bestLevel = -120.0;
 
         for ($frequency = 395; $frequency <= 455; $frequency += 5) {
             $level = $this->goertzelDbfs(
                 $windowed,
-                (float)$frequency
+                (float) $frequency
             );
 
             if ($level > $bestLevel) {
                 $bestLevel = $level;
-                $bestFrequency = (float)$frequency;
+                $bestFrequency = (float) $frequency;
             }
         }
 
-        /*
-         * Depois refina em passos de 1 Hz.
-         */
-        $refineStart = max(395, (int)$bestFrequency - 5);
-        $refineEnd = min(455, (int)$bestFrequency + 5);
+        $refineStart = max(395, (int) $bestFrequency - 5);
+        $refineEnd = min(455, (int) $bestFrequency + 5);
 
         for ($frequency = $refineStart; $frequency <= $refineEnd; $frequency++) {
             $level = $this->goertzelDbfs(
                 $windowed,
-                (float)$frequency
+                (float) $frequency
             );
 
             if ($level > $bestLevel) {
                 $bestLevel = $level;
-                $bestFrequency = (float)$frequency;
+                $bestFrequency = (float) $frequency;
             }
         }
 
-        /*
-         * Frequências de referência fora da faixa do ringback.
-         */
         $backgroundFrequencies = [
             250.0,
             300.0,
@@ -475,7 +723,7 @@ final class EarlyGreetingDetector
                 $value -= 0x10000;
             }
 
-            $samples[] = (float)$value;
+            $samples[] = (float) $value;
         }
 
         return $samples;
@@ -518,10 +766,10 @@ final class EarlyGreetingDetector
 
         foreach ($samples as $index => $sample) {
             $coefficient = 0.5 * (
-                    1.0 - cos(
-                        (2.0 * M_PI * $index) / $divisor
-                    )
-                );
+                1.0 - cos(
+                    (2.0 * M_PI * $index) / $divisor
+                )
+            );
 
             $result[] = $sample * $coefficient;
         }
@@ -529,10 +777,7 @@ final class EarlyGreetingDetector
         return $result;
     }
 
-    private function goertzelDbfs(
-        array $samples,
-        float $frequency
-    ): float
+    private function goertzelDbfs(array $samples, float $frequency): float
     {
         $sampleCount = count($samples);
 
@@ -540,10 +785,7 @@ final class EarlyGreetingDetector
             return -120.0;
         }
 
-        $omega = (
-                2.0 * M_PI * $frequency
-            ) / $this->sampleRate;
-
+        $omega = (2.0 * M_PI * $frequency) / $this->sampleRate;
         $coefficient = 2.0 * cos($omega);
 
         $previous = 0.0;
@@ -569,13 +811,7 @@ final class EarlyGreetingDetector
         }
 
         $magnitude = sqrt($power);
-
-        /*
-         * Correção aproximada para janela Hann.
-         */
-        $amplitude = (
-                4.0 * $magnitude
-            ) / $sampleCount;
+        $amplitude = (4.0 * $magnitude) / $sampleCount;
 
         if ($amplitude <= 0.0) {
             return -120.0;
@@ -602,12 +838,12 @@ final class EarlyGreetingDetector
         $middle = intdiv($count, 2);
 
         if (($count % 2) === 1) {
-            return (float)$values[$middle];
+            return (float) $values[$middle];
         }
 
         return (
-                $values[$middle - 1] +
-                $values[$middle]
-            ) / 2.0;
+            $values[$middle - 1] +
+            $values[$middle]
+        ) / 2.0;
     }
 }
