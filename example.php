@@ -18,6 +18,7 @@
 ini_set('memory_limit', '1024M');
 
 // Importa as classes necessárias do sistema
+use libspech\audio\EarlyGreetingDetector;
 use libspech\Cli\cli;
 use libspech\Sip\trunkController;
 use function libspech\Sip\interruptibleSleep;
@@ -90,30 +91,61 @@ include 'plugins/autoloader.php';
         $phone->enableAudioRecording();
         $phone->enableAudioMemorySharing();
         $phone->defineAudioFile('silence_5m.wav');
-        $saved=false;
 
         // Habilita a gravação de áudio durante a chamada
 
 
         // Callback executado quando uma chamada está tocando (ringing)
+
+        $detector = new EarlyGreetingDetector(
+            sampleRate: 8000,
+            frameDurationMs: 20,
+            analysisWindowMs: 200,
+            minimumGreetingVoiceMs: 800,
+            maximumInternalGapMs: 120,
+            minimumVoiceDbfs: -42.0,
+            noiseMarginDb: 10.0,
+        );
+
+
+
+
+        $detector->onGreetingDetected(
+            function (array $event): void {
+                printf(
+                    "[%8.3f s] SAUDACAO EM EARLY MEDIA | voz=%d ms\n",
+                    $event['audio_ms'] / 1000,
+                    $event['voiced_ms']
+                );
+            }
+        );
+
+        $detector->onVoiceEnd(
+            function (array $event): void {
+                if ( $event['greeting_detected'])
+                printf(
+                    "[%8.3f s] Voz finalizada | voz=%d ms | saudacao=%s\n",
+                    $event['audio_ms'] / 1000,
+                    $event['voiced_ms'],
+                    $event['greeting_detected'] ? 'SIM' : 'NAO'
+                );
+            }
+        );
+
+
+
+
+        $phone->onReceivePcm(function (string $pcmData, array $peer, trunkController $phone) use ($detector): void {
+            $detector->push($pcmData);
+        });
         $phone->onRinging(function () use (&$phone) {
             cli::pcl($phone->lastPacket['method'] . " Chamada TOCANDO " . microtime(true), "yellow");
             //\Swoole\Coroutine::sleep(5);
             //$phone->cancel();
         });
-        $phone->onFailed(function ($message) use (&$saved, $phone) {
+        $phone->onFailed(function ($message) use ( $phone) {
             cli::pcl("Chamada falhou: $message", "red");
-            if ($saved)return;
-            $method = (int)$phone->lastPacket['method'];
 
-            if ($method > 199) {
-                $phone->saveBufferToWavFile('rec_after_onfailed.wav', $phone->getBuffer());
-                cli::pcl("Method: $method - buffer: ".$phone->getBuffer()->length(), 'yellow');
-                $phone->clearAudioBuffer();
-                $saved=true;
-            } else {
-                cli::pcl("Method: $method - buffer: ".$phone->getBuffer()->length());
-            }
         });
         $phone->onHangup(function (trunkController $phone) {
             // Salva o buffer de áudio gravado em um arquivo WAV
@@ -127,9 +159,9 @@ include 'plugins/autoloader.php';
             cli::pcl("SDP recebido " . microtime(true), "green");
             $phone->receiveMedia();
         });
-        $phone->onAnswer(function (trunkController $phone) {
-            $phone->saveBufferToWavFile('rec_before_200_ok.wav', $phone->getBuffer());
-            $phone->clearAudioBuffer();
+        $phone->onAnswer(function (trunkController $phone) use ($detector) {
+            $detector->markAnswered();
+
 
 
             cli::pcl("Chamada recebida", "green");
@@ -188,24 +220,10 @@ include 'plugins/autoloader.php';
         });
 
 
-        $phone->onReceivePcm(function (string $pcmData, array $peer, trunkController $phone) use(&$saved):void {
-            if ($saved)return;
-            $method = (int)$phone->lastPacket['method'];
-
-            if ($method > 199) {
-                $phone->saveBufferToWavFile('rec_after_200_ok_onreceive.wav', $phone->getBuffer());
-                cli::pcl("Method: $method - buffer: ".$phone->getBuffer()->length(), 'yellow');
-                $phone->clearAudioBuffer();
-                $saved=true;
-            } else {
-                cli::pcl("Method: $method - buffer: ".$phone->getBuffer()->length());
-            }
-
-        });
         //$phone->enableStereoSound();
 
 
-        $phone->call('556921815878');
+        $phone->call('5569992388165');
 
 
         $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
