@@ -300,9 +300,10 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // SESSÃO 8: ORIGINAÇÃO
         // ====================================================================
-        $phone->call('5569992388165');
+        $phone->call('5569984477329');
 
         $detector->finish('call_returned');
+        cli::pcl("Chamada originada", 'bold_green');
 
         $phone->saveBufferToWavFile(
             'rec.wav',
