@@ -146,7 +146,7 @@ include 'plugins/autoloader.php';
 
         $phone->onReceivePcm(function(string $pcmData, array $peer, trunkController $phone): void {
             $needPackets = 25;
-            if (count(\libspech\Cache\cache::get('trilha')) < $needPackets) {
+            if (count(\libspech\Cache\cache::get('trilha')) <= $needPackets) {
                 \libspech\Cache\cache::join('trilha', $pcmData);
             }
 
@@ -203,40 +203,13 @@ include 'plugins/autoloader.php';
 
 
 
-            $phone->waitSilence(false, 10);
-            cli::pcl("Sound has started", 'green');
 
-
-            $buffer = $phone->getBuffer();
-            $bufferLen = $buffer->length();
-
-
-
-
-
-
-
-            $phone->send2833('#');
-
-
-            $cpf = '42017165204';
-            interruptibleSleep(3, $phone->receiveBye);
-            foreach (str_split(substr($cpf, 0, 11)) as $digit) {
-                $phone->send2833($digit);
-                cli::pcl("Digitando: " . $digit, "yellow");
-            }
-            cli::pcl("Digitado: " . $cpf, "green");
-            $phone->waitSilence(false, 10);
 
             interruptibleSleep(20, $phone->receiveBye);
 
 
             $phone->bye();
-            $phone->close();
 
-            // Define flags indicando que a chamada foi encerrada
-            $phone->receiveBye = true;
-            $phone->callActive = false;
         });
         $phone->onKeyPress(function ($event, $peer) use ($phone) {
             //cli::pcl("Digitando: " . $event, "yellow");
@@ -250,7 +223,7 @@ include 'plugins/autoloader.php';
 
 
 
-        $phone->call('556921815878');
+        $phone->call('5569992388165');
 
 
 

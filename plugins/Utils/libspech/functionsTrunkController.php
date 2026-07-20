@@ -242,9 +242,6 @@ function wavChunks(string $file)
     }
 
 
-    foreach ($chunks as $c) {
-
-    }
 
     return $chunks;
 }
