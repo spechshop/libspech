@@ -466,3 +466,57 @@ function stereoToMono(string $pcmData): string
     return $mono;
 }
 
+/**
+ * Calcula a frequência dominante aproximada de um frame de áudio PCM 16-bit LE
+ * usando o método de taxa de cruzamento por zero (Zero-Crossing Rate)
+ *
+ * @param string $pcmData Buffer PCM 16-bit mono LE
+ * @param int $sampleRate Taxa de amostragem em Hz (padrão: 8000)
+ * @return float Frequência estimada em Hz (0.0 se não houver cruzamentos ou dados insuficientes)
+ *
+ * Nota: ZCR é uma aproximação simples adequada para sinais periódicos.
+ * Para análise de frequência precisa, considere FFT.
+ *
+ * Exemplos:
+ * - Tom puro 440Hz a 8kHz: retorna ~440Hz
+ * - Tom puro 1000Hz a 16kHz: retorna ~1000Hz
+ * - Silêncio ou ruído: retorna valores baixos ou imprecisos
+ */
+function calculatePcmFrequency(string $pcmData, int $sampleRate = 8000): float
+{
+    $len = strlen($pcmData);
+
+    if ($len < 4) {
+        return 0.0;
+    }
+
+    // Contar cruzamentos por zero
+    $zeroCrossings = 0;
+    $prevSample = unpack('s', substr($pcmData, 0, 2))[1];
+
+    for ($i = 2; $i < $len; $i += 2) {
+        $sample = unpack('s', substr($pcmData, $i, 2))[1];
+
+        // Detecta mudança de sinal (cruzamento por zero)
+        if (($prevSample >= 0 && $sample < 0) || ($prevSample < 0 && $sample >= 0)) {
+            $zeroCrossings++;
+        }
+
+        $prevSample = $sample;
+    }
+
+    // Número total de samples
+    $numSamples = $len / 2;
+
+    if ($numSamples == 0) {
+        return 0.0;
+    }
+
+    // Frequência = (cruzamentos / 2) / duração
+    // Duração = numSamples / sampleRate
+    // Frequência = (cruzamentos / 2) * sampleRate / numSamples
+    $frequency = ($zeroCrossings / 2.0) * ($sampleRate / $numSamples);
+
+    return $frequency;
+}
+
