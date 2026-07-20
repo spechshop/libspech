@@ -5,7 +5,7 @@ use function libspech\Sip\calculatePcmFrequency;
 
 include 'plugins/autoloader.php';
 Co\run(function () {
-    $nameFile = 'rec.wav';
+    $nameFile = 'rec_postal.wav';
     $indexData = 0;
     $extract = \libspech\Sip\wavChunks($nameFile);
     foreach ($extract as $t) {
