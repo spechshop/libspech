@@ -21,6 +21,7 @@ ini_set('memory_limit', '1024M');
 use libspech\Cli\cli;
 use libspech\Sip\sip;
 use libspech\Sip\trunkController;
+use function libspech\Sip\analyzeRingPcm;
 use function libspech\Sip\calculateDominantFrequency;
 use function libspech\Sip\calculatePcmFrequency;
 use function libspech\Sip\interruptibleSleep;
@@ -128,7 +129,7 @@ include 'plugins/autoloader.php';
         $phone->enableAudioMemorySharing();
 
 
-        $phone->defineAudioFile('silence_5m.wav');
+        $phone->defineAudioFile('extra/assets/music.wav');
         // ====================================================================
         // SESSÃO 6: CONFIGURAÇÃO DE CODEC E RECURSOS DE ÁUDIO
         // ====================================================================
@@ -144,34 +145,8 @@ include 'plugins/autoloader.php';
          \libspech\Cache\cache::define('trilha', []);
          \libspech\Cache\cache::define('time', 0);
 
-        $phone->onReceivePcm(function(string $pcmData, array $peer, trunkController $phone): void {
-            $needPackets = 25;
-            if (count(\libspech\Cache\cache::get('trilha')) <= $needPackets) {
-                \libspech\Cache\cache::join('trilha', $pcmData);
-            }
 
 
-
-
-            if (count(\libspech\Cache\cache::get('trilha')) >=$needPackets) {
-                $frequency = calculatePcmFrequency(implode('', \libspech\Cache\cache::get('trilha')), 8000);
-                $currentTime = microtime(true);
-                $elapsedTime = $currentTime - \libspech\Cache\cache::get('time');
-                // formatar em milisegundos
-                $elapsedMiliseconds = round($elapsedTime * 1000);
-
-
-                cli::pcl("Frequência dominante: "
-                    . $frequency . " Hz (" . $elapsedMiliseconds . " ms) "
-                    .count(\libspech\Cache\cache::get('trilha'))." Packets = ".
-                    (count(\libspech\Cache\cache::get('trilha')) * 20).
-                    "ms"
-                    , "blue");
-
-
-                \libspech\Cache\cache::define('trilha', []);
-            }
-        });
 
 
         $phone->onSdpReceived(function (trunkController $phone) {
@@ -182,6 +157,11 @@ include 'plugins/autoloader.php';
         });
         $phone->onAnswer(function (trunkController $phone) {
             cli::pcl("Chamada recebida", "green");
+            $buffer = $phone->getBuffer();
+            $result=analyzeRingPcm($buffer);
+            $phone->saveBufferToWavFile('ringback.wav', $buffer);
+            $phone->clearAudioBuffer();
+            var_dump($result);
 
             cli::pcl("IP remoto: " . $phone->audioRemoteIp. ':' . $phone->audioRemotePort, "yellow");
             // Inicia o recebimento de mídia (áudio RTP)
@@ -223,7 +203,7 @@ include 'plugins/autoloader.php';
 
 
 
-        $phone->call('5569992388165');
+        $phone->call('556921815878');
 
 
 

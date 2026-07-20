@@ -517,3 +517,653 @@ function calculatePcmFrequency(string $pcmData, int $sampleRate = 8000): float
     return $frequency;
 }
 
+
+
+/**
+ * Verifica se um buffer PCM16LE mono contém o padrão de ringback
+ * de aproximadamente 425 Hz repetido a cada 5 segundos.
+ *
+ * @return array{
+ *     has_ring_pattern: bool,
+ *     ring_from_start_to_end: bool,
+ *     reason: string,
+ *     confidence: float,
+ *     duration_ms: int,
+ *     pulses: array,
+ *     matched_pulses: array,
+ *     periods_ms: array,
+ *     disturbance_at_ms: ?int,
+ *     disturbance_duration_ms: int,
+ *     frames: array
+ * }
+ */
+function analyzeRingPcm(
+    string $pcmData,
+    int    $sampleRate = 8000,
+    int    $frameDurationMs = 500,
+    float  $ringFrequencyHz = 425.0,
+    int    $expectedPeriodMs = 5000,
+    int    $periodToleranceMs = 600,
+    int    $minimumDisturbanceMs = 300
+): array
+{
+    if ($sampleRate <= 0) {
+        throw new InvalidArgumentException(
+            'sampleRate deve ser maior que zero.'
+        );
+    }
+
+    if ($frameDurationMs <= 0) {
+        throw new InvalidArgumentException(
+            'frameDurationMs deve ser maior que zero.'
+        );
+    }
+
+    if ($pcmData === '') {
+        return [
+            'has_ring_pattern' => false,
+            'ring_from_start_to_end' => false,
+            'reason' => 'pcm_vazio',
+            'confidence' => 0.0,
+            'duration_ms' => 0,
+            'pulses' => [],
+            'matched_pulses' => [],
+            'periods_ms' => [],
+            'disturbance_at_ms' => null,
+            'disturbance_duration_ms' => 0,
+            'frames' => [],
+        ];
+    }
+
+    if ((strlen($pcmData) % 2) !== 0) {
+        throw new InvalidArgumentException(
+            'O PCM16 precisa possuir quantidade par de bytes.'
+        );
+    }
+
+    $samplesPerFrame = (int)round(
+        $sampleRate * ($frameDurationMs / 1000)
+    );
+
+    $frameBytes = $samplesPerFrame * 2;
+
+    if (strlen($pcmData) < $frameBytes) {
+        throw new InvalidArgumentException(
+            'O buffer PCM é muito curto para análise.'
+        );
+    }
+
+    $decodePcm16Le = static function (string $pcm): array {
+        $values = unpack('v*', $pcm);
+
+        if ($values === false) {
+            return [];
+        }
+
+        $samples = [];
+
+        foreach ($values as $value) {
+            if ($value >= 0x8000) {
+                $value -= 0x10000;
+            }
+
+            $samples[] = (float)$value;
+        }
+
+        return $samples;
+    };
+
+    $calculateRmsDbfs = static function (array $samples): float {
+        if ($samples === []) {
+            return -120.0;
+        }
+
+        $sumSquares = 0.0;
+
+        foreach ($samples as $sample) {
+            $sumSquares += $sample * $sample;
+        }
+
+        $rms = sqrt(
+            $sumSquares / count($samples)
+        );
+
+        if ($rms <= 0.0) {
+            return -120.0;
+        }
+
+        return max(
+            -120.0,
+            20.0 * log10($rms / 32768.0)
+        );
+    };
+
+    $goertzelDbfs = static function (
+        array $samples,
+        int   $rate,
+        float $frequency
+    ): float {
+        $sampleCount = count($samples);
+
+        if ($sampleCount <= 1) {
+            return -120.0;
+        }
+
+        $omega =
+            (2.0 * M_PI * $frequency) /
+            $rate;
+
+        $coefficient = 2.0 * cos($omega);
+
+        $previous = 0.0;
+        $previousPrevious = 0.0;
+        $divisor = $sampleCount - 1;
+
+        foreach ($samples as $index => $sample) {
+            $hann = 0.5 * (
+                    1.0 -
+                    cos(
+                        (2.0 * M_PI * $index) /
+                        $divisor
+                    )
+                );
+
+            $windowedSample = $sample * $hann;
+
+            $current =
+                $windowedSample +
+                ($coefficient * $previous) -
+                $previousPrevious;
+
+            $previousPrevious = $previous;
+            $previous = $current;
+        }
+
+        $power =
+            ($previous * $previous) +
+            ($previousPrevious * $previousPrevious) -
+            ($coefficient * $previous * $previousPrevious);
+
+        if ($power <= 0.0) {
+            return -120.0;
+        }
+
+        $amplitude =
+            (4.0 * sqrt($power)) /
+            $sampleCount;
+
+        if ($amplitude <= 0.0) {
+            return -120.0;
+        }
+
+        return max(
+            -120.0,
+            min(
+                0.0,
+                20.0 * log10(
+                    $amplitude / 32768.0
+                )
+            )
+        );
+    };
+
+    $median = static function (array $values): float {
+        if ($values === []) {
+            return -120.0;
+        }
+
+        sort($values, SORT_NUMERIC);
+
+        $count = count($values);
+        $middle = intdiv($count, 2);
+
+        if (($count % 2) === 1) {
+            return (float)$values[$middle];
+        }
+
+        return (
+                $values[$middle - 1] +
+                $values[$middle]
+            ) / 2.0;
+    };
+
+    $backgroundFrequencies = [
+        250.0,
+        300.0,
+        350.0,
+        500.0,
+        600.0,
+        700.0,
+        850.0,
+        1000.0,
+        1200.0,
+        1500.0,
+    ];
+
+    $ringCandidates = [
+        $ringFrequencyHz - 10.0,
+        $ringFrequencyHz - 5.0,
+        $ringFrequencyHz,
+        $ringFrequencyHz + 5.0,
+        $ringFrequencyHz + 10.0,
+    ];
+
+    $minimumRingLevelDbfs = -48.0;
+    $minimumRingProminenceDb = 10.0;
+    $silenceThresholdDbfs = -50.0;
+
+    $frames = [];
+    $pcmLength = strlen($pcmData);
+    $frameIndex = 0;
+
+    for (
+        $offset = 0;
+        ($offset + $frameBytes) <= $pcmLength;
+        $offset += $frameBytes
+    ) {
+        $framePcm = substr(
+            $pcmData,
+            $offset,
+            $frameBytes
+        );
+
+        $samples = $decodePcm16Le($framePcm);
+
+        if ($samples === []) {
+            continue;
+        }
+
+        $startMs =
+            $frameIndex *
+            $frameDurationMs;
+
+        $rmsDbfs = $calculateRmsDbfs($samples);
+
+        $bestRingFrequency = $ringFrequencyHz;
+        $bestRingLevelDbfs = -120.0;
+
+        foreach ($ringCandidates as $candidateFrequency) {
+            $levelDbfs = $goertzelDbfs(
+                $samples,
+                $sampleRate,
+                $candidateFrequency
+            );
+
+            if ($levelDbfs > $bestRingLevelDbfs) {
+                $bestRingLevelDbfs = $levelDbfs;
+                $bestRingFrequency = $candidateFrequency;
+            }
+        }
+
+        $backgroundLevels = [];
+
+        foreach ($backgroundFrequencies as $frequency) {
+            $backgroundLevels[] = $goertzelDbfs(
+                $samples,
+                $sampleRate,
+                $frequency
+            );
+        }
+
+        $backgroundDbfs = $median($backgroundLevels);
+
+        $prominenceDb =
+            $bestRingLevelDbfs -
+            $backgroundDbfs;
+
+        $isRingTone =
+            $bestRingLevelDbfs >=
+            $minimumRingLevelDbfs &&
+            $prominenceDb >=
+            $minimumRingProminenceDb;
+
+        $isSilence =
+            !$isRingTone &&
+            $rmsDbfs <=
+            $silenceThresholdDbfs;
+
+        $state = match (true) {
+            $isRingTone => 'ring',
+            $isSilence => 'silence',
+            default => 'other',
+        };
+
+        $frames[] = [
+            'index' => $frameIndex,
+            'start_ms' => $startMs,
+            'end_ms' => $startMs + $frameDurationMs,
+            'state' => $state,
+            'rms_dbfs' => round($rmsDbfs, 2),
+            'ring_frequency_hz' => $bestRingFrequency,
+            'ring_level_dbfs' => round(
+                $bestRingLevelDbfs,
+                2
+            ),
+            'prominence_db' => round(
+                $prominenceDb,
+                2
+            ),
+        ];
+
+        $frameIndex++;
+    }
+
+    $durationMs =
+        count($frames) *
+        $frameDurationMs;
+
+    /*
+     * Agrupa frames próximos de 425 Hz em pulsos.
+     */
+    $pulses = [];
+    $maximumInternalGapMs = 300;
+
+    foreach ($frames as $frame) {
+        if ($frame['state'] !== 'ring') {
+            continue;
+        }
+
+        if ($pulses === []) {
+            $pulses[] = [
+                'start_ms' => $frame['start_ms'],
+                'end_ms' => $frame['end_ms'],
+                'duration_ms' => $frameDurationMs,
+                'tone_frames' => 1,
+            ];
+
+            continue;
+        }
+
+        $lastIndex = count($pulses) - 1;
+
+        $gapMs =
+            $frame['start_ms'] -
+            $pulses[$lastIndex]['end_ms'];
+
+        if ($gapMs <= $maximumInternalGapMs) {
+            $pulses[$lastIndex]['end_ms'] =
+                $frame['end_ms'];
+
+            $pulses[$lastIndex]['duration_ms'] =
+                $frame['end_ms'] -
+                $pulses[$lastIndex]['start_ms'];
+
+            $pulses[$lastIndex]['tone_frames']++;
+
+            continue;
+        }
+
+        $pulses[] = [
+            'start_ms' => $frame['start_ms'],
+            'end_ms' => $frame['end_ms'],
+            'duration_ms' => $frameDurationMs,
+            'tone_frames' => 1,
+        ];
+    }
+
+    /*
+     * Descarta detecções isoladas menores que 200 ms.
+     */
+    $pulses = array_values(
+        array_filter(
+            $pulses,
+            static fn(array $pulse): bool => $pulse['tone_frames'] >= 2
+        )
+    );
+
+    /*
+     * Procura a maior sequência de pulsos separados por
+     * aproximadamente cinco segundos.
+     */
+    $pulseCount = count($pulses);
+
+    $chainLength = array_fill(
+        0,
+        $pulseCount,
+        1
+    );
+
+    $previousPulse = array_fill(
+        0,
+        $pulseCount,
+        null
+    );
+
+    $bestChainEnd = null;
+    $bestChainLength = 0;
+
+    for ($current = 0; $current < $pulseCount; $current++) {
+        for ($previous = 0; $previous < $current; $previous++) {
+            $periodMs =
+                $pulses[$current]['start_ms'] -
+                $pulses[$previous]['start_ms'];
+
+            if (
+                abs(
+                    $periodMs -
+                    $expectedPeriodMs
+                ) >
+                $periodToleranceMs
+            ) {
+                continue;
+            }
+
+            if (
+                $chainLength[$previous] + 1 >
+                $chainLength[$current]
+            ) {
+                $chainLength[$current] =
+                    $chainLength[$previous] + 1;
+
+                $previousPulse[$current] =
+                    $previous;
+            }
+        }
+
+        if ($chainLength[$current] > $bestChainLength) {
+            $bestChainLength =
+                $chainLength[$current];
+
+            $bestChainEnd = $current;
+        }
+    }
+
+    $matchedIndexes = [];
+
+    while ($bestChainEnd !== null) {
+        $matchedIndexes[] = $bestChainEnd;
+        $bestChainEnd = $previousPulse[$bestChainEnd];
+    }
+
+    $matchedIndexes = array_reverse(
+        $matchedIndexes
+    );
+
+    $matchedPulses = [];
+
+    foreach ($matchedIndexes as $index) {
+        $matchedPulses[] = $pulses[$index];
+    }
+
+    $periodsMs = [];
+
+    for (
+        $index = 1;
+        $index < count($matchedPulses);
+        $index++
+    ) {
+        $periodsMs[] =
+            $matchedPulses[$index]['start_ms'] -
+            $matchedPulses[$index - 1]['start_ms'];
+    }
+
+    /*
+     * É necessário ao menos:
+     *
+     * pulso 1
+     * + aproximadamente 5 segundos
+     * + pulso 2
+     */
+    $hasRingPattern =
+        count($matchedPulses) >= 2;
+
+    /*
+     * Protege as bordas dos pulsos para que o início e o fim
+     * do tom não sejam confundidos com voz.
+     */
+    $protectedIntervals = [];
+    $pulseEdgeToleranceMs = 400;
+
+    foreach ($matchedPulses as $pulse) {
+        $protectedIntervals[] = [
+            'start_ms' => max(
+                0,
+                $pulse['start_ms'] -
+                $pulseEdgeToleranceMs
+            ),
+            'end_ms' =>
+                $pulse['end_ms'] +
+                $pulseEdgeToleranceMs,
+        ];
+    }
+
+    $isProtected = static function (
+        int $timeMs
+    ) use ($protectedIntervals): bool {
+        foreach ($protectedIntervals as $interval) {
+            if (
+                $timeMs >= $interval['start_ms'] &&
+                $timeMs <= $interval['end_ms']
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    /*
+     * Procura voz, mensagem ou outro áudio fora do ring.
+     */
+    $disturbanceAtMs = null;
+    $disturbanceDurationMs = 0;
+    $currentDisturbanceStartMs = null;
+
+    foreach ($frames as $frame) {
+        $frameMiddleMs = (int)(
+            ($frame['start_ms'] + $frame['end_ms']) /
+            2
+        );
+
+        $isDisturbance =
+            $frame['state'] === 'other' &&
+            !$isProtected($frameMiddleMs);
+
+        if ($isDisturbance) {
+            if ($currentDisturbanceStartMs === null) {
+                $currentDisturbanceStartMs =
+                    $frame['start_ms'];
+            }
+
+            continue;
+        }
+
+        if ($currentDisturbanceStartMs === null) {
+            continue;
+        }
+
+        $currentDurationMs =
+            $frame['start_ms'] -
+            $currentDisturbanceStartMs;
+
+        if (
+            $currentDurationMs >=
+            $minimumDisturbanceMs
+        ) {
+            $disturbanceAtMs =
+                $currentDisturbanceStartMs;
+
+            $disturbanceDurationMs =
+                $currentDurationMs;
+
+            break;
+        }
+
+        $currentDisturbanceStartMs = null;
+    }
+
+    if (
+        $disturbanceAtMs === null &&
+        $currentDisturbanceStartMs !== null
+    ) {
+        $currentDurationMs =
+            $durationMs -
+            $currentDisturbanceStartMs;
+
+        if (
+            $currentDurationMs >=
+            $minimumDisturbanceMs
+        ) {
+            $disturbanceAtMs =
+                $currentDisturbanceStartMs;
+
+            $disturbanceDurationMs =
+                $currentDurationMs;
+        }
+    }
+
+    $ringFromStartToEnd =
+        $hasRingPattern &&
+        $disturbanceAtMs === null;
+
+    $cycleScore = min(
+        1.0,
+        max(
+            0,
+            count($matchedPulses) - 1
+        ) / 2
+    );
+
+    $cleanScore =
+        $disturbanceAtMs === null
+            ? 1.0
+            : 0.0;
+
+    $confidence = $hasRingPattern
+        ? round(
+            ($cycleScore * 0.70) +
+            ($cleanScore * 0.30),
+            4
+        )
+        : 0.0;
+
+    $reason = match (true) {
+        count($pulses) === 0 =>
+        'nenhum_pulso_425hz',
+
+        count($matchedPulses) < 2 =>
+        'periodicidade_de_5_segundos_nao_confirmada',
+
+        $disturbanceAtMs !== null =>
+        'ring_perturbado_por_outro_audio',
+
+        default =>
+        'ring_presente_do_inicio_ao_fim',
+    };
+
+    return [
+        'has_ring_pattern' => $hasRingPattern,
+        'ring_from_start_to_end' =>
+            $ringFromStartToEnd,
+        'reason' => $reason,
+        'confidence' => $confidence,
+        'duration_ms' => $durationMs,
+        'pulses' => $pulses,
+        'matched_pulses' => $matchedPulses,
+        'periods_ms' => $periodsMs,
+        'disturbance_at_ms' => $disturbanceAtMs,
+        'disturbance_duration_ms' =>
+            $disturbanceDurationMs,
+        'frames' => $frames,
+    ];
+}
