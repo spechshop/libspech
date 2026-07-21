@@ -171,8 +171,18 @@ class MediaChannel
     public Socket $eventSock;
     public int $listenPort = 0;
 
+    public function onDestruct(callable $callback):void {
+        $this->onDestructCallable=$callback;
+    }
+    public function __destruct()
+    {
+        ($this->onDestructCallable)(...)();
+    }
+    private Closure $onDestructCallable;
+
     public function __construct(Socket|\SocketMutable &$socket, string $callId)
     {
+        $this->onDestructCallable=function (){};
 
         $this->settings = [
             'sendSilenceProbeToMembers' => true,
