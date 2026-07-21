@@ -65,7 +65,10 @@ class network
 
     public static function isPortAvailable(int $port, $type = 'udp'): bool
     {
-        $socket = new \Swoole\Coroutine\Socket(AF_INET, SOCK_DGRAM, 0);
+        if (strtolower($type) == 'udp') $typeSock=SOCK_DGRAM;
+        elseif (strtolower($type) == 'tcp') $typeSock=SOCK_STREAM;
+        else $typeSock=SOCK_RAW;
+        $socket = new \Swoole\Coroutine\Socket(AF_INET, $typeSock, 0);
         $result = $socket->bind($type === 'udp' ? '0.0.0.0' : '', $port);
         $socket->close();
         return $result;
