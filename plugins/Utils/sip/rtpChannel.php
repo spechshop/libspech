@@ -136,7 +136,7 @@ class rtpChannel
         $packet = $this->buildRtpHeader($this->payloadType, $this->timestamp) . $audioPayload;
         $this->sequenceNumber++;
         if ($incrementTimestamp) {
-            $this->timestamp += $this->samplesPerPacket;
+            $this->timestamp = ($this->timestamp + $this->samplesPerPacket) & 0xFFFFFFFF;
         }
         return $packet;
     }

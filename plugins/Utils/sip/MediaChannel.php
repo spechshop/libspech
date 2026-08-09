@@ -149,6 +149,9 @@ class MediaChannel
     private float $lastSilenceProbeAt = 0.0;
     public float $silenceProbeInterval = 0.5;
 
+    /** @var array<string,bool> legs currently driven by an internal media source */
+    private array $injectedLegs = [];
+
 
     public function block($callback = null): void
     {
@@ -1196,6 +1199,10 @@ class MediaChannel
         $this->lastSilenceProbeAt = $currentTime;
 
         foreach ($this->members as $idMember => $member) {
+            $memberLeg = strtolower((string)($member['leg'] ?? ''));
+            if ($memberLeg !== '' && isset($this->injectedLegs[$memberLeg])) {
+                continue;
+            }
             if (empty($member['address']) || empty($member['port'])) {
                 continue;
             }
@@ -1214,6 +1221,82 @@ class MediaChannel
             } catch (\Throwable $e) {
             }
         }
+    }
+
+    public function setLegInjectionActive(string $leg, bool $active): void
+    {
+        $leg = strtolower(trim($leg));
+        if (!in_array($leg, ['a', 'b'], true)) {
+            return;
+        }
+        if ($active) {
+            $this->injectedLegs[$leg] = true;
+            foreach ($this->members as $member) {
+                if (strtolower((string)($member['leg'] ?? '')) === $leg && isset($member['rtpChannel'])) {
+                    $member['rtpChannel']->setMarkerBit(true);
+                }
+            }
+        } else {
+            unset($this->injectedLegs[$leg]);
+        }
+    }
+
+    /**
+     * Injects one signed 16-bit little-endian PCM frame into a negotiated leg.
+     * Encoding and RTP state stay owned by the member's existing rtpChannel.
+     *
+     * @return array{codec:string,payload_type:int,frequency:int,sequence:int,timestamp:int,ssrc:int}|null
+     */
+    public function sendPcmToLeg(string $leg, string $pcm, int $sourceFrequency, int $sourceChannels = 1): ?array
+    {
+        $leg = strtolower(trim($leg));
+        if (!$this->active || !in_array($leg, ['a', 'b'], true) || $pcm === '' || $sourceFrequency <= 0) {
+            return null;
+        }
+
+        foreach ($this->members as $id => $member) {
+            if (strtolower((string)($member['leg'] ?? '')) !== $leg || !isset($member['rtpChannel'])) {
+                continue;
+            }
+            $codec = strtoupper((string)($member['codec'] ?? ''));
+            if (!in_array($codec, ['PCMA', 'PCMU'], true)) {
+                throw new \RuntimeException('playback_codec_not_supported');
+            }
+            $targetFrequency = (int)($member['frequency'] ?? 8000);
+            if ($targetFrequency <= 0) {
+                $targetFrequency = 8000;
+            }
+
+            $converted = $pcm;
+            if ($sourceChannels === 2) {
+                $converted = stereoToMono($converted);
+            } elseif ($sourceChannels !== 1) {
+                throw new \RuntimeException('playback_channels_not_supported');
+            }
+            if ($sourceFrequency !== $targetFrequency) {
+                $converted = resampler($converted, $sourceFrequency, $targetFrequency, false);
+            }
+
+            $payload = $codec === 'PCMA' ? encodePcmToPcma($converted) : encodePcmToPcmu($converted);
+            if (!is_string($payload) || $payload === '') {
+                throw new \RuntimeException('playback_encode_failed');
+            }
+            $channel = $this->members[$id]['rtpChannel'];
+            $sequence = (int)$channel->sequenceNumber;
+            $timestamp = (int)$channel->timestamp;
+            $packet = $channel->buildAudioPacket($payload);
+            $this->socket->sendto((string)$member['address'], (int)$member['port'], $packet);
+
+            return [
+                'codec' => $codec,
+                'payload_type' => (int)$channel->payloadType,
+                'frequency' => (int)$channel->sampleRate,
+                'sequence' => $sequence,
+                'timestamp' => $timestamp,
+                'ssrc' => (int)$channel->ssrc,
+            ];
+        }
+        return null;
     }
 
     private function makeSilencePayloadForMember(array $member): ?string
@@ -1330,6 +1413,7 @@ class MediaChannel
 
         // Limpa arrays
         $this->members = [];
+        $this->injectedLegs = [];
         $this->rtpChans = [];
         $this->openChannels = [];
 
