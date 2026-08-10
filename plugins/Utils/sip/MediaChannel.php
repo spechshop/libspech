@@ -171,6 +171,8 @@ class MediaChannel
     }
 
     public array $rtpChans = [];
+    /** @var array<string,string> */
+    private array $legMemberIds = ['a' => '', 'b' => ''];
     public Socket $eventSock;
     public int $listenPort = 0;
 
@@ -962,6 +964,9 @@ class MediaChannel
         $this->ptCodecsChannels[$peer['pt']] = $nc;
         if (!array_key_exists('channels', $peer)) $peer['channels'] = $nc;
         $this->members[$id] = $peer;
+        if (in_array((string)($peer['leg'] ?? ''), ['a', 'b'], true)) {
+            $this->legMemberIds[(string)$peer['leg']] = $id;
+        }
     }
 
     private function processVAD(string $pcmData, ...$extra): void
@@ -1254,49 +1259,121 @@ class MediaChannel
             return null;
         }
 
+        $canonicalId = $this->legMemberIds[$leg] ?? '';
+        if ($canonicalId !== '' && isset($this->members[$canonicalId])) {
+            $member = $this->members[$canonicalId];
+            if (isset($member['rtpChannel'])) {
+                return $this->sendPcmToMember($canonicalId, $member, $pcm, $sourceFrequency, $sourceChannels);
+            }
+        }
+
         foreach ($this->members as $id => $member) {
             if (strtolower((string)($member['leg'] ?? '')) !== $leg || !isset($member['rtpChannel'])) {
                 continue;
             }
-            $codec = strtoupper((string)($member['codec'] ?? ''));
-            if (!in_array($codec, ['PCMA', 'PCMU'], true)) {
-                throw new \RuntimeException('playback_codec_not_supported');
-            }
-            $targetFrequency = (int)($member['frequency'] ?? 8000);
-            if ($targetFrequency <= 0) {
-                $targetFrequency = 8000;
-            }
-
-            $converted = $pcm;
-            if ($sourceChannels === 2) {
-                $converted = stereoToMono($converted);
-            } elseif ($sourceChannels !== 1) {
-                throw new \RuntimeException('playback_channels_not_supported');
-            }
-            if ($sourceFrequency !== $targetFrequency) {
-                $converted = resampler($converted, $sourceFrequency, $targetFrequency, false);
-            }
-
-            $payload = $codec === 'PCMA' ? encodePcmToPcma($converted) : encodePcmToPcmu($converted);
-            if (!is_string($payload) || $payload === '') {
-                throw new \RuntimeException('playback_encode_failed');
-            }
-            $channel = $this->members[$id]['rtpChannel'];
-            $sequence = (int)$channel->sequenceNumber;
-            $timestamp = (int)$channel->timestamp;
-            $packet = $channel->buildAudioPacket($payload);
-            $this->socket->sendto((string)$member['address'], (int)$member['port'], $packet);
-
-            return [
-                'codec' => $codec,
-                'payload_type' => (int)$channel->payloadType,
-                'frequency' => (int)$channel->sampleRate,
-                'sequence' => $sequence,
-                'timestamp' => $timestamp,
-                'ssrc' => (int)$channel->ssrc,
-            ];
+            return $this->sendPcmToMember($id, $member, $pcm, $sourceFrequency, $sourceChannels);
         }
         return null;
+    }
+
+    /**
+     * @param array<string,mixed> $member
+     * @return array{codec:string,payload_type:int,frequency:int,sequence:int,timestamp:int,ssrc:int}
+     */
+    private function sendPcmToMember(string $id, array $member, string $pcm, int $sourceFrequency, int $sourceChannels): array
+    {
+        $codec = strtoupper((string)($member['codec'] ?? ''));
+        if (!in_array($codec, ['PCMA', 'PCMU'], true)) {
+            throw new \RuntimeException('playback_codec_not_supported');
+        }
+        $targetFrequency = (int)($member['frequency'] ?? 8000);
+        if ($targetFrequency <= 0) {
+            $targetFrequency = 8000;
+        }
+
+        $converted = $pcm;
+        if ($sourceChannels === 2) {
+            $converted = stereoToMono($converted);
+        } elseif ($sourceChannels !== 1) {
+            throw new \RuntimeException('playback_channels_not_supported');
+        }
+        if ($sourceFrequency !== $targetFrequency) {
+            $converted = resampler($converted, $sourceFrequency, $targetFrequency, false);
+        }
+
+        $payload = $codec === 'PCMA' ? encodePcmToPcma($converted) : encodePcmToPcmu($converted);
+        if (!is_string($payload) || $payload === '') {
+            throw new \RuntimeException('playback_encode_failed');
+        }
+        $channel = $this->members[$id]['rtpChannel'];
+        $sequence = (int)$channel->sequenceNumber;
+        $timestamp = (int)$channel->timestamp;
+        $packet = $channel->buildAudioPacket($payload);
+        $this->socket->sendto((string)$member['address'], (int)$member['port'], $packet);
+
+        return [
+            'codec' => $codec,
+            'payload_type' => (int)$channel->payloadType,
+            'frequency' => (int)$channel->sampleRate,
+            'sequence' => $sequence,
+            'timestamp' => $timestamp,
+            'ssrc' => (int)$channel->ssrc,
+        ];
+    }
+
+    /** @return array<string,mixed>|null */
+    public function memberByLeg(string $leg): ?array
+    {
+        $leg = strtolower(trim($leg));
+        if (!in_array($leg, ['a', 'b'], true)) {
+            return null;
+        }
+
+        $canonicalId = $this->legMemberIds[$leg] ?? '';
+        if ($canonicalId !== '' && isset($this->members[$canonicalId])) {
+            return $this->members[$canonicalId];
+        }
+
+        foreach ($this->members as $id => $member) {
+            if (strtolower((string)($member['leg'] ?? '')) === $leg) {
+                $this->legMemberIds[$leg] = $id;
+                return $member;
+            }
+        }
+
+        return null;
+    }
+
+    public function rebindMemberTransport(string $leg, string $address, int $port): bool
+    {
+        $leg = strtolower(trim($leg));
+        $address = trim($address);
+        if (!in_array($leg, ['a', 'b'], true) || $address === '' || $port <= 0) {
+            return false;
+        }
+
+        $current = $this->memberByLeg($leg);
+        if (!is_array($current)) {
+            return false;
+        }
+
+        $currentId = $this->legMemberIds[$leg] ?? '';
+        $newId = $address . ':' . $port;
+        if ($currentId === $newId && (string)($current['address'] ?? '') === $address && (int)($current['port'] ?? 0) === $port) {
+            return false;
+        }
+
+        $current['address'] = $address;
+        $current['port'] = $port;
+        $current['leg'] = $leg;
+
+        if ($currentId !== '' && isset($this->members[$currentId])) {
+            unset($this->members[$currentId]);
+        }
+        $this->members[$newId] = $current;
+        $this->legMemberIds[$leg] = $newId;
+
+        return true;
     }
 
     private function makeSilencePayloadForMember(array $member): ?string
