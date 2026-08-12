@@ -800,9 +800,12 @@ class MediaChannel
                                 continue;
                             }
 
+                            if (strtoupper($targetCodec)=='L16') $toBigEndian = true; else $toBigEndian = false;
                             if ($sourceFrequency !== $targetFrequency) {
-                                if (strtoupper($targetCodec)=='L16') $toBigEndian = true; else $toBigEndian = false;
                                 $pcmForTarget = resampler($pcmForTarget, $sourceFrequency, $targetFrequency, $toBigEndian);
+                            } else {
+                                if ($toBigEndian)
+                                    $pcmForTarget = encodePcmToL16($pcmForTarget);
                             }
                         }
 
