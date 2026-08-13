@@ -134,6 +134,7 @@ class MediaChannel
         'max_seq_gap' => 0,
         'codecs' => [],
     ];
+    private bool $audioMetricsEnabled = false;
     // Estado por ssrc para cálculo barato de perda/jitter (RFC 3550), sem funções pesadas
     private array $rtpStats = [];
     private AudioQualityDetector $qualityDetector;
@@ -575,14 +576,18 @@ class MediaChannel
 
 
                 $idFrom = "{$peer['address']}:{$peer['port']}";
-                $this->audioMetrics['total_packets']++;
-                $this->audioMetrics['bytes_received'] += strlen($packet);
-                if ($this->audioMetrics['first_arrival'] === 0.0) {
-                    $this->audioMetrics['first_arrival'] = $currentTime;
+                if ($this->audioMetricsEnabled) {
+                    $this->audioMetrics['total_packets']++;
+                    $this->audioMetrics['bytes_received'] += strlen($packet);
+                    if ($this->audioMetrics['first_arrival'] === 0.0) {
+                        $this->audioMetrics['first_arrival'] = $currentTime;
+                    }
+                    $this->audioMetrics['last_arrival'] = $currentTime;
                 }
-                $this->audioMetrics['last_arrival'] = $currentTime;
                 if ($this->isRtcpPacket($packet)) {
-                    $this->audioMetrics['rtcp_packets']++;
+                    if ($this->audioMetricsEnabled) {
+                        $this->audioMetrics['rtcp_packets']++;
+                    }
                     continue;
                 }
                 $this->packetsProcessed++;
@@ -608,39 +613,39 @@ class MediaChannel
                 $codec = $this->resolveCodecNameFromPt($pt) ?? $pt;
 
 
-                // Métricas baratas por pacote: contagem por codec, perda e jitter (RFC 3550)
-                // Reaproveita valores já disponíveis (sequence/timestamp do rtpc e currentTime),
-                // sem chamar funções pesadas como volumeAverage.
-                $this->audioMetrics['codecs'][$codec] = ($this->audioMetrics['codecs'][$codec] ?? 0) + 1;
+                if ($this->audioMetricsEnabled) {
+                    // Contagem por codec, perda e jitter (RFC 3550).
+                    $this->audioMetrics['codecs'][$codec] = ($this->audioMetrics['codecs'][$codec] ?? 0) + 1;
 
-                $freqStat = (int)($this->ptCodecsFrequency[$codec] ?? 8000);
-                $arrivalTs = $currentTime * $freqStat;
-                if (isset($this->rtpStats[$ssrc])) {
-                    $prev = $this->rtpStats[$ssrc];
+                    $freqStat = (int)($this->ptCodecsFrequency[$codec] ?? 8000);
+                    $arrivalTs = $currentTime * $freqStat;
+                    if (isset($this->rtpStats[$ssrc])) {
+                        $prev = $this->rtpStats[$ssrc];
 
-                    // Perda estimada via lacuna no sequence number (wrap de 16 bits)
-                    $expectedSeq = ($prev['seq'] + 1) & 0xFFFF;
-                    $seqGap = ($rtpc->sequence - $expectedSeq) & 0xFFFF;
-                    if ($seqGap > 0 && $seqGap < 1000) {
-                        $this->audioMetrics['lost_packets'] += $seqGap;
-                        if ($seqGap > $this->audioMetrics['max_seq_gap']) {
-                            $this->audioMetrics['max_seq_gap'] = $seqGap;
+                        // Perda estimada via lacuna no sequence number (wrap de 16 bits)
+                        $expectedSeq = ($prev['seq'] + 1) & 0xFFFF;
+                        $seqGap = ($rtpc->sequence - $expectedSeq) & 0xFFFF;
+                        if ($seqGap > 0 && $seqGap < 1000) {
+                            $this->audioMetrics['lost_packets'] += $seqGap;
+                            if ($seqGap > $this->audioMetrics['max_seq_gap']) {
+                                $this->audioMetrics['max_seq_gap'] = $seqGap;
+                            }
                         }
+
+                        // Jitter interarrival (RFC 3550): J += (|D| - J) / 16
+                        $transit = $arrivalTs - $rtpc->timestamp;
+                        $d = $transit - $prev['transit'];
+                        if ($d < 0) $d = -$d;
+                        $this->audioMetrics['jitter'] += ($d - $this->audioMetrics['jitter']) / 16;
+
+                        $this->rtpStats[$ssrc]['seq'] = $rtpc->sequence;
+                        $this->rtpStats[$ssrc]['transit'] = $transit;
+                    } else {
+                        $this->rtpStats[$ssrc] = [
+                            'seq' => $rtpc->sequence,
+                            'transit' => $arrivalTs - $rtpc->timestamp,
+                        ];
                     }
-
-                    // Jitter interarrival (RFC 3550): J += (|D| - J) / 16
-                    $transit = $arrivalTs - $rtpc->timestamp;
-                    $d = $transit - $prev['transit'];
-                    if ($d < 0) $d = -$d;
-                    $this->audioMetrics['jitter'] += ($d - $this->audioMetrics['jitter']) / 16;
-
-                    $this->rtpStats[$ssrc]['seq'] = $rtpc->sequence;
-                    $this->rtpStats[$ssrc]['transit'] = $transit;
-                } else {
-                    $this->rtpStats[$ssrc] = [
-                        'seq' => $rtpc->sequence,
-                        'transit' => $arrivalTs - $rtpc->timestamp,
-                    ];
                 }
 
 
@@ -684,7 +689,9 @@ class MediaChannel
 
                 if (strtolower($codec) === 'telephone-event') {
                     //cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
-                    $this->audioMetrics['dtmf_events']++;
+                    if ($this->audioMetricsEnabled) {
+                        $this->audioMetrics['dtmf_events']++;
+                    }
                     $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
 
 
@@ -978,7 +985,9 @@ class MediaChannel
             return;
         }
         $energy = volumeAverage($pcmData);
-        $this->audioMetrics['avg_energy'] = $this->audioMetrics['avg_energy'] * 0.9 + $energy * 0.1;
+        if ($this->audioMetricsEnabled) {
+            $this->audioMetrics['avg_energy'] = $this->audioMetrics['avg_energy'] * 0.9 + $energy * 0.1;
+        }
         $wasActive = $this->isVoiceActive;
         $idFrom = $extra[0] ?? $this->callId;
         if ($energy > $this->vadRegistrationThreshold) {
@@ -1001,11 +1010,30 @@ class MediaChannel
                 go($this->onVadChangeCallable, $this->isVoiceActive, $energy, $extra[0]);
             }
         }
-        if ($this->isVoiceActive) {
-            $this->audioMetrics['voice_time'] += 0.02;
-        } else {
-            $this->audioMetrics['silence_time'] += 0.02;
+        if ($this->audioMetricsEnabled) {
+            if ($this->isVoiceActive) {
+                $this->audioMetrics['voice_time'] += 0.02;
+            } else {
+                $this->audioMetrics['silence_time'] += 0.02;
+            }
         }
+    }
+
+    /**
+     * Habilita ou desabilita a coleta de métricas de áudio.
+     *
+     * Ao desabilitar, os valores já coletados são preservados e o estado
+     * temporário de perda/jitter é liberado. Ao reabilitar, perda e jitter
+     * voltam a ser calculados a partir do próximo pacote RTP.
+     */
+    public function setAudioMetricsEnabled(bool $enabled): void
+    {
+        if ($this->audioMetricsEnabled === $enabled) {
+            return;
+        }
+
+        $this->audioMetricsEnabled = $enabled;
+        $this->rtpStats = [];
     }
 
     public function getAudioMetrics(): array
