@@ -7,6 +7,7 @@ use libspech\Cli\cli;
 class rtpc
 {
     private string $format = 'CCnNN';
+
     public string $rawPacket = '';
 
     public int $version = 2;
@@ -23,41 +24,98 @@ class rtpc
 
     public function __construct(?string $packet)
     {
-        if ($packet === null) return;
-        if (strlen($packet) < 12) return;
-        $this->rawPacket = $packet;
-        $this->payloadRaw = substr($packet, 12);
+        if ($packet === null || strlen($packet) < 12) {
+            return;
+        }
 
-        $this->version = ord($packet[0]) >> 6;
-        $this->padding = (ord($packet[0]) >> 5) & 0x01;
-        $this->extension = (ord($packet[0]) >> 4) & 0x01;
-        $this->cc = ord($packet[0]) & 0x0F;
-        $this->marker = (ord($packet[1]) >> 7) & 0x01;
-        $this->payloadType = ord($packet[1]) & 0x7F;
-        $this->sequence = unpack('n', substr($packet, 2, 2))[1];
-        $this->timestamp = unpack('N', substr($packet, 4, 4))[1];
-        $this->ssrc = unpack('N', substr($packet, 8, 4))[1];
+        $this->rawPacket = $packet;
+
+        /*
+         * Decodifica o cabeçalho RTP fixo de 12 bytes em uma única
+         * operação.
+         *
+         * Formato:
+         *
+         * byte 0      V/P/X/CC
+         * byte 1      M/PT
+         * bytes 2-3   sequence
+         * bytes 4-7   timestamp
+         * bytes 8-11  SSRC
+         *
+         * Evita o caminho anterior:
+         *
+         * unpack('n', substr(...))
+         * unpack('N', substr(...))
+         * unpack('N', substr(...))
+         *
+         * que criava três strings temporárias e três arrays.
+         */
+        $header = unpack(
+            'Cfirst/Csecond/nsequence/Ntimestamp/Nssrc',
+            $packet
+        );
+
+        $firstByte = $header['first'];
+        $secondByte = $header['second'];
+
+        $this->version = $firstByte >> 6;
+        $this->padding = ($firstByte >> 5) & 0x01;
+        $this->extension = ($firstByte >> 4) & 0x01;
+        $this->cc = $firstByte & 0x0F;
+
+        $this->marker = ($secondByte >> 7) & 0x01;
+        $this->payloadType = $secondByte & 0x7F;
+
+        $this->sequence = $header['sequence'];
+        $this->timestamp = $header['timestamp'];
+        $this->ssrc = $header['ssrc'];
+
+        /*
+         * RTP possui cabeçalho mínimo de 12 bytes.
+         *
+         * Cada CSRC acrescenta 4 bytes.
+         */
+        $payloadOffset = 12 + ($this->cc * 4);
+
+        /*
+         * Se X=1, depois da lista CSRC existe:
+         *
+         * 16 bits: profile
+         * 16 bits: length em words de 32 bits
+         * N words: extension data
+         */
+        if ($this->extension === 1) {
+            if (strlen($packet) < ($payloadOffset + 4)) {
+                return;
+            }
+
+            $extensionLength = unpack(
+                'nlength',
+                $packet,
+                $payloadOffset + 2
+            );
+
+            $payloadOffset += 4 + ($extensionLength['length'] * 4);
+        }
+
+        if ($payloadOffset > strlen($packet)) {
+            return;
+        }
+
+        $this->payloadRaw = substr($packet, $payloadOffset);
     }
 
     public function getCodec(): int
     {
-        $codec = $this->payloadType & 0x7F;
-        return $codec;
+        return $this->payloadType & 0x7F;
     }
 
-    public function __destruct()
+    public function setPayloadType($payloadType = 0): void
     {
-        $clean = 0;
-        foreach ($this as $key => $value) {
-            unset($this->$key);
-            $clean++;
+        if (!$payloadType) {
+            $payloadType = 0;
         }
-        return $clean;
-    }
 
-    public function setPayloadType( $payloadType=0): void
-    {
-        if (!$payloadType) $payloadType = 0;
         $this->payloadType = $payloadType & 0x7F;
     }
 
@@ -83,26 +141,27 @@ class rtpc
 
     /**
      * Constrói o pacote RTP completo com o payload codificado
-     * usando os valores atuais do cabeçalho
+     * usando os valores atuais do cabeçalho.
      *
-     * @param false|string $encoded O payload codificado a ser adicionado ao cabeçalho RTP
-     * @return false|string Pacote RTP completo ou false em caso de erro
+     * @param false|string $encoded
+     * @return false|string
      */
     public function build(false|string $encoded): string
     {
-        if ($encoded === false) {
+        if ($encoded === false || $encoded === '') {
             return false;
         }
-        if (strlen($encoded) === 0) {
-            return false;
-        }
+
         $this->payloadRaw = $encoded;
-        $firstByte = (($this->version & 0x03) << 6) |
+
+        $firstByte =
+            (($this->version & 0x03) << 6) |
             (($this->padding & 0x01) << 5) |
             (($this->extension & 0x01) << 4) |
             ($this->cc & 0x0F);
 
-        $secondByte = (($this->marker & 0x01) << 7) |
+        $secondByte =
+            (($this->marker & 0x01) << 7) |
             ($this->payloadType & 0x7F);
 
         $packet = pack(
@@ -121,7 +180,12 @@ class rtpc
 
     public function verbose(): void
     {
-        $message = "$this->ssrc: seq:$this->sequence ts:$this->timestamp pt:$this->payloadType real ts:" . str_replace('.', '', (string)microtime(true));
+        $message =
+            "$this->ssrc: seq:$this->sequence " .
+            "ts:$this->timestamp " .
+            "pt:$this->payloadType real ts:" .
+            str_replace('.', '', (string) microtime(true));
+
         cli::pcl($message, 'green');
     }
 
@@ -129,5 +193,4 @@ class rtpc
     {
         return $this->sequence;
     }
-
 }

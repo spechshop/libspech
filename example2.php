@@ -161,7 +161,7 @@ include 'plugins/autoloader.php';
             $result=analyzeRingPcm($buffer);
             $phone->saveBufferToWavFile('ringback.wav', $buffer);
             $phone->clearAudioBuffer();
-            var_dump($result);
+
 
             cli::pcl("IP remoto: " . $phone->audioRemoteIp. ':' . $phone->audioRemotePort, "yellow");
             // Inicia o recebimento de mídia (áudio RTP)
