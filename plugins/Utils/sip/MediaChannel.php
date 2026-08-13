@@ -285,6 +285,8 @@ class MediaChannel
             return $this->cacheKeys[$ipPort];
         }
 
+        cli::pcl("hashing $ipPort", 'yellow');
+
 
         // Hash SHA-1 da string IP:porta (gera 40 caracteres hex)
         $hash = sha1($ipPort);
