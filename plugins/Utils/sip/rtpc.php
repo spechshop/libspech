@@ -30,26 +30,7 @@ class rtpc
 
         $this->rawPacket = $packet;
 
-        /*
-         * Decodifica o cabeçalho RTP fixo de 12 bytes em uma única
-         * operação.
-         *
-         * Formato:
-         *
-         * byte 0      V/P/X/CC
-         * byte 1      M/PT
-         * bytes 2-3   sequence
-         * bytes 4-7   timestamp
-         * bytes 8-11  SSRC
-         *
-         * Evita o caminho anterior:
-         *
-         * unpack('n', substr(...))
-         * unpack('N', substr(...))
-         * unpack('N', substr(...))
-         *
-         * que criava três strings temporárias e três arrays.
-         */
+
         $header = unpack(
             'Cfirst/Csecond/nsequence/Ntimestamp/Nssrc',
             $packet
