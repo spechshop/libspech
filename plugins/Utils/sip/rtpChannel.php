@@ -64,7 +64,7 @@ class rtpChannel
         $this->payloadType = $payloadType;
         $this->sampleRate = $sampleRate;
         $this->packetTimeMs = $packetTimeMs;
-        $this->samplesPerPacket = $sampleRate * $packetTimeMs / 1000;
+        $this->samplesPerPacket = $this->calculateSamplesPerPacket($sampleRate, $packetTimeMs);
         $this->sequenceNumber = random_int(0, 0xffff);
         $this->timestamp = random_int(0, 0xffffffff);
         $this->ssrc = $ssrc ?? random_int(0, 0xffffffff);
@@ -117,7 +117,14 @@ class rtpChannel
     {
         $this->validateSampleRate($sampleRate);
         $this->sampleRate = $sampleRate;
-        $this->samplesPerPacket = $sampleRate * $this->packetTimeMs / 1000;
+        $this->samplesPerPacket = $this->calculateSamplesPerPacket($sampleRate, $this->packetTimeMs);
+    }
+
+    public function setPacketTime(int $packetTimeMs): void
+    {
+        $this->validatePacketTime($packetTimeMs);
+        $this->packetTimeMs = $packetTimeMs;
+        $this->samplesPerPacket = $this->calculateSamplesPerPacket($this->sampleRate, $packetTimeMs);
     }
 
     public function setFrequency(int $frequency): void
@@ -398,8 +405,13 @@ class rtpChannel
             return 0;
         }
 
+        $minimumDurationIn8kHz = max(
+            1,
+            (int)round(($this->samplesPerPacket * 8000) / $this->sampleRate)
+        );
+
         $delta = $this->timestamp - $this->dtmfStartTimestamp;
-        if ($delta <= 0) return 160; // Mínimo de 20ms para 8kHz
+        if ($delta <= 0) return $minimumDurationIn8kHz;
 
         // Conversão correta: mantém a proporção do sample rate
         // Se sampleRate != 8000, normaliza para 8kHz (padrão DTMF RFC 2833)
@@ -407,7 +419,12 @@ class rtpChannel
             ? intval($delta * 8000 / $this->sampleRate)
             : $delta;
 
-        return max(160, $durationIn8kHz); // Mínimo de 160 amostras (20ms em 8kHz)
+        return max($minimumDurationIn8kHz, $durationIn8kHz);
+    }
+
+    private function calculateSamplesPerPacket(int $sampleRate, int $packetTimeMs): int
+    {
+        return max(1, (int)round(($sampleRate * $packetTimeMs) / 1000));
     }
 
     public function sendSingleDtmf(string $digit, callable $packetSender, int $eventDurationMs = 80, int $volume = 10): void

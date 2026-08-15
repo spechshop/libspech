@@ -81,7 +81,7 @@ include 'plugins/autoloader.php';
 
 
 
-        //$phone->setCallerId('xxxxxxxxxxx');
+        $phone->setCallerId('5569992388165');
         // ====================================================================
         // SESSÃO 4: REGISTRO SIP
         // ====================================================================
@@ -123,8 +123,8 @@ include 'plugins/autoloader.php';
         });
 
 
-        $phone->mountLineCodecSDP('PCMA/8000');
-        //$phone->enableStereoSound();
+        $phone->mountLineCodecSDP('OPUS/48000/2');
+        $phone->enableStereoSound();
         $phone->enableAudioRecording();
         $phone->enableAudioMemorySharing();
 
@@ -137,55 +137,22 @@ include 'plugins/autoloader.php';
         //$phone->mountLineCodecSDP('G729/8000');
 
 
-        // Habilita a gravação de áudio durante a chamada
-
-
-
-
-         \libspech\Cache\cache::define('trilha', []);
-         \libspech\Cache\cache::define('time', 0);
-
 
 
 
 
         $phone->onSdpReceived(function (trunkController $phone) {
-            if (\libspech\Cache\cache::get('time') == 0) {
-                \libspech\Cache\cache::define('time', microtime(true));
-            }
+
             $phone->receiveMedia();
         });
         $phone->onAnswer(function (trunkController $phone) {
-            cli::pcl("Chamada recebida", "green");
-            $buffer = $phone->getBuffer();
-            $result=analyzeRingPcm($buffer);
-            $phone->saveBufferToWavFile('ringback.wav', $buffer);
-            $phone->clearAudioBuffer();
-
-
-            cli::pcl("IP remoto: " . $phone->audioRemoteIp. ':' . $phone->audioRemotePort, "yellow");
-            // Inicia o recebimento de mídia (áudio RTP)
+            cli::pcl("Chamada iniciada", 'blue');
+            interruptibleSleep(5, $phone->receiveBye);
+            $phone->send2833('#');
 
 
 
-
-
-
-
-            // ================================================================
-            // SESSÃO 7: FLUXO DE INTERAÇÃO NA CHAMADA
-            // ================================================================
-
-            // Aguarda 10 segundos de forma interruptível (pode ser cancelado se receber BYE)
-
-
-            // Envia DTMF (tom de teclado) - caractere '*' com duração de 160ms
-
-
-
-
-
-            interruptibleSleep(20, $phone->receiveBye);
+            interruptibleSleep(10, $phone->receiveBye);
 
 
             $phone->bye();
@@ -200,10 +167,11 @@ include 'plugins/autoloader.php';
             $phone->close();
             return true;
         });
+        $phone->setPacketTime(40);
 
 
 
-        $phone->call('553140040104');
+        $phone->call('556921815878');
 
 
 

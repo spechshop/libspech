@@ -19,6 +19,8 @@ use Swoole\Timer;
 
 class trunkController
 {
+    private const OPUS_PACKET_TIMES_MS = [5, 10, 20, 40, 60, 80, 100, 120];
+
     public bool $callableRingInvoked = false;
     public mixed $username;
     public mixed $password;
@@ -186,6 +188,9 @@ class trunkController
     public bool $inviteAcceptedAfterCancel = false;
     public bool $byeSent = false;
     public bool $answerCallbackInvoked = false;
+    private int $packetTime = MediaChannel::DEFAULT_PACKET_TIME_MS;
+    private int $configuredPacketTime = MediaChannel::DEFAULT_PACKET_TIME_MS;
+    private ?int $remoteMaxPacketTime = null;
 
 
     private function safeRecvfrom(&$peer, $timeout = 1)
@@ -309,6 +314,7 @@ class trunkController
         /** @var ? $peer */
 
         $this->mediaChannel = new MediaChannel($this->rtpSocket, $this->callId);
+        $this->setPacketTime($this->packetTime);
 
 
     }
@@ -414,6 +420,8 @@ class trunkController
             $name = 'telephone-event';
         }
 
+        $this->validatePacketTimeForCodec($this->configuredPacketTime, $nameUpper);
+
         if (!empty($parts[1])) {
             $defaultRate = (int)$parts[1];
         }
@@ -504,10 +512,11 @@ class trunkController
 
     public function setupForIncoming(int $ptUse, string $codecName, int $frequencyCall, array $sdpReceived = []): void
     {
+        $this->validatePacketTimeForCodec($this->configuredPacketTime, $codecName);
         $this->ptUse = $ptUse;
         $this->codecName = $codecName;
         $this->frequencyCall = $frequencyCall;
-        $this->sdpReceived = array_merge(['a' => [], 'm' => [], 'c' => []], $sdpReceived);
+        $this->storeRemoteSdp($sdpReceived);
         $this->mapLearn[$ptUse] = ["rtpmap:{$ptUse} {$codecName}/{$frequencyCall}"];
     }
 
@@ -716,6 +725,7 @@ class trunkController
                 if (array_key_exists('sdp', $receive)) {
                     $this->audioRemoteIp = explode(" ", $receive["sdp"]["c"][0])[2];
                     $this->audioRemotePort = (int)explode(" ", $receive["sdp"]["m"][0])[1];
+                    $this->storeRemoteSdp($receive['sdp']);
                 }
                 continue;
             }
@@ -773,7 +783,7 @@ class trunkController
                     if (array_key_exists('sdp', $receive)) {
                         $this->audioRemoteIp = explode(" ", $receive["sdp"]["c"][0])[2];
                         $this->audioRemotePort = (int)explode(" ", $receive["sdp"]["m"][0])[1];
-                        $this->sdpReceived = $receive["sdp"];
+                        $this->storeRemoteSdp($receive['sdp']);
                     }
 
                     $this->headers200 = $receive;
@@ -1159,7 +1169,7 @@ class trunkController
 
                 if ($remoteAddressAudioDestination && $remotePortAudioDestination) {
                     if (isset($receive["sdp"])) {
-                        $this->sdpReceived = $receive["sdp"];
+                        $this->storeRemoteSdp($receive['sdp']);
                     }
                     $this->audioRemoteIp = $remoteAddressAudioDestination;
                     $this->audioRemotePort = (int)$remotePortAudioDestination;
@@ -1213,7 +1223,7 @@ class trunkController
             $this->audioRemotePort = (int)$remotePortAudioDestination;
         }
 
-        $this->sdpReceived = $receive["sdp"];
+        $this->storeRemoteSdp($receive['sdp']);
 
         if (is_callable($this->onAnswerCallback)) {
             go($this->onAnswerCallback, $this);
@@ -1343,7 +1353,7 @@ class trunkController
                     $this->headers200 = $receive;
 
                     if (isset($receive["sdp"])) {
-                        $this->sdpReceived = $receive["sdp"];
+                        $this->storeRemoteSdp($receive['sdp']);
                     }
 
                     $sendInvite200Ack($receive["headers"]);
@@ -1404,7 +1414,7 @@ class trunkController
             "a" => [
                 'ssrc:' . $this->ssrc . ' cname:' . (!empty($this->callerId) ? $this->callerId : $this->username) . "@{$this->localIp}",
                 ...$this->codecRtpMap,
-                'ptime:20',
+                'ptime:' . $this->packetTime,
 
                 'sendrecv',
             ],
@@ -1857,6 +1867,7 @@ class trunkController
 
 
             $this->socketInUse = 'yes';
+            $this->mediaChannel->setPacketTime($this->packetTime);
 
 
             $this->remoteIp = $this->audioRemoteIp;
@@ -2101,7 +2112,7 @@ class trunkController
                         }
                     }
 
-                    \Swoole\Coroutine::sleep(0.020);
+                    \Swoole\Coroutine::sleep($this->packetTime / 1000);
                 }
                 if (!$this->byeSent and !$this->receiveBye) {
                     $this->bye();
@@ -2110,6 +2121,109 @@ class trunkController
             $this->mediaChannel->start();
             $this->mediaChannel?->block();
         });
+    }
+    public function setPacketTime(int $packetTime): void
+    {
+        if ($packetTime <= 0) {
+            throw new \InvalidArgumentException('Packet time deve ser maior que 0');
+        }
+        $this->validatePacketTimeForCodec($packetTime, (string)($this->codecName ?? ''));
+
+        $this->configuredPacketTime = $packetTime;
+        $this->applyConfiguredPacketTime();
+    }
+
+    private function applyConfiguredPacketTime(): void
+    {
+        $effectivePacketTime = $this->resolvePacketTimeWithinRemoteLimit(
+            $this->configuredPacketTime,
+            $this->remoteMaxPacketTime,
+            (string)($this->codecName ?? '')
+        );
+
+        if ($effectivePacketTime === null) {
+            return;
+        }
+
+        $this->packetTime = $effectivePacketTime;
+
+        if (isset($this->mediaChannel) && $this->mediaChannel instanceof MediaChannel) {
+            $this->mediaChannel->setPacketTime($effectivePacketTime);
+        }
+    }
+
+    public function getPacketTime(): int
+    {
+        return $this->packetTime;
+    }
+
+    public function getConfiguredPacketTime(): int
+    {
+        return $this->configuredPacketTime;
+    }
+
+    public function getRemoteMaxPacketTime(): ?int
+    {
+        return $this->remoteMaxPacketTime;
+    }
+
+    private function storeRemoteSdp(array $sdp): void
+    {
+        $this->sdpReceived = array_merge(['a' => [], 'm' => [], 'c' => []], $sdp);
+        $attributes = is_array($this->sdpReceived['a'] ?? null) ? $this->sdpReceived['a'] : [];
+        $this->remoteMaxPacketTime = $this->extractMaxPacketTime($attributes);
+        $this->applyConfiguredPacketTime();
+    }
+
+    private function extractMaxPacketTime(array $attributes): ?int
+    {
+        foreach ($attributes as $attribute) {
+            if (!is_string($attribute)) {
+                continue;
+            }
+            if (preg_match('/^(?:a=)?maxptime\s*:\s*(\d+(?:\.\d+)?)\s*$/i', trim($attribute), $match) !== 1) {
+                continue;
+            }
+
+            $maxPacketTime = (int)floor((float)$match[1]);
+            return $maxPacketTime > 0 ? $maxPacketTime : null;
+        }
+        return null;
+    }
+
+    private function resolvePacketTimeWithinRemoteLimit(int $configuredPacketTime, ?int $remoteMaxPacketTime, string $codec): ?int
+    {
+        if ($remoteMaxPacketTime === null || $configuredPacketTime <= $remoteMaxPacketTime) {
+            return $configuredPacketTime;
+        }
+
+        $codec = strtoupper(trim($codec));
+        if ($codec === 'OPUS') {
+            $candidates = array_values(array_filter(
+                self::OPUS_PACKET_TIMES_MS,
+                static fn(int $ptime): bool => $ptime <= $remoteMaxPacketTime
+            ));
+            return $candidates === [] ? null : max($candidates);
+        }
+        if ($codec === 'G729') {
+            $compatiblePacketTime = intdiv($remoteMaxPacketTime, 10) * 10;
+            return $compatiblePacketTime > 0 ? $compatiblePacketTime : null;
+        }
+        return $remoteMaxPacketTime;
+    }
+
+    private function validatePacketTimeForCodec(int $packetTime, string $codec): void
+    {
+        $codec = strtoupper(trim($codec));
+        if ($codec === 'OPUS' && !in_array($packetTime, self::OPUS_PACKET_TIMES_MS, true)) {
+            throw new \InvalidArgumentException(sprintf(
+                'Packet time de %d ms não é suportado por Opus; use 5, 10, 20, 40, 60, 80, 100 ou 120 ms',
+                $packetTime
+            ));
+        }
+        if ($codec === 'G729' && $packetTime % 10 !== 0) {
+            throw new \InvalidArgumentException('Packet time de G.729 deve ser múltiplo de 10 ms');
+        }
     }
 
     private bool $adaptationEnabled = false;
@@ -2194,9 +2308,9 @@ class trunkController
                 $this->registeredIds[$idFrom] = true;
             }
             $this->lastVadActivity[$idFrom] = microtime(true);
-            $this->audioMetrics['voice_time'] += 0.02;
+            $this->audioMetrics['voice_time'] += $this->packetTime / 1000;
         } else {
-            $this->audioMetrics['silence_time'] += 0.02;
+            $this->audioMetrics['silence_time'] += $this->packetTime / 1000;
         }
 
         // Atualiza métricas
@@ -3181,9 +3295,14 @@ class trunkController
         $rawPcm = substr($wavContent, $headerSize);
 
 
-        // Calcular tamanho do chunk para 20ms
+        // Calcular um frame PCM completo no ptime configurado.
         $bytesPerSample = $wavInfo['bitsPerSample'] / 8;
-        $chunkSize = (int)($wavInfo['sampleRate'] * 0.02 * $wavInfo['numChannels'] * $bytesPerSample);
+        $chunkSize = (int)round(
+            $wavInfo['sampleRate']
+            * ($this->packetTime / 1000)
+            * $wavInfo['numChannels']
+            * $bytesPerSample
+        );
 
         return [
             'pcm' => $rawPcm,
@@ -3242,7 +3361,7 @@ class trunkController
         // Se for downmix de canais, resampler() não cobre — cai no resample() básico (sem filtro pesado).
         $inCh  = (int)($options['input_channels']  ?? 1);
         $outCh = (int)($options['output_channels'] ?? $inCh);
-        if ($inCh !== $outCh) {
+        if ($inCh !== $outCh || $inCh > 1) {
             return resample($pcm, $srcRate, $dstRate, [
                 'input_channels'  => $inCh,
                 'output_channels' => $outCh,
@@ -3293,7 +3412,6 @@ class trunkController
         if ($this->audioMemorySharingEnabled && isset(self::$sharedAudioCache[$cacheKey])) {
             $cache = self::$sharedAudioCache[$cacheKey];
             $infoFile = $cache['infoFile'];
-            $chunkSize = $cache['chunkSize'];
             $audioData = $cache['audioData'];
             $audioLen = $cache['audioLen'];
             $fromCache = true;
@@ -3317,12 +3435,6 @@ class trunkController
                 return;
             }
 
-            $chunkSize = \libspech\Sip\calculateChunkSize(
-                $infoFile['rate'],
-                $infoFile['numChannels'],
-                $infoFile['bitDepth']
-            );
-
             $dataOffset = $tags[$idDataTag]['data'];
 
             $fileData = file_get_contents($audioFile);
@@ -3340,23 +3452,44 @@ class trunkController
             if ($this->audioMemorySharingEnabled) {
                 self::$sharedAudioCache[$cacheKey] = [
                     'infoFile' => $infoFile,
-                    'chunkSize' => $chunkSize,
                     'audioData' => $audioData,
                     'audioLen' => $audioLen,
                 ];
             }
         }
 
+        // O cache compartilhado contém somente o PCM bruto. O tamanho do frame
+        // sempre pertence ao trunkController atual e ao seu ptime.
+        $chunkSize = \libspech\Sip\calculateChunkSize(
+            $infoFile['rate'],
+            $infoFile['numChannels'],
+            $infoFile['bitDepth'],
+            $this->packetTime
+        );
+        $configuredPacketTime = $this->packetTime;
         $currentPosition = 0;
 
         // Cache local (fallback) — somente para preservar compat. quando audioMemorySharing está desligado
         $this->preEncodedAudio = [];
         $this->preEncodedInfo = [];
 
-        $this->registerAudioEvent(function ($peer, trunkController $phone) use (&$currentPosition, $audioData, $audioLen, $chunkSize, $infoFile, $audioFile) {
+        $this->registerAudioEvent(function ($peer, trunkController $phone) use (&$currentPosition, $audioData, $audioLen, &$chunkSize, &$configuredPacketTime, $infoFile, $audioFile) {
             if (empty($this->callActive)) {
                 $this->stopAudioFile();
                 return;
+            }
+
+            if ($configuredPacketTime !== $phone->getPacketTime()) {
+                $configuredPacketTime = $phone->getPacketTime();
+                $chunkSize = \libspech\Sip\calculateChunkSize(
+                    $infoFile['rate'],
+                    $infoFile['numChannels'],
+                    $infoFile['bitDepth'],
+                    $configuredPacketTime
+                );
+                $currentPosition = 0;
+                $this->preEncodedAudio = [];
+                $this->preEncodedInfo = [];
             }
 
             $idFrom = $peer['address'] . ':' . $peer['port'];
@@ -3394,7 +3527,7 @@ class trunkController
                 if ($codec === 'G729') {
                     $this->preEncodedInfo['fileEncoder'] = new \bcg729Channel();
                 } elseif ($codec === 'OPUS') {
-                    $this->preEncodedInfo['fileEncoder'] = new \opusChannel(48000, 1);
+                    $this->preEncodedInfo['fileEncoder'] = new \opusChannel(48000, $channelsMember);
                 }
             }
 
@@ -3484,9 +3617,9 @@ class trunkController
 
                     $channelsFile = $infoFile['numChannels'] ?? 1;
 
-                    if ($channelsFile > $channelsMember) {
-                        // Downmix de canais sem alterar a taxa aqui (resample por codec faz o downsample depois).
-                        // Não normalizar por chunk: causa "pumping" e degrada a qualidade entre frames.
+                    if ($channelsFile !== $channelsMember) {
+                        // Converte canais sem alterar a taxa aqui; o resample por codec
+                        // ajusta a frequência em seguida.
                         $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, $frequencyPacket, [
                             'input_channels'  => $channelsFile,
                             'output_channels' => $channelsMember,
@@ -3496,22 +3629,34 @@ class trunkController
                     switch ($codec) {
                         case 'PCMU':
                             if ($frequencyPacket !== 8000) {
-                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000);
+                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000, [
+                                    'input_channels' => $channelsMember,
+                                    'output_channels' => $channelsMember,
+                                ]);
                             }
+                            $pcmChunk = $phone->fitPcmToPacketTime($pcmChunk, 8000, $channelsMember);
                             $encode = encodePcmToPcmu($pcmChunk);
                             break;
 
                         case 'PCMA':
                             if ($frequencyPacket !== 8000) {
-                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000);
+                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000, [
+                                    'input_channels' => $channelsMember,
+                                    'output_channels' => $channelsMember,
+                                ]);
                             }
+                            $pcmChunk = $phone->fitPcmToPacketTime($pcmChunk, 8000, $channelsMember);
                             $encode = encodePcmToPcma($pcmChunk);
                             break;
 
                         case 'G729':
                             if ($frequencyPacket !== 8000) {
-                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000);
+                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000, [
+                                    'input_channels' => $channelsMember,
+                                    'output_channels' => $channelsMember,
+                                ]);
                             }
+                            $pcmChunk = $phone->fitPcmToPacketTime($pcmChunk, 8000, $channelsMember);
                             // Para evitar chiado, usamos o fileEncoder dedicado (não o da chamada).
                             if (isset($this->preEncodedInfo['fileEncoder'])) {
                                 $encode = $this->preEncodedInfo['fileEncoder']->encode($pcmChunk);
@@ -3520,10 +3665,14 @@ class trunkController
 
                         case 'OPUS':
                             if ($frequencyPacket !== 48000) {
-                                $pcm48 = $phone->doResample($pcmChunk, $frequencyPacket, 48000);
+                                $pcm48 = $phone->doResample($pcmChunk, $frequencyPacket, 48000, [
+                                    'input_channels' => $channelsMember,
+                                    'output_channels' => $channelsMember,
+                                ]);
                             } else {
                                 $pcm48 = $pcmChunk;
                             }
+                            $pcm48 = $phone->fitPcmToPacketTime($pcm48, 48000, $channelsMember);
                             if (strlen($pcm48) >= 2 && isset($this->preEncodedInfo['fileEncoder'])) {
                                 $encode = $this->preEncodedInfo['fileEncoder']->encode($pcm48);
                             }
@@ -3636,7 +3785,7 @@ class trunkController
             if ($codec === 'G729') {
                 $fileEncoder = new \bcg729Channel();
             } elseif ($codec === 'OPUS') {
-                $fileEncoder = new \opusChannel(48000, 1);
+                $fileEncoder = new \opusChannel(48000, $channelsMember);
             } else {
                 return null;
             }
@@ -3657,8 +3806,8 @@ class trunkController
 
                 $frequencyPacket = $frequencyPacketBase;
 
-                if ($channelsFile > $channelsMember) {
-                    // Downmix de canais sem alterar a taxa (resample por codec faz o downsample).
+                if ($channelsFile !== $channelsMember) {
+                    // Converte canais sem alterar a taxa (resample por codec ajusta a frequência).
                     $pcmChunk = $this->doResample($pcmChunk, $frequencyPacket, $frequencyPacket, [
                         'input_channels'  => $channelsFile,
                         'output_channels' => $channelsMember,
@@ -3667,15 +3816,23 @@ class trunkController
 
                 if ($codec === 'G729') {
                     if ($frequencyPacket !== 8000) {
-                        $pcmChunk = $this->doResample($pcmChunk, $frequencyPacket, 8000);
+                        $pcmChunk = $this->doResample($pcmChunk, $frequencyPacket, 8000, [
+                            'input_channels' => $channelsMember,
+                            'output_channels' => $channelsMember,
+                        ]);
                     }
+                    $pcmChunk = $this->fitPcmToPacketTime($pcmChunk, 8000, $channelsMember);
                     $enc = $fileEncoder->encode($pcmChunk);
                 } else { // OPUS
                     if ($frequencyPacket !== 48000) {
-                        $pcm48 = $this->doResample($pcmChunk, $frequencyPacket, 48000);
+                        $pcm48 = $this->doResample($pcmChunk, $frequencyPacket, 48000, [
+                            'input_channels' => $channelsMember,
+                            'output_channels' => $channelsMember,
+                        ]);
                     } else {
                         $pcm48 = $pcmChunk;
                     }
+                    $pcm48 = $this->fitPcmToPacketTime($pcm48, 48000, $channelsMember);
                     $enc = (strlen($pcm48) >= 2) ? $fileEncoder->encode($pcm48) : null;
                 }
 
@@ -3714,6 +3871,22 @@ class trunkController
         } finally {
             \libspech\Audio\AudioCache::unmarkBuilding($encodedKey);
         }
+    }
+
+    private function fitPcmToPacketTime(string $pcm, int $sampleRate, int $channels): string
+    {
+        $channels = max(1, $channels);
+        $samplesPerChannel = max(1, (int)round($sampleRate * ($this->packetTime / 1000)));
+        $expectedBytes = $samplesPerChannel * $channels * 2;
+        $actualBytes = strlen($pcm);
+
+        if ($actualBytes > $expectedBytes) {
+            return substr($pcm, 0, $expectedBytes);
+        }
+        if ($actualBytes < $expectedBytes) {
+            return str_pad($pcm, $expectedBytes, "\x00");
+        }
+        return $pcm;
     }
 
 

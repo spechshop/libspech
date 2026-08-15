@@ -17,6 +17,8 @@ use function libspech\Sip\volumeAverage;
 
 class MediaChannel
 {
+    public const DEFAULT_PACKET_TIME_MS = 20;
+
     public bool $active = true;
 
     public int $connectTimeout = 10;
@@ -24,6 +26,7 @@ class MediaChannel
 
     // pcm 8khz silence
     private string $syl = '';
+    private int $packetTimeMs = self::DEFAULT_PACKET_TIME_MS;
     public bool $debugEnabled = false;
     private array $settings = [];
     private $lastVoiceActivity = 0;
@@ -31,6 +34,38 @@ class MediaChannel
     public function setSettings(array $settings): void
     {
         $this->settings = $settings;
+    }
+
+    /**
+     * Define o tempo de packetização global usado por este MediaChannel.
+     * Canais RTP já existentes também são atualizados para manter uma única
+     * configuração previsível em todo o fluxo.
+     */
+    public function setPacketTime(int $ptimeMs): void
+    {
+        if ($ptimeMs <= 0) {
+            throw new \InvalidArgumentException('Packet time deve ser maior que 0');
+        }
+
+        $this->packetTimeMs = $ptimeMs;
+        $this->syl = str_repeat("\0\0", $this->samplesForPacket(8000));
+
+        foreach ($this->rtpChans as $channel) {
+            if ($channel instanceof rtpChannel) {
+                $channel->setPacketTime($ptimeMs);
+            }
+        }
+
+        foreach ($this->members as $member) {
+            if (($member['rtpChannel'] ?? null) instanceof rtpChannel) {
+                $member['rtpChannel']->setPacketTime($ptimeMs);
+            }
+        }
+    }
+
+    public function getPacketTime(): int
+    {
+        return $this->packetTimeMs;
     }
 
     public function onReceive(callable $callback): void
@@ -195,7 +230,7 @@ class MediaChannel
         ];
         $this->socket = $socket;
         $this->callId = $callId;
-        $this->syl = str_repeat("\0\0", 160);
+        $this->syl = str_repeat("\0\0", $this->samplesForPacket(8000));
 
 
         $this->channelEncode = new bcg729Channel();
@@ -568,7 +603,7 @@ class MediaChannel
 
 
                 if (!array_key_exists($ssrc, $this->rtpChans)) {
-                    $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->ptCodecsFrequency[$codec] ?? 8000, 20, $ssrc);
+                    $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->ptCodecsFrequency[$codec] ?? 8000, $this->packetTimeMs, $ssrc);
                     $this->rtpChans[$ssrc]->sequenceNumber = $rtpc->sequence++;
                     $this->rtpChans[$ssrc]->timestamp = $rtpc->timestamp;
                     $this->rtpChans[$ssrc]->bcg729Channel = new bcg729Channel();
@@ -887,7 +922,7 @@ class MediaChannel
         $peer['opus']->setBitrate($peer['config']['maxplaybackrate'] ?? 24000);
 
 
-        $peer['rtpChannel'] = new rtpChannel((int)$peer['pt'], $peer['frequency'], 20, $this->generateDeterministicSsrc($id));
+        $peer['rtpChannel'] = new rtpChannel((int)$peer['pt'], $peer['frequency'], $this->packetTimeMs, $this->generateDeterministicSsrc($id));
         $peer['rtpChannel']->setSsrc($this->generateDeterministicSsrc($id));
         $this->ptCodecsChannels[$peer['pt']] = $nc;
         if (!array_key_exists('channels', $peer)) $peer['channels'] = $nc;
@@ -930,9 +965,9 @@ class MediaChannel
         }
         if ($this->audioMetricsEnabled) {
             if ($this->isVoiceActive) {
-                $this->audioMetrics['voice_time'] += 0.02;
+                $this->audioMetrics['voice_time'] += $this->packetTimeMs / 1000;
             } else {
-                $this->audioMetrics['silence_time'] += 0.02;
+                $this->audioMetrics['silence_time'] += $this->packetTimeMs / 1000;
             }
         }
     }
@@ -1008,19 +1043,17 @@ class MediaChannel
         try {
             $this->dtmfInUse = true;
 
-            // RFC 4733: volume=10, duração=160ms (1280 samples@8kHz), ptime=20ms.
+            // RFC 4733: volume=10 e duração total de 160ms (1280 samples@8kHz).
+            // O intervalo e o avanço por pacote seguem o ptime do MediaChannel.
             // 160ms é mais compatível com a maioria dos endpoints SIP/PJSIP e evita
             // que o evento se arraste por tempo demais em relação a outros clientes.
             $volume = 10;
             $endRetransmits = 3;
             $eventClockRate = 8000;
-            $ptimeMs = 20;
+            $ptimeMs = $this->packetTimeMs;
             $durationMs = 160;
 
-            $stepSamples = (int)round(($eventClockRate * $ptimeMs) / 1000);
-            if ($stepSamples <= 0) {
-                $stepSamples = 160;
-            }
+            $stepSamples = max(1, (int)round(($eventClockRate * $ptimeMs) / 1000));
 
             $finalDurationSamples = (int)round(($eventClockRate * $durationMs) / 1000);
             if ($finalDurationSamples <= 0) {
@@ -1329,42 +1362,54 @@ class MediaChannel
     {
         $codec = strtoupper($member['codec'] ?? 'PCMA');
         $frequency = (int)($member['frequency'] ?? 8000);
+        $samplesPerPacket = ($member['rtpChannel'] ?? null) instanceof rtpChannel
+            ? $member['rtpChannel']->samplesPerPacket
+            : $this->samplesForPacket($frequency);
 
         switch ($codec) {
             case 'PCMA':
-                $samples = (int)(($frequency / 1000) * 20);
-                return str_repeat("\xD5", $samples);
+                return str_repeat("\xD5", $samplesPerPacket);
 
             case 'PCMU':
-                $samples = (int)(($frequency / 1000) * 20);
-                return str_repeat("\xFF", $samples);
+                return str_repeat("\xFF", $samplesPerPacket);
 
             case 'L16':
             case 'PCM':
                 $channels = $member['channels'] ?? 1;
-                $samples = (int)(($frequency / 1000) * 20) * $channels;
+                $samples = $samplesPerPacket * $channels;
                 return str_repeat("\x00\x00", $samples);
 
             case 'OPUS':
                 if (!isset($member['opus'])) {
                     return null;
                 }
-                // 960 samples por canal = 20ms em 48000Hz
-                $pcm = str_repeat("\x00\x00", 960);
+                $channels = max(1, (int)($member['channels'] ?? 1));
+                $pcm = str_repeat("\x00\x00", $samplesPerPacket * $channels);
                 return $member['opus']->encode($pcm);
 
             case 'G729':
                 if (!isset($member['bcg729Channel'])) {
                     return null;
                 }
-                // Dois frames de 10ms (80 samples @ 8kHz cada)
+                // G.729 trabalha com frames indivisíveis de 10ms (80 samples @ 8kHz).
+                if ($samplesPerPacket % 80 !== 0) {
+                    return null;
+                }
                 $pcm10ms = str_repeat("\x00\x00", 80);
-                return $member['bcg729Channel']->encode($pcm10ms)
-                    . $member['bcg729Channel']->encode($pcm10ms);
+                $payload = '';
+                for ($frame = 0; $frame < intdiv($samplesPerPacket, 80); $frame++) {
+                    $payload .= $member['bcg729Channel']->encode($pcm10ms);
+                }
+                return $payload;
 
             default:
                 return null;
         }
+    }
+
+    private function samplesForPacket(int $frequency): int
+    {
+        return max(1, (int)round(($frequency * $this->packetTimeMs) / 1000));
     }
 
     public function close(): void
