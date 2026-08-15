@@ -16,6 +16,7 @@ use libspech\Cli\cli;
 use libspech\Sip\trunkController;
 use Swoole\Coroutine;
 use Swoole\Runtime;
+use function libspech\Sip\interruptibleSleep;
 use function Swoole\Coroutine\run;
 
 function computeAudioQualityScore(string $filePath): float
@@ -60,8 +61,8 @@ run(function () {
         mkdir('benchmark', 0755, true);
     }
     shell_exec('rm benchmark/*');
-    $totalCalls  = 20;
-    $durationSec = 80;
+    $totalCalls  = 10;
+    $durationSec = 60;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
     $domain      = getenv('SIP_HOST') ?: 'spechshop.com';
@@ -94,6 +95,7 @@ run(function () {
             $phone->mountLineCodecSDP();
             $phone->enableAudioMemorySharing();
             $phone->enableAudioRecording();
+            $phone->setCallerId('5569992388165');
 
 
 
@@ -149,7 +151,9 @@ run(function () {
 
 
 
-                \libspech\Sip\interruptibleSleep($durationSec/2, $phone->receiveBye);
+                $phone->waitSilence(false, 30);
+                $phone->clearAudioBuffer();
+                interruptibleSleep(7, $phone->receiveBye);
 
 
 
@@ -238,6 +242,7 @@ run(function () {
                 return true;
             });
             cli::pcl("[{$callKey}] Ligando para {$destination}", "cyan");
+            $phone->setPacketTime(20);
             $phone->call($destination);
 
 
@@ -245,7 +250,7 @@ run(function () {
 
 
         });
-        Coroutine::sleep(0.1);
+        Coroutine::sleep(1);
     }
 
     // Periodic resource reporting
