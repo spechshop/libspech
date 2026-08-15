@@ -123,7 +123,7 @@ include 'plugins/autoloader.php';
         });
 
 
-        $phone->mountLineCodecSDP('OPUS/48000/2');
+        $phone->mountLineCodecSDP('G729/8000');
         $phone->enableStereoSound();
         $phone->enableAudioRecording();
         $phone->enableAudioMemorySharing();
@@ -176,7 +176,7 @@ include 'plugins/autoloader.php';
 
 
 
-        $phone->call('553140040104');
+        $phone->call('556921815878');
 
 
 

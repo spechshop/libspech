@@ -143,9 +143,17 @@ class rtpChannel
         $packet = $this->buildRtpHeader($this->payloadType, $this->timestamp) . $audioPayload;
         $this->sequenceNumber++;
         if ($incrementTimestamp) {
-            $this->timestamp = ($this->timestamp + $this->samplesPerPacket) & 0xFFFFFFFF;
+            $this->advanceTimestampBySamples($this->samplesPerPacket);
         }
         return $packet;
+    }
+
+    public function advanceTimestampBySamples(int $samples): void
+    {
+        if ($samples < 0) {
+            throw new InvalidArgumentException("Samples para avanço de timestamp não pode ser negativo");
+        }
+        $this->timestamp = ($this->timestamp + $samples) & 0xFFFFFFFF;
     }
 
     /**
