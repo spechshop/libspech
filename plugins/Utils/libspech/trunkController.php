@@ -559,20 +559,25 @@ class trunkController
         $this->onRingingCallback = $param;
     }
 
-    public function volumeAverage(string $pcm): float
+    public function volumeAverage(string $pcm, int $sampleRate = 8000, int $channels = 1): float
     {
-        $minLength = 160;
         if (empty($pcm)) {
             return 0.0;
         }
-        if (strlen($pcm) < $minLength) {
-            return 0.1;
+
+        $sampleRate = max(1, $sampleRate);
+        $channels = max(1, $channels);
+        $analysisTimeMs = min(10, $this->packetTime);
+        $expectedSamples = max(1, (int)round($sampleRate * ($analysisTimeMs / 1000) * $channels));
+        $numSamples = min($expectedSamples, intdiv(strlen($pcm), 2));
+        if ($numSamples <= 0) {
+            return 0.0;
         }
-        $pcm = strlen($pcm) > $minLength ? substr($pcm, 0, $minLength) : $pcm;
+
+        $pcm = substr($pcm, 0, $numSamples * 2);
         $soma = 0;
-        $numSamples = 80;
         $maxValue = 32768.0;
-        for ($i = 0; $i < $minLength; $i += 2) {
+        for ($i = 0, $length = strlen($pcm); $i < $length; $i += 2) {
             $sample = unpack("s", substr($pcm, $i, 2))[1];
             $soma += $sample * $sample;
         }
@@ -1825,30 +1830,86 @@ class trunkController
     public float $waitingSilenceStart = 0;
 
     public bool $waitingSilenceSuccess = false;
+    private float $waitingSilenceVoiceThreshold = 1.1;
 
-    public function waitSilence($waitSilence = true, float $time = 1.0): bool
+    public function waitSilence(bool $waitSilence = true, float $time = 1.0): bool
     {
+        if ($time <= 0) {
+            throw new \InvalidArgumentException('O tempo de espera deve ser maior que zero');
+        }
+
         $this->waitingSilence = true;
         $this->waitingSilenceType = $waitSilence;
         $this->waitingSilenceTime = $time;
         $this->waitingSilenceStart = microtime(true);
-        while ($this->waitingSilence) {
-            co::sleep(0.01);
-            if ($this->receiveBye) break;
-            if (!$this->callActive) break;
+        $this->waitingSilenceSuccess = false;
 
+        while ($this->waitingSilence) {
+            co::sleep(min(0.01, $this->packetTime / 1000));
 
             if (!$this->waitingSilence) {
                 break;
             }
+            if ($this->receiveBye || !$this->callActive) {
+                $this->completeWaitSilence(false);
+                break;
+            }
+
+            // Para espera por voz, `time` é o timeout máximo. A espera por
+            // silêncio é concluída pelos frames RTP após silêncio contínuo.
+            if (
+                !$this->waitingSilenceType
+                && microtime(true) - $this->waitingSilenceStart >= $this->waitingSilenceTime
+            ) {
+                $this->completeWaitSilence(false);
+            }
         }
-        if ($this->waitingSilenceSuccess) {
-            $this->waitingSilenceSuccess = false;
-            return true;
-        } else {
-            $this->waitingSilenceSuccess = false;
-            return false;
+
+        $success = $this->waitingSilenceSuccess;
+        $this->waitingSilenceSuccess = false;
+        return $success;
+    }
+
+    private function processWaitSilenceFrame(string $pcmData, int $sampleRate, int $channels): void
+    {
+        if (!$this->waitingSilence) {
+            return;
         }
+
+        try {
+            $volume = $this->volumeAverage($pcmData, $sampleRate, $channels);
+        } catch (\Throwable) {
+            $volume = 0.0;
+        }
+
+        $now = microtime(true);
+        $hasVoice = $volume >= $this->waitingSilenceVoiceThreshold;
+
+        if ($this->waitingSilenceType) {
+            if ($hasVoice) {
+                $this->waitingSilenceStart = $now;
+                return;
+            }
+            if ($now - $this->waitingSilenceStart >= $this->waitingSilenceTime) {
+                $this->completeWaitSilence(true);
+            }
+            return;
+        }
+
+        if ($hasVoice) {
+            $this->completeWaitSilence(true);
+        } elseif ($now - $this->waitingSilenceStart >= $this->waitingSilenceTime) {
+            $this->completeWaitSilence(false);
+        }
+    }
+
+    private function completeWaitSilence(bool $success): void
+    {
+        $this->waitingSilenceSuccess = $success;
+        $this->waitingSilence = false;
+        $this->waitingSilenceType = true;
+        $this->waitingSilenceStart = 0.0;
+        $this->waitingSilenceTime = 1.0;
     }
 
     public mixed $onPacketOnTimeoutMediaCallable = null;
@@ -2031,39 +2092,9 @@ class trunkController
 
 
                 if ($this->waitingSilence) {
-                    $time = microtime(true);
-                    $diff = $time - $this->waitingSilenceStart;
-
-                    if ($diff >= $this->waitingSilenceTime) {
-                        $this->waitingSilence = false;
-                        $this->waitingSilenceType = true;
-                        $this->waitingSilenceStart = 0;
-                        $this->waitingSilenceTime = 1.0;
-
-                        if ($this->waitingSilenceType) {
-                            $this->waitingSilenceSuccess = true;
-                        }
-                    }
-
-                    try {
-                        $volume = $this->volumeAverage($pcmData);
-                    } catch (\Throwable) {
-                        $volume = 0;
-                    }
-
-                    if ($this->waitingSilenceType) {
-                        if ($volume >= 1.1) {
-                            $this->waitingSilenceStart = microtime(true);
-                        }
-                    } else {
-                        if ($volume >= 1.1) {
-                            $this->waitingSilence = false;
-                            $this->waitingSilenceType = true;
-                            $this->waitingSilenceStart = 0;
-                            $this->waitingSilenceTime = 1.0;
-                            $this->waitingSilenceSuccess = true;
-                        }
-                    }
+                    $frequencyPacket ??= $channel->getFrequencyFromPtCodec($rtpc->payloadType);
+                    $channelsPacket = max(1, (int)($this->mediaChannel->members[$targetId]['channels'] ?? 1));
+                    $this->processWaitSilenceFrame($pcmData, (int)$frequencyPacket, $channelsPacket);
                 }
 
                 if ($channel->recordingEnabled) {

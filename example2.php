@@ -147,8 +147,13 @@ include 'plugins/autoloader.php';
         });
         $phone->onAnswer(function (trunkController $phone) {
             cli::pcl("Chamada iniciada", 'blue');
-            interruptibleSleep(5, $phone->receiveBye);
+            $phone->waitSilence(false, 30);
+            cli::pcl("comecou falar");
+            $phone->clearAudioBuffer();
+            interruptibleSleep(7, $phone->receiveBye);
             $phone->send2833('#');
+            interruptibleSleep(5, $phone->receiveBye);
+            $phone->saveBufferToWavFile('testwait.wav', $phone->getBuffer());
 
 
 
@@ -171,7 +176,7 @@ include 'plugins/autoloader.php';
 
 
 
-        $phone->call('556921815878');
+        $phone->call('553140040104');
 
 
 
