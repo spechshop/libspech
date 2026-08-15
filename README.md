@@ -991,6 +991,26 @@ Notas:
 - Múltiplos codecs podem ser oferecidos via SDP. Use `mountLineCodecSDP()` para ajustar preferências.
 - Alguns valores de tipo de payload podem variar dependendo da negociação; verifique com seu provedor.
 
+### Ptime por membro no MediaChannel
+
+`MediaChannel::setPacketTime()` define o default global (20 ms quando não configurado). Um membro pode sobrescrever esse default ao ser adicionado:
+
+```php
+$media->addMember([
+    'address' => '127.0.0.1',
+    'port' => 10000,
+    'codec' => 'PCMA',
+    'pt' => 8,
+    'frequency' => 8000,
+    'ptime' => 10,
+    'config' => [],
+]);
+```
+
+Cada destino mantém seu próprio `rtpChannel`, `samplesPerPacket`, encoder e accumulator PCM. O relay converte frequência/canais, acumula ou divide PCM no tamanho do destino, codifica e só então gera RTP. Frames incompletos nunca são enviados. `sequence`, `timestamp` e SSRC pertencem ao `rtpChannel` do destino.
+
+Ao fechar o `MediaChannel`, qualquer PCM residual é descartado. Essa política evita criar/enviar áudio preenchido depois do início do teardown da chamada.
+
 ## Arquitetura e Fluxo de Dados
 
 ### Fluxo de Uma Chamada Outbound (Enviada)
@@ -1553,7 +1573,15 @@ $phone->onReceivePcm(function ($pcmData, $peer, $p) {
 
 ### Testes Automatizados
 
-Atualmente não há testes automatizados no repositório. Contribuições são bem-vindas para:
+Os testes são scripts PHP executáveis diretamente. Para validar ptime por membro e a compatibilidade RTP:
+
+```bash
+php test_media_channel_member_ptime.php
+php extra/validation/02_dynamic_ptime.php
+php extra/validation/03_trunk_ptime.php
+```
+
+Contribuições adicionais são bem-vindas para:
 - ✅ Testes unitários de parsing SIP/SDP
 - ✅ Testes de codecs (encode/decode)
 - ✅ Testes de fluxo de chamada simulada
