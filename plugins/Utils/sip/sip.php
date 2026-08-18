@@ -36,8 +36,10 @@ class sip
                         foreach ($sdp as $v) {
                             $k = explode("=", $v, 2);
                             if (strlen($k[0]) < 1) continue;
-                            $keys[$k[0]][] = trim($k[1]);
+
+                            $keys[$k[0]][] = trim($k[1]??'');
                         }
+                        //var_dump($keys);
                         $solution['sdp'] = $keys;
                     }
             } elseif ($f['Content-Type'][0] == 'message/sipfrag') {
