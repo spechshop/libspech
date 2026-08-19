@@ -72,6 +72,7 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // Tenta registrar no servidor SIP com timeout de 10 segundos
         // Se falhar, lança uma exceção e interrompe a execução
+        cli::pcl("Registering <sip:$username@$domain>;$password");
         if (!$phone->register(5)) {
             cli::pcl("Erro ao registrar", "red");
 
