@@ -547,7 +547,7 @@ class trunkController
 
     private function sipServerUri(string $user = '', bool $includeDefaultPort = false): string
     {
-        return sip::renderSipUri($user, (string)$this->domain, $this->port, $includeDefaultPort);
+        return sip::renderSipUri($user, (string)$this->domain??$this->host, $this->port, $includeDefaultPort);
     }
 
     /**
