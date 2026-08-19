@@ -51,7 +51,7 @@ include 'plugins/autoloader.php';
         // Se não estiverem definidas, usa strings vazias como fallback
         $username = getenv('SIP_USERNAME') ?: '';
         $password = getenv('SIP_PASSWORD') ?: '';
-        $domain = getenv('SIP_HOST') ?: 'spechshop.com';
+        $domain = getenv('SIP_HOST') ?: 'example.com';
 
 
         // Valida se o domínio é um IP ou hostname

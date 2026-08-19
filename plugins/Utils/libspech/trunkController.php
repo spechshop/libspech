@@ -25,6 +25,7 @@ class trunkController
     public mixed $username;
     public mixed $password;
     public mixed $host;
+    public bool|string $domain = false;
     public mixed $port;
     public SocketMutable $socket;
     public int $expires;
@@ -131,7 +132,7 @@ class trunkController
         8 => ["rtpmap:8 PCMA/8000"],
     ];
     public array $members = [];
-    public bool|string $domain = false;
+
     public array $ssrcSequences = [];
     public string $currentState = "";
     public string $codecMediaLine = "";
@@ -245,14 +246,17 @@ class trunkController
             $hostSanitized = network::extractHost($host);
             if (empty($domain)) $this->domain = $hostSanitized;
             $host = gethostbyname($hostSanitized);
+        } else {
+            if (empty($domain)) $this->domain = $host;
         }
 
 
 
 
         $this->sipHostSource = network::extractHost($host);
-        var_dump($host);
+
         $this->host = network::resolveAddress($this->sipHostSource, $this->sipIpVersion);
+
 
         $this->port = $port;
         $this->expires = 300;
@@ -548,8 +552,9 @@ class trunkController
 
     private function sipServerUri(string $user = '', bool $includeDefaultPort = false): string
     {
+
         $x= sip::renderSipUri($user, (string)$this->domain??$this->host, $this->port, $includeDefaultPort);
-        var_dump($x, $user, (string)$this->domain??$this->host, $this->port, $includeDefaultPort);
+
         return $x;
     }
 
