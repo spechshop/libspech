@@ -61,6 +61,7 @@ include 'plugins/autoloader.php';
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $domain);
         $phone->setSipIpVersion(6);
+
         //$phone->enableVAD();
         //$phone->voiceActivityTimeout(3);
 
@@ -220,7 +221,7 @@ include 'plugins/autoloader.php';
         //$phone->enableStereoSound();
 
 
-        $phone->call('5569992388165');
+        $phone->call('553140040104');
 
 
         $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());

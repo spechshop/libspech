@@ -115,6 +115,52 @@ Co\run(static function () use ($createSipSocket): void {
         sipIpAssertSame('::1', $setterTrunk->host, 'setter resolve o destino SIP somente via IPv6');
         sipIpAssertTrue($setterTrunk->rtpSocket === $rtpMarker, 'setter não substitui o rtpSocket');
         sipIpAssertSame('192.0.2.50', $setterTrunk->localIp, 'setter não altera o IP de mídia');
+
+        // Reproduz um estado inconsistente: marcador em 4, mas recursos ainda em IPv6.
+        // setSipIpVersion(4) deve reaplicar a família, nunca fazer no-op nesse cenário.
+        (new ReflectionProperty(trunkController::class, 'sipIpVersion'))->setValue($setterTrunk, 4);
+        $GLOBALS['myIpAddress'] = '127.0.0.1';
+        $ipv6Socket = $setterTrunk->socket;
+        $setterTrunk->setSipIpVersion(4);
+
+        sipIpAssertSame(4, $setterTrunk->getSipIpVersion(), 'setter força a configuração SIP IPv4');
+        sipIpAssertSame('0.0.0.0', $setterTrunk->socket->getsockname()['address'], 'setter corrige socket inconsistente para AF_INET');
+        sipIpAssertTrue($setterTrunk->socket !== $ipv6Socket, 'setter IPv4 substitui o socket IPv6 obsoleto');
+        sipIpAssertSame('127.0.0.1', $setterTrunk->host, 'setter IPv4 resolve somente registro A');
+        sipIpAssertSame('127.0.0.1', $setterTrunk->getSipLocalIp(), 'setter IPv4 anuncia endereço local IPv4');
+
+        $registerAfterIpv4 = $setterTrunk->modelRegister();
+        sipIpAssertSame('REGISTER sip:127.0.0.1:9 SIP/2.0', $registerAfterIpv4['methodForParser'], 'REGISTER é reconstruído em IPv4');
+        sipIpAssertTrue(!str_contains($registerAfterIpv4['headers']['Via'][0], '['), 'Via não mantém IPv6 obsoleto após setSipIpVersion(4)');
+        sipIpAssertTrue(!str_contains($registerAfterIpv4['headers']['Contact'][0], '['), 'Contact não mantém IPv6 obsoleto após setSipIpVersion(4)');
+
+        $registerAfterIpv4['headers']['Authorization'][0] = sip::generateAuthorizationHeader(
+            '1000',
+            '127.0.0.1',
+            'secret',
+            'nonce-test',
+            'sip:127.0.0.1:9',
+            'REGISTER'
+        );
+        $authenticatedPacket = (new ReflectionMethod(trunkController::class, 'renderSip'))->invoke(
+            $setterTrunk,
+            $registerAfterIpv4
+        );
+        sipIpAssertTrue(str_starts_with($authenticatedPacket, 'REGISTER sip:127.0.0.1:9 SIP/2.0'), 'REGISTER autenticado mantém Request-URI IPv4');
+        sipIpAssertTrue(!str_contains($authenticatedPacket, '64:ff9b::'), 'REGISTER autenticado não reutiliza endereço NAT64/IPv6');
+        sipIpAssertTrue(str_contains($authenticatedPacket, "X-Originating-IP: 127.0.0.1\r\n"), 'REGISTER autenticado mantém família IPv4 consistente');
+
+        $sipOperationProperty = new ReflectionProperty(trunkController::class, 'sipOperationInProgress');
+        $sipOperationProperty->setValue($setterTrunk, true);
+        $changeDuringRegisterFailed = false;
+        try {
+            $setterTrunk->setSipIpVersion(6);
+        } catch (LogicException) {
+            $changeDuringRegisterFailed = true;
+        } finally {
+            $sipOperationProperty->setValue($setterTrunk, false);
+        }
+        sipIpAssertTrue($changeDuringRegisterFailed, 'troca de família é bloqueada durante REGISTER');
     } finally {
         $setterTrunk->socket->close();
     }
@@ -151,6 +197,46 @@ sipIpAssertSame('<sip:1000@[2001:db8::10]:5070>', $contact6, 'Contact IPv6 usa b
 $parsedContact6 = sip::extractURI($contact6);
 sipIpAssertSame('2001:db8::10', $parsedContact6['peer']['host'], 'parser URI remove brackets do host IPv6');
 sipIpAssertSame('5070', $parsedContact6['peer']['port'], 'parser URI preserva porta IPv6');
+
+// Um Contact IPv4 recebido por um diálogo IPv6 permanece no Request-URI,
+// mas o datagrama deve seguir pelo próximo salto IPv6 que entregou a resposta.
+$dialogTrunk = sipIpWithoutConstructor();
+$dialogTrunk->host = '2001:db8::20';
+$dialogTrunk->port = 5060;
+$dialogTrunk->sipLocalIp = '2001:db8::5';
+$dialogTrunk->socketPortListen = 53000;
+$dialogTrunk->csq = 1;
+(new ReflectionProperty(trunkController::class, 'sipIpVersion'))->setValue($dialogTrunk, 6);
+
+$mixedFamilyResponseHeaders = [
+    'Contact' => ['<sip:spech@147.93.67.151:5060>'],
+    'From' => ['<sip:1000@[2001:db8::5]>;tag=from-tag'],
+    'To' => ['<sip:spech@147.93.67.151>;tag=to-tag'],
+    'Call-ID' => ['mixed-family-dialog'],
+    'CSeq' => ['10 INVITE'],
+];
+$selectNextHop = new ReflectionMethod(trunkController::class, 'selectSipDialogNextHop');
+$nextHop = $selectNextHop->invoke(
+    $dialogTrunk,
+    $mixedFamilyResponseHeaders,
+    ['address' => '2001:db8::30', 'port' => 5060]
+);
+sipIpAssertSame(
+    ['host' => '2001:db8::30', 'port' => 5060],
+    $nextHop,
+    'Contact IPv4 em diálogo IPv6 usa o peer IPv6 como próximo salto'
+);
+
+$mixedFamilyAck = $dialogTrunk->ackModel($mixedFamilyResponseHeaders);
+sipIpAssertSame(
+    'ACK sip:spech@147.93.67.151 SIP/2.0',
+    $mixedFamilyAck['methodForParser'],
+    'ACK preserva o Contact IPv4 como Request-URI'
+);
+sipIpAssertTrue(
+    str_contains($mixedFamilyAck['headers']['Via'][0], '[2001:db8::5]:53000'),
+    'ACK continua anunciando o transporte local IPv6'
+);
 
 // Builders SIP IPv6 usam sipLocalIp; o SDP continua exclusivamente no endereço de mídia IPv4.
 $builder = sipIpWithoutConstructor();
