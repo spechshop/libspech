@@ -56,14 +56,11 @@ include 'plugins/autoloader.php';
 
         // Valida se o domínio é um IP ou hostname
         // Se for hostname, resolve para IP usando DNS
-        if (!filter_var($domain, FILTER_VALIDATE_IP)) {
-            $host = gethostbyname($domain);
-        } else {
-            $host = $domain;
-        }
+
 
         // Instancia o controlador do trunk SIP com as credenciais
-        $phone = new trunkController($username, $password, $host);
+        $phone = new trunkController($username, $password, $domain);
+        $phone->setSipIpVersion(6);
         //$phone->enableVAD();
         //$phone->voiceActivityTimeout(3);
 

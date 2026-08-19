@@ -8,12 +8,14 @@ use libspech\Sip\sip;
 
 class renderMessages
 {
-    public static function generateBye(array $headers200)
+    public static function generateBye(array $headers200, ?string $localIp = null, ?int $localPort = null)
     {
+        $localIp ??= network::getLocalIp();
         $contactUri = [
             'user' => 's',
             'peer' => [
-                'host' => network::getLocalIp()
+                'host' => $localIp,
+                'port' => $localPort,
             ]
         ];
         $headers200['Contact'][0] = sip::renderURI($contactUri);
@@ -23,7 +25,12 @@ class renderMessages
         if (!empty($headers200['Proxy-Authorization'])) unset($headers200['Proxy-Authorization']);
         return [
             "method" => "BYE",
-            "methodForParser" => "BYE sip:" . sip::extractUri($headers200['From'][0])['user'] . "@" . network::getLocalIp() . " SIP/2.0",
+            "methodForParser" => "BYE " . sip::renderSipUri(
+                sip::extractUri($headers200['From'][0])['user'],
+                $localIp,
+                $localPort,
+                false
+            ) . " SIP/2.0",
             "headers" => $headers200
         ];
     }
@@ -33,7 +40,13 @@ class renderMessages
         return self::baseResponse($headers, "404", $optionalMessage);
     }
 
-    public static function baseResponse(array $headers, string $statusCode, string $statusMessage, array $additionalHeaders = []): string
+    public static function baseResponse(
+        array $headers,
+        string $statusCode,
+        string $statusMessage,
+        array $additionalHeaders = [],
+        ?string $originatingIp = null
+    ): string
     {
         // Processar cabeçalhos Via para manter rport/received se presentes
         $viaHeaders = $headers['Via'];
@@ -62,7 +75,7 @@ class renderMessages
             "headers" => array_merge($baseHeaders, $additionalHeaders)
         ];
 
-        return sip::renderSolution($response);
+        return sip::renderSolution($response, $originatingIp);
     }
 
     public static function respondForbidden(array $headers, string $message = "Forbidden"): string
@@ -70,12 +83,14 @@ class renderMessages
         return self::baseResponse($headers, "403", $message);
     }
 
-    public static function respondOptions(array $headers): string
+    public static function respondOptions(array $headers, ?string $localIp = null, ?int $localPort = null): string
     {
+        $localIp ??= network::getLocalIp();
         $contactUri = [
             'user' => 's',
             'peer' => [
-                'host' => network::getLocalIp(),
+                'host' => $localIp,
+                'port' => $localPort,
             ]
         ];
         $headers['Contact'][0] = sip::renderURI($contactUri);
@@ -85,7 +100,7 @@ class renderMessages
             "Allow" => ["INVITE, ACK, BYE, CANCEL, OPTIONS, MESSAGE, INFO, REGISTER"],
             "Supported" => ["replaces, timer"]
         ];
-        return self::baseResponse($headers, "200", "OK", $additionalHeaders);
+        return self::baseResponse($headers, "200", "OK", $additionalHeaders, $localIp);
     }
 
     public static function respond100Trying(array $headers, $statusMessage = 'Trying...'): string
@@ -122,7 +137,7 @@ class renderMessages
     }
 
 
-    public static function respond200OK(array $headers, string $body = ""): string
+    public static function respond200OK(array $headers, string $body = "", ?string $originatingIp = null): string
     {
         $contentLength = strlen($body);
         $additionalHeaders = [
@@ -136,10 +151,10 @@ class renderMessages
                 "headers" => array_merge($headers, $additionalHeaders),
                 "body" => $body
             ];
-            return sip::renderSolution($response);
+            return sip::renderSolution($response, $originatingIp);
         }
 
-        return self::baseResponse($headers, "200", "OK");
+        return self::baseResponse($headers, "200", "OK", [], $originatingIp);
     }
 
     public static function modelBye(mixed $byeNumber, mixed $callId, ?string $localIp, mixed $from, mixed $to, mixed $csq, string $authorization)
@@ -232,18 +247,19 @@ class renderMessages
         return $model;
     }
 
-    public static function generateModelOptions(array $headers, $respondPort): array
+    public static function generateModelOptions(array $headers, $respondPort, ?string $localIp = null): array
     {
+        $localIp ??= network::getLocalIp();
         if (!array_key_exists('Contact', $headers)) $headers['Contact'] = [sip::renderURI([
             'user' => 's',
             'peer' => [
-                'host' => network::getLocalIp(),
+                'host' => $localIp,
                 'port' => $respondPort
             ]
         ])];
 
         $uriContact = sip::extractUri($headers['Contact'][0]);
-        $uriContact['peer']['host'] = network::getLocalIp();
+        $uriContact['peer']['host'] = $localIp;
         $uriContact['peer']['port'] = $respondPort;
         $Ce = str_replace(['<', '>'], '', $headers['Contact'][0]);
 
@@ -251,11 +267,11 @@ class renderMessages
             "method" => "OPTIONS",
             "methodForParser" => "OPTIONS " . $Ce . " SIP/2.0",
             "headers" => [
-                "Via" => ["SIP/2.0/UDP " . network::getLocalIp() . ":" . $respondPort . ";branch=z9hG4bK-" . md5(random_bytes(4)) . ";rport"],
+                "Via" => ["SIP/2.0/UDP " . sip::formatHostPort($localIp, $respondPort) . ";branch=z9hG4bK-" . md5(random_bytes(4)) . ";rport"],
                 "From" => [sip::renderURI([
                         'user' => 'spechshop',
                         'peer' => [
-                            'host' => network::getLocalIp(),
+                            'host' => $localIp,
                             'port' => $respondPort
                         ],
                         'additional' => ['tag' => uniqid()]
@@ -268,7 +284,7 @@ class renderMessages
                     ]
                 ])],
                 "Max-Forwards" => ["70"],
-                "Call-ID" => [$headers['Call-ID'][0] . '@' . network::getLocalIp()],
+                "Call-ID" => [$headers['Call-ID'][0] . '@' . sip::formatHost($localIp)],
                 "CSeq" => ["102 OPTIONS"],
                 "Server" => ["SPECHSHOP LIB"],
                  "Allow" => ["INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE"],
@@ -277,7 +293,7 @@ class renderMessages
                     sip::renderURI([
                         'user' => 'spechshop',
                         'peer' => [
-                            'host' => network::getLocalIp(),
+                            'host' => $localIp,
                             'port' => $respondPort
                         ]
                     ])

@@ -515,9 +515,13 @@ new trunkController(
     string $username,  // Nome de usuário SIP
     string $password,  // Senha SIP
     string $host,      // IP do servidor SIP
-    int $port = 5060   // Porta SIP (padrão: 5060)
+    int $port = 5060,  // Porta SIP (padrão: 5060)
+    mixed $domain = false,
+    int $sipIpVersion = 4 // Sinalização IPv4 por padrão; use 6 explicitamente
 )
 ```
+
+O sexto argumento e `setSipIpVersion(4|6)` afetam apenas a sinalização SIP. RTP e SDP de mídia permanecem IPv4.
 
 #### Métodos de Controle de Chamada
 
