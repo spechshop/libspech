@@ -230,6 +230,7 @@ class trunkController
         $this->callerId = $username ?? "";
         $this->password = $password ?? "";
         $this->domain = $domain ?? false;
+
         $this->socketInUse = false;
         $this->onHangupCallback = null;
         $this->onFailedCallback = null;
@@ -240,8 +241,18 @@ class trunkController
         $this->onDtmfCallable = fn($digit) => $digit;
 
         $this->sipIpVersion = $this->validateSipIpVersion((int)$sipIpVersion);
+        if (!filter_var($host, FILTER_VALIDATE_IP)) {
+            $hostSanitized = network::extractHost($host);
+            if (empty($domain)) $this->domain = $hostSanitized;
+            $host = gethostbyname($hostSanitized);
+        }
+
+
+
+
         $this->sipHostSource = network::extractHost($host);
         $this->host = network::resolveAddress($this->sipHostSource, $this->sipIpVersion);
+
         $this->port = $port;
         $this->expires = 300;
         $this->timeoutCall = time();
@@ -536,7 +547,7 @@ class trunkController
 
     private function sipServerUri(string $user = '', bool $includeDefaultPort = false): string
     {
-        return sip::renderSipUri($user, (string)$this->host, $this->port, $includeDefaultPort);
+        return sip::renderSipUri($user, (string)$this->domain, $this->port, $includeDefaultPort);
     }
 
     /**
@@ -1624,7 +1635,7 @@ class trunkController
         $toCall = [
             'user' => $to,
             'peer' => [
-                'host' => $this->host ?? $this->domain,
+                'host' => $this->domain ?? $this->host,
                 'port' => $this->port ?? 5060,
             ]
         ];
@@ -1642,7 +1653,7 @@ class trunkController
                 "From" => [sip::renderURI([
                     "user" => !empty($this->callerId) ? $this->callerId : $this->username,
                     "peer" => [
-                        "host" => $this->host ?? $this->domain,
+                        "host" => $this->domain ?? $this->host,
                         "port" => $this->port,
                     ],
                     "additional" => ["tag" => bin2hex(secure_random_bytes(10))],

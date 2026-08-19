@@ -60,7 +60,7 @@ include 'plugins/autoloader.php';
 
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $domain);
-        $phone->setSipIpVersion(6);
+        $phone->setSipIpVersion(4);
 
         //$phone->enableVAD();
         //$phone->voiceActivityTimeout(3);
@@ -72,12 +72,15 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // Tenta registrar no servidor SIP com timeout de 10 segundos
         // Se falhar, lança uma exceção e interrompe a execução
-        if ($phone->register(5)) {
-            cli::pcl("Registrado com sucesso", "green");
-        } else {
+        if (!$phone->register(5)) {
             cli::pcl("Erro ao registrar", "red");
+
             return false;
+        } else {
+            cli::pcl("Registrado com sucesso", "green");
+
         }
+
 
         // ====================================================================
         // SESSÃO 5: CONFIGURAÇÃO DE CALLBACKS DE EVENTOS
