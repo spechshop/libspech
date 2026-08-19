@@ -60,18 +60,19 @@ public function __construct(
     mixed $password,
     mixed $host,
     mixed $port = 5060,
-    mixed $domain = false
+    mixed $domain = false,
+    mixed $sipIpVersion = 4
 )
 ```
 
 Na construcao, o controller:
 
 1. Inicializa credenciais SIP, `callerId`, callbacks e estado inicial.
-2. Resolve o host informado.
+2. Resolve o host informado somente na familia IP selecionada (`A` para IPv4, `AAAA` para IPv6).
 3. Gera `CSeq`, `SSRC` e `Call-ID`.
 4. Escolhe uma porta UDP livre para RTP.
 5. Cria e faz bind do socket RTP.
-6. Descobre o IP local.
+6. Descobre separadamente o IP IPv4 de midia e o IP local da sinalizacao SIP.
 7. Escolhe uma porta UDP livre para sinalizacao SIP.
 8. Cria e faz bind do socket SIP.
 9. Envia um `OPTIONS` inicial para testar conectividade.
@@ -89,6 +90,20 @@ $phone = new trunkController(
     port: 5060
 );
 ```
+
+IPv4 e sempre o padrao. Para iniciar diretamente em IPv6, use o sexto argumento:
+
+```php
+$phone = new trunkController('1000', 'secret', 'sip.example.com', 5060, false, 6);
+```
+
+Tambem e possivel trocar somente o transporte SIP antes de `REGISTER`/`INVITE`:
+
+```php
+$phone->setSipIpVersion(6);
+```
+
+O setter recria o socket SIP e envia o `OPTIONS` inicial na nova familia. Ele nao altera o socket RTP nem o SDP de midia.
 
 ## Estado Interno Importante
 

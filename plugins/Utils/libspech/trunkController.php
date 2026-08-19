@@ -28,6 +28,7 @@ class trunkController
     public mixed $port;
     public SocketMutable $socket;
     public int $expires;
+    public string $sipLocalIp;
     public string $localIp;
     public string $callId;
     public int $timestamp = 0;
@@ -191,6 +192,8 @@ class trunkController
     private int $packetTime = MediaChannel::DEFAULT_PACKET_TIME_MS;
     private int $configuredPacketTime = MediaChannel::DEFAULT_PACKET_TIME_MS;
     private ?int $remoteMaxPacketTime = null;
+    private int $sipIpVersion = 4;
+    private string $sipHostSource = '';
 
 
     private function safeRecvfrom(&$peer, $timeout = 1)
@@ -211,7 +214,14 @@ class trunkController
     /**
      * @throws RandomException
      */
-    public function __construct(mixed $username, mixed $password, mixed $host, mixed $port = 5060, mixed $domain = false)
+    public function __construct(
+        mixed $username,
+        mixed $password,
+        mixed $host,
+        mixed $port = 5060,
+        mixed $domain = false,
+        mixed $sipIpVersion = 4
+    )
     {
         $this->onBuildAudio = fn($data) => $data;
         $this->bcgChannel = new \bcg729Channel();
@@ -228,15 +238,9 @@ class trunkController
         $this->cid = Coroutine::getCid();
         $this->onDtmfCallable = fn($digit) => $digit;
 
-        if (str_contains($host, "http")) {
-            $caseUrl = parse_url($host);
-        } else {
-            $caseUrl = parse_url("http://{$host}");
-        }
-        $this->host = gethostbyname($caseUrl["host"]);
-        if (empty($this->host)) {
-            throw new \Exception("Não foi possível resolver o host fornecido: {$host}");
-        }
+        $this->sipIpVersion = $this->validateSipIpVersion((int)$sipIpVersion);
+        $this->sipHostSource = network::extractHost($host);
+        $this->host = network::resolveAddress($this->sipHostSource, $this->sipIpVersion);
         $this->port = $port;
         $this->expires = 300;
         $this->timeoutCall = time();
@@ -281,12 +285,12 @@ class trunkController
 
 
 //        cli::pcl("Audio Receive Port: {$this->audioReceivePort}");
-        $this->localIp = network::getLocalIp();
+        // A mídia permanece explicitamente IPv4; sipLocalIp é exclusivo da sinalização.
+        $this->localIp = network::getLocalIp(4);
+        $this->sipLocalIp = network::getLocalIp($this->sipIpVersion);
 
 
-        $this->socketPortListen = network::getFreePort('udp');
-        $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
-        $this->socket->bind('0.0.0.0', $this->socketPortListen);
+        [$this->socket, $this->socketPortListen] = $this->createSipSocket($this->sipIpVersion);
 
 
         $this->socketsList[] = $this->socket;
@@ -305,9 +309,9 @@ class trunkController
 
 
         $this->userAgent = 'SPECHSHOP LIB';
-        $options = sip::renderSolution($this->modelOptions());
+        $options = $this->renderSip($this->modelOptions());
 
-        $this->socket->sendto($this->host, $this->port, $options);
+        $this->sendSipTo($this->host, $this->port, $options);
         $res = $this->safeRecvfrom($peer, 1);
 
 
@@ -317,6 +321,127 @@ class trunkController
         $this->setPacketTime($this->packetTime);
 
 
+    }
+
+    public function getSipIpVersion(): int
+    {
+        return $this->sipIpVersion;
+    }
+
+    public function getSipLocalIp(): string
+    {
+        return $this->sipLocalIp;
+    }
+
+    /**
+     * Troca somente o transporte SIP. Deve ser chamado antes de REGISTER/INVITE.
+     */
+    public function setSipIpVersion(int $sipIpVersion): self
+    {
+        $sipIpVersion = $this->validateSipIpVersion($sipIpVersion);
+        if ($sipIpVersion === $this->sipIpVersion) {
+            return $this;
+        }
+        if ($this->closing || $this->isRegistered || $this->callActive || $this->socketReadInProgress) {
+            throw new \LogicException('A versão IP do SIP só pode ser alterada antes de REGISTER/INVITE');
+        }
+
+        $resolvedHost = network::resolveAddress($this->sipHostSource, $sipIpVersion);
+        $sipLocalIp = network::getLocalIp($sipIpVersion);
+        [$socket, $socketPort] = $this->createSipSocket($sipIpVersion);
+
+        $oldSocket = $this->socket;
+        $this->socket = $socket;
+        $this->socketPortListen = $socketPort;
+        $this->sipIpVersion = $sipIpVersion;
+        $this->sipLocalIp = $sipLocalIp;
+        $this->host = $resolvedHost;
+        $this->replaceSipSocketInList($oldSocket, $socket);
+
+        if (!$oldSocket->isClosed()) {
+            $oldSocket->close();
+        }
+
+        $options = $this->renderSip($this->modelOptions());
+        $this->sendSipTo($this->host, $this->port, $options);
+        $this->safeRecvfrom($peer, 1);
+
+        return $this;
+    }
+
+    private function validateSipIpVersion(int $sipIpVersion): int
+    {
+        network::socketFamily($sipIpVersion);
+        return $sipIpVersion;
+    }
+
+    /** @return array{0: SocketMutable, 1: int} */
+    private function createSipSocket(int $sipIpVersion, ?int $port = null): array
+    {
+        $family = network::socketFamily($sipIpVersion);
+        $bindAddress = $sipIpVersion === 4 ? '0.0.0.0' : '::';
+        $port ??= network::getFreePort('udp', $sipIpVersion);
+        if ($port === null) {
+            throw new \RuntimeException("Não foi possível obter uma porta UDP para SIP IPv{$sipIpVersion}");
+        }
+
+        $socket = new SocketMutable($family, SOCK_DGRAM, SOL_UDP);
+        if (!$socket->bind($bindAddress, $port)) {
+            throw new \RuntimeException(
+                "Erro ao bindar SIP IPv{$sipIpVersion} em {$bindAddress}:{$port}: {$socket->errCode} {$socket->errMsg}"
+            );
+        }
+        return [$socket, $port];
+    }
+
+    private function reopenSipSocket(): bool
+    {
+        $oldSocket = $this->socket;
+        if (!$oldSocket->isClosed()) {
+            $oldSocket->close();
+        }
+        try {
+            [$socket] = $this->createSipSocket($this->sipIpVersion, $this->socketPortListen);
+        } catch (\Throwable $exception) {
+            cli::pcl($exception->getMessage(), 'red');
+            return false;
+        }
+
+        $this->socket = $socket;
+        $this->replaceSipSocketInList($oldSocket, $socket);
+        return true;
+    }
+
+    private function replaceSipSocketInList(SocketMutable $oldSocket, SocketMutable $newSocket): void
+    {
+        foreach ($this->socketsList as $index => $listedSocket) {
+            if ($listedSocket === $oldSocket) {
+                $this->socketsList[$index] = $newSocket;
+                return;
+            }
+        }
+        $this->socketsList[] = $newSocket;
+    }
+
+    private function renderSip(array $model): string
+    {
+        return sip::renderSolution($model, $this->sipLocalIp);
+    }
+
+    private function sendSipTo(mixed $host, mixed $port, string $packet): int|false
+    {
+        $address = network::resolveAddress($host, $this->sipIpVersion);
+        return $this->socket->sendto($address, (int)$port, $packet);
+    }
+
+    private function sipViaAddress(?int $port = null): string
+    {
+        return sip::formatHostPort($this->sipLocalIp, $port ?? $this->socketPortListen);
+    }
+
+    private function sipServerUri(string $user = '', bool $includeDefaultPort = false): string
+    {
+        return sip::renderSipUri($user, (string)$this->host, $this->port, $includeDefaultPort);
     }
 
     /**
@@ -349,30 +474,13 @@ class trunkController
     public function modelOptions(): array
     {
         $modelRegister = $this->modelRegister()['headers'];
-        return renderMessages::generateModelOptions($modelRegister, $this->socketPortListen);
+        return renderMessages::generateModelOptions($modelRegister, $this->socketPortListen, $this->sipLocalIp);
 
     }
 
     public static function extractVia(string $line): array
     {
-        $result = [];
-
-        // Divide o início do Via (protocolo e endereço) do resto
-        if (preg_match('/^SIP\/2\.0\/(?P<transport>\w+)\s+(?P<host>[^;]+)/i', $line, $match)) {
-            $result['transport'] = strtoupper($match['transport']);
-            $hostParts = explode(':', $match['host']);
-            $result['address'] = $hostParts[0];
-            $result['port'] = isset($hostParts[1]) ? (int)$hostParts[1] : null;
-        }
-
-        // Extrai os parâmetros restantes (branch, rport, received, etc.)
-        if (preg_match_all('/;\s*([^=;]+)=([^;]+)/', $line, $matches, PREG_SET_ORDER)) {
-            foreach ($matches as [$_, $key, $value]) {
-                $result[trim($key)] = trim($value);
-            }
-        }
-
-        return $result;
+        return sip::extractVia($line);
     }
 
     public int $defaultChannels = 1;
@@ -605,12 +713,12 @@ class trunkController
 
     public function buildOkForRequest(array $request): string
     {
-        return renderMessages::respond200OK($request['headers']);
+        return renderMessages::respond200OK($request['headers'], '', $this->sipLocalIp);
     }
 
     public function sendOkForRequest(array $request, array $peer): bool
     {
-        return (bool)$this->socket->sendto($peer['address'], $peer['port'], $this->buildOkForRequest($request));
+        return (bool)$this->sendSipTo($peer['address'], $peer['port'], $this->buildOkForRequest($request));
     }
 
     /**
@@ -739,7 +847,7 @@ class trunkController
             if ($method === '487') {
                 $ackModel = $this->ackModel($receive["headers"]);
                 if (!empty($ackModel)) {
-                    $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
+                    $this->sendSipTo($this->host, $this->port, $this->renderSip($ackModel));
                 }
                 $this->error = true;
                 if (is_callable($this->onFailedCallback)) {
@@ -780,8 +888,8 @@ class trunkController
                     $ackModel = $this->ackModel($receive["headers"]);
                     if (!empty($ackModel)) {
                         $ifr = sip::extractURI($receive['headers']['Contact'][0])['peer'];
-                        $this->socket->sendto($this->host, $this->port, sip::renderSolution($ackModel));
-                        $this->socket->sendto($ifr['host'], (int)$ifr['port'], sip::renderSolution($ackModel));
+                        $this->sendSipTo($this->host, $this->port, $this->renderSip($ackModel));
+                        $this->sendSipTo($ifr['host'], (int)$ifr['port'], $this->renderSip($ackModel));
                     }
 
                     // Update audio destination from SDP
@@ -870,7 +978,7 @@ class trunkController
 
             if (!$ackLine || $ackLine === $lastInviteModel['methodForParser']) {
                 $target = $this->calledNumber ?: '';
-                $ackLine = "ACK sip:{$target}@{$this->host} SIP/2.0";
+                $ackLine = 'ACK ' . $this->sipServerUri($target, false) . ' SIP/2.0';
             }
 
             $ackModel = [
@@ -887,10 +995,10 @@ class trunkController
                 ],
             ];
 
-            $this->socket->sendto(
+            $this->sendSipTo(
                 $this->host,
                 $this->port,
-                sip::renderSolution($ackModel)
+                $this->renderSip($ackModel)
             );
         };
 
@@ -906,7 +1014,7 @@ class trunkController
                 return;
             }
 
-            $ackPacket = sip::renderSolution($ackModel);
+            $ackPacket = $this->renderSip($ackModel);
 
             $ackHost = $this->host;
             $ackPort = (int)($this->port ?? 5060);
@@ -923,13 +1031,13 @@ class trunkController
                 }
             }
 
-            $this->socket->sendto($ackHost, $ackPort, $ackPacket);
+            $this->sendSipTo($ackHost, $ackPort, $ackPacket);
         };
 
-        $this->socket->sendto(
+        $this->sendSipTo(
             $this->host,
             $this->port,
-            sip::renderSolution($modelInvite)
+            $this->renderSip($modelInvite)
         );
 
         $timeRing = time();
@@ -1007,10 +1115,10 @@ class trunkController
 
             if (isset($receive["headers"]["Call-ID"]) && $receive["headers"]["Call-ID"][0] !== $this->callId) {
                 if ($receive["method"] === "OPTIONS") {
-                    $this->socket->sendto(
+                    $this->sendSipTo(
                         $this->host,
                         $this->port,
-                        renderMessages::respondOptions($receive["headers"])
+                        renderMessages::respondOptions($receive["headers"], $this->sipLocalIp, $this->socketPortListen)
                     );
                 }
 
@@ -1037,11 +1145,7 @@ class trunkController
                  */
                 $sendInviteChallengeAck($receive["headers"], $modelInvite);
 
-                $authUri = sprintf(
-                    "sip:%s@%s",
-                    $this->calledNumber ?: $to,
-                    $this->host
-                );
+                $authUri = $this->sipServerUri($this->calledNumber ?: $to, false);
 
                 if ($needAuth === "Proxy-Authorization") {
                     $valueHeader = $receive["headers"]["Proxy-Authenticate"][0] ?? '';
@@ -1102,7 +1206,7 @@ class trunkController
                  * Nunca copia Via da resposta.
                  */
                 $modelInvite['headers']['Via'] = [
-                    "SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=z9hG4bK64d" .
+                    "SIP/2.0/UDP {$this->sipViaAddress()};branch=z9hG4bK64d" .
                     bin2hex(secure_random_bytes(8) ?? random_bytes(8)) .
                     ";rport"
                 ];
@@ -1117,10 +1221,10 @@ class trunkController
 
                 $modelInvite['headers']['CSeq'][0] = sprintf("%d INVITE", $this->csq);
 
-                $this->socket->sendto(
+                $this->sendSipTo(
                     $this->host,
                     $this->port,
-                    sip::renderSolution($modelInvite)
+                    $this->renderSip($modelInvite)
                 );
 
                 $authSent = true;
@@ -1135,10 +1239,10 @@ class trunkController
 
             if ($isErrorResponse || $isAbortRequest) {
                 if ($isAbortRequest) {
-                    $this->socket->sendto(
+                    $this->sendSipTo(
                         $this->host,
                         $this->port,
-                        renderMessages::respond200OK($receive["headers"])
+                        renderMessages::respond200OK($receive["headers"], '', $this->sipLocalIp)
                     );
                 }
 
@@ -1160,10 +1264,10 @@ class trunkController
             }
 
             if ($receive["method"] === "OPTIONS") {
-                $this->socket->sendto(
+                $this->sendSipTo(
                     $this->host,
                     $this->port,
-                    renderMessages::respondOptions($receive["headers"])
+                    renderMessages::respondOptions($receive["headers"], $this->sipLocalIp, $this->socketPortListen)
                 );
             }
 
@@ -1282,10 +1386,10 @@ class trunkController
 
             if (isset($receive["headers"]["Call-ID"]) && $receive["headers"]["Call-ID"][0] !== $this->callId) {
                 if ($receive["method"] === "OPTIONS") {
-                    $this->socket->sendto(
+                    $this->sendSipTo(
                         $this->host,
                         $this->port,
-                        renderMessages::respondOptions($receive["headers"])
+                        renderMessages::respondOptions($receive["headers"], $this->sipLocalIp, $this->socketPortListen)
                     );
                 }
 
@@ -1299,10 +1403,10 @@ class trunkController
             }
 
             if ($receive["method"] === "OPTIONS") {
-                $this->socket->sendto(
+                $this->sendSipTo(
                     $this->host,
                     $this->port,
-                    renderMessages::respondOptions($receive["headers"])
+                    renderMessages::respondOptions($receive["headers"], $this->sipLocalIp, $this->socketPortListen)
                 );
 
                 continue;
@@ -1314,12 +1418,12 @@ class trunkController
                 $this->unblockCoroutine();
 
                 if ($receive["method"] === "BYE") {
-                    $modelOk = renderMessages::respond200OK($receive['headers']);
+                    $modelOk = renderMessages::respond200OK($receive['headers'], '', $this->sipLocalIp);
 
                     $byeHost = $peer['address'] ?? $this->host;
                     $byePort = (int)($peer['port'] ?? $this->port ?? 5060);
 
-                    $this->socket->sendto($byeHost, $byePort, $modelOk);
+                    $this->sendSipTo($byeHost, $byePort, $modelOk);
 
                     if (isset($this->mediaChannel) && $this->mediaChannel instanceof MediaChannel) {
                         $this->mediaChannel->close();
@@ -1431,34 +1535,26 @@ class trunkController
         $this->codecName = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['name'];
         $this->frequencyCall = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['rate'];
 
+        if (strlen($prefix) > 0 && !str_starts_with($to, $prefix)) {
+            $to = $prefix . $to;
+        }
 
-        if ($this->domain) {
-            $mf = $this->domain;
-        } else {
-            $mf = $this->host;
-        }
-        if ($this->port != 5060) {
-            $mf .= ":" . $this->port;
-        }
+        $requestHost = $this->domain ? network::extractHost($this->domain) : (string)$this->host;
+        $requestUri = sip::renderSipUri($to, $requestHost, $this->port, false);
         $toCall = [
-            'user' => ($prefix ?? '') . $to,
+            'user' => $to,
             'peer' => [
                 'host' => $this->host ?? $this->domain,
                 'port' => $this->port ?? 5060,
             ]
         ];
 
-
-        if (strlen($prefix) > 0) {
-            if (!str_starts_with($to, $prefix))
-                $to = $prefix . $to;
-        }
         $this->calledNumber = $to;
         $settings = [
             "method" => "INVITE",
-            "methodForParser" => "INVITE sip:{$to}@{$mf} SIP/2.0",
+            "methodForParser" => "INVITE {$requestUri} SIP/2.0",
             "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch=z9hG4bK64d" .
+                "Via" => ["SIP/2.0/UDP {$this->sipViaAddress()};branch=z9hG4bK64d" .
                     bin2hex(secure_random_bytes(8) ?? time()) .
                     ";rport"
                 ],
@@ -1476,7 +1572,13 @@ class trunkController
                 "User-Agent" => [$this->userAgent],
                 "Call-ID" => [$this->callId],
                 "Allow" => ["INVITE,ACK,BYE,CANCEL,OPTIONS,NOTIFY,MESSAGE,REFER"],
-                "Contact" => ["<sip:{$this->username}@{$this->localIp}:{$this->socketPortListen}>"],
+                "Contact" => [sip::renderURI([
+                    'user' => (string)$this->username,
+                    'peer' => [
+                        'host' => $this->sipLocalIp,
+                        'port' => $this->socketPortListen,
+                    ],
+                ])],
                 "CSeq" => [$this->csq . " INVITE"],
                 "Max-Forwards" => ["70"],
                 "Content-Type" => ["application/sdp"],
@@ -1624,28 +1726,7 @@ class trunkController
 
     public static function renderURI(array $uriData): string
     {
-        $user = $uriData["user"] ?? "";
-        $peer = $uriData["peer"] ?? [];
-        $additional = $uriData["additional"] ?? [];
-        $host = $peer["host"] ?? "";
-        $port = $peer["port"] ?? "";
-        $extra = $peer["extra"] ?? "";
-        $uri = "<sip:{$user}@{$host}";
-        if (!empty($port) and $port != "5060") {
-            $uri .= ":{$port}";
-        }
-        if (!empty($extra)) {
-            $uri .= ";{$extra}";
-        }
-        $uri .= ">";
-        if (!empty($additional)) {
-            $additionalParams = [];
-            foreach ($additional as $key => $value) {
-                $additionalParams[] = "{$key}={$value}";
-            }
-            $uri .= ";" . implode(";", $additionalParams);
-        }
-        return $uri;
+        return sip::renderURI($uriData);
     }
 
     public function checkAuthHeaders(array $headers)
@@ -1721,11 +1802,7 @@ class trunkController
         $contactPort = $contactUri["peer"]["port"] ?? 5060;
         $contactUser = $contactUri["user"] ?? $uriTo["user"];
 
-        $requestUri = "sip:{$contactUser}@{$contactHost}";
-
-        if ((int)$contactPort !== 5060) {
-            $requestUri .= ":{$contactPort}";
-        }
+        $requestUri = sip::renderSipUri($contactUser, $contactHost, $contactPort, false);
 
         $branch = "z9hG4bK64d" . bin2hex(secure_random_bytes(8) ?? random_bytes(8));
 
@@ -1734,7 +1811,7 @@ class trunkController
             "methodForParser" => "ACK {$requestUri} SIP/2.0",
             "headers" => [
                 "Via" => [
-                    "SIP/2.0/UDP {$this->localIp}:{$this->socketPortListen};branch={$branch};rport"
+                    "SIP/2.0/UDP {$this->sipViaAddress()};branch={$branch};rport"
                 ],
 
                 "Max-Forwards" => [
@@ -1790,32 +1867,7 @@ class trunkController
 
     public static function extractURI($line): array
     {
-        if (!str_contains($line, 'sip:')) {
-            return [];
-        }
-        $user = value($line, 'sip:', '@');
-        $peerFirst = value($line, $user . '@', '>');
-        $peerParts = explode(';', $peerFirst, 2);
-        $hostPort = explode(':', $peerParts[0], 2);
-        $additionalParams = [];
-        if (str_contains($line, '>')) {
-            $remaining = substr($line, strpos($line, '>') + 1);
-            parse_str(str_replace(';', '&', $remaining), $additionalParams);
-        }
-        if (str_contains($user, ':')) {
-            $user = str_replace('>', '', $user);
-            $hostPort = explode(':', $user, 2);
-            $user = '';
-        }
-        return [
-            'user' => $user,
-            'peer' => [
-                'host' => $hostPort[0],
-                'port' => $hostPort[1] ?? '5060',
-                'extra' => $peerParts[1] ?? '',
-            ],
-            'additional' => $additionalParams,
-        ];
+        return sip::extractURI($line);
     }
 
     public function unblockCoroutine(): bool
@@ -2490,22 +2542,30 @@ class trunkController
         if ($called) {
             $this->calledNumber = $called;
         }
+        $requestUri = $this->sipServerUri((string)$this->calledNumber, false);
         $model = [
             "method" => "CANCEL",
-            "methodForParser" => "CANCEL sip:{$this->calledNumber}@{$this->host} SIP/2.0",
+            "methodForParser" => "CANCEL {$requestUri} SIP/2.0",
             "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->localIp}:{$this->socket->getsockname()["port"]};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))],
-                "From" => ["<sip:{$this->username}@{$this->host}>;tag=" . bin2hex(secure_random_bytes(8))],
+                "Via" => ["SIP/2.0/UDP {$this->sipViaAddress()};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))],
+                "From" => [sip::renderURI([
+                    'user' => (string)$this->username,
+                    'peer' => ['host' => (string)$this->host, 'port' => $this->port],
+                    'additional' => ['tag' => bin2hex(secure_random_bytes(8))],
+                ])],
                 "Max-Forwards" => ["70"],
                 "User-Agent" => ["{$this->userAgent}"],
                 "Contact" => [sip::renderURI([
                     "user" => $this->username,
                     "peer" => [
-                        "host" => $this->socket->getsockname()["address"],
-                        "port" => $this->socket->getsockname()["port"],
+                        "host" => $this->sipLocalIp,
+                        "port" => $this->socketPortListen,
                     ],
                 ])],
-                "To" => ["<sip:{$this->calledNumber}@{$this->host}>"],
+                "To" => [sip::renderURI([
+                    'user' => (string)$this->calledNumber,
+                    'peer' => ['host' => (string)$this->host, 'port' => $this->port],
+                ])],
                 "Call-ID" => [$this->callId],
                 "CSeq" => [$this->csq . " CANCEL"],
             ],
@@ -2519,7 +2579,7 @@ class trunkController
     public function cancel(): void
     {
         $this->cancelSent = true;
-        $this->socket->sendto($this->host, $this->port, sip::renderSolution($this->getModelCancel()));
+        $this->sendSipTo($this->host, $this->port, $this->renderSip($this->getModelCancel()));
     }
 
     public function getBufferWriteSound(): array
@@ -2636,13 +2696,17 @@ class trunkController
         if (empty($this->headers200)) {
             return;
         }
-        $this->socket->sendto($this->host, $this->port, sip::renderSolution(renderMessages::generateBye($this->headers200['headers'])));
+        $this->sendSipTo(
+            $this->host,
+            $this->port,
+            $this->renderSip(renderMessages::generateBye($this->headers200['headers'], $this->sipLocalIp, $this->socketPortListen))
+        );
         $this->mediaChannel->close();
     }
 
     public function modelBye(): array
     {
-        return renderMessages::generateBye($this->headers200['headers']);
+        return renderMessages::generateBye($this->headers200['headers'], $this->sipLocalIp, $this->socketPortListen);
 
     }
 
@@ -2727,37 +2791,24 @@ class trunkController
         unset($modelRegister['headers']['Contact']);
 
 
-        $renderSolution = sip::renderSolution($modelRegister);
+        $renderSolution = $this->renderSip($modelRegister);
         $startTimer = time();
 
 
 
         $sent=false;
-        if (is_null($this->socket)) {
-            $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
-            if (!$this->socket->bind($this->localIp, $this->socketPortListen)) {
-                cli::pcl("Falha ao iniciar socket para deslogar", 'red');
-                return false;
-            }
-        } else {
-            $this->socket->close();
-            if ($this->socket->isClosed()) {
-                $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
-                if (!$this->socket->bind($this->localIp, $this->socketPortListen)) {
-                    cli::pcl("Falha ao iniciar socket para deslogar", 'red');
-                    return false;
-                }
-            }
+        if (!$this->reopenSipSocket()) {
+            cli::pcl("Falha ao iniciar socket SIP para deslogar", 'red');
+            return false;
         }
         while (time() - $startTimer < $maxWait) {
             if ($this->socket->isClosed()) {
-                $this->socket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
-                if (!$this->socket->bind($this->localIp, $this->socketPortListen)) {
-                    cli::pcl("Falha ao iniciar socket para deslogar", 'red');
+                if (!$this->reopenSipSocket()) {
+                    cli::pcl("Falha ao reiniciar socket SIP para deslogar", 'red');
                     return false;
                 }
             } else {
-               $this->socket->sendto($this->host, $this->port, $renderSolution);
+               $this->sendSipTo($this->host, $this->port, $renderSolution);
                $sent=$this->socket->recvfrom($peer, 1);
                 if ($sent === false) {
                     $this->socket->close();
@@ -2839,7 +2890,7 @@ class trunkController
                         $this->password,
                         $realm,
                         $nonce,
-                        sprintf("sip:%s", $this->host),
+                        $this->sipServerUri(),
                         "REGISTER",
                         $qop
                     );
@@ -2860,7 +2911,7 @@ class trunkController
                         $realm,
                         $this->password,
                         $nonce,
-                        sprintf("sip:%s", $this->host),
+                        $this->sipServerUri(),
                         "REGISTER"
                     );
                 }
@@ -2889,9 +2940,9 @@ class trunkController
                     );
                 }
 
-                $renderSolution = sip::renderSolution($modelRegister);
+                $renderSolution = $this->renderSip($modelRegister);
 
-                $this->socket->sendto($this->host, $this->port, $renderSolution);
+                $this->sendSipTo($this->host, $this->port, $renderSolution);
                 $res = $this->socket->safeRecvfrom($peer, 1);
                 if ($res) {
                     $receive = sip::parse($res);
@@ -2933,9 +2984,9 @@ class trunkController
         }
         $res = false;
         $modelRegister = $this->modelRegister();
-        $renderSolution = sip::renderSolution($modelRegister);
+        $renderSolution = $this->renderSip($modelRegister);
         $startTimer = time();
-        $this->socket->sendto($this->host, $this->port, $renderSolution);
+        $this->sendSipTo($this->host, $this->port, $renderSolution);
         for (; ;) {
             $elapsed = time() - $startTimer;
             if ($elapsed > $maxWait) {
@@ -2983,7 +3034,7 @@ class trunkController
                         continue;
                     }
                     $this->nonce = $nonce;
-                    $modelRegister["headers"][$needAuth][0] = sip::generateResponseProxy($this->username, $this->password, $realm, $nonce, sprintf("sip:%s", $this->host), "REGISTER", $qop);
+                    $modelRegister["headers"][$needAuth][0] = sip::generateResponseProxy($this->username, $this->password, $realm, $nonce, $this->sipServerUri(), "REGISTER", $qop);
                 } else if ($needAuth == "Authorization") {
                     $wwwAuthenticate = $receive["headers"]["WWW-Authenticate"][0];
                     $nonce = value($wwwAuthenticate, 'nonce="', '"');
@@ -2994,10 +3045,10 @@ class trunkController
                         return false;
                     }
                     $this->nonce = $nonce;
-                    $modelRegister["headers"][$needAuth][0] = sip::generateAuthorizationHeader($this->username, $realm, $this->password, $nonce, sprintf("sip:%s", $this->host), "REGISTER");
+                    $modelRegister["headers"][$needAuth][0] = sip::generateAuthorizationHeader($this->username, $realm, $this->password, $nonce, $this->sipServerUri(), "REGISTER");
                 }
-                $renderSolution = sip::renderSolution($modelRegister);
-                $this->socket->sendto($this->host, $this->port, $renderSolution);
+                $renderSolution = $this->renderSip($modelRegister);
+                $this->sendSipTo($this->host, $this->port, $renderSolution);
             }
             if ($receive['method'] == '200') {
                 $this->csq++;
@@ -3040,23 +3091,25 @@ class trunkController
      */
     public function modelRegister($expire = 120): array
     {
-        $fpp = 5060;
         if ($this->domain) {
-            $registerLine = "{$this->domain}";
-            $fpee = $this->domain;
+            $registerHost = network::extractHost($this->domain);
+            $fpee = $registerHost;
             $fpp = $this->port;
-            $toLine = "<sip:{$this->username}@{$this->domain}>";
         } else {
-            $fpee = $this->socket->getsockname()['address'];
+            $registerHost = (string)$this->host;
+            $fpee = $this->sipLocalIp;
             $fpp = $this->socketPortListen;
-            $registerLine = "{$this->host}";
-            $toLine = "<sip:{$this->username}@{$this->host}>";
         }
+        $registerUri = sip::renderSipUri('', $registerHost, $this->port, false);
+        $toLine = sip::renderURI([
+            'user' => (string)$this->username,
+            'peer' => ['host' => $registerHost, 'port' => $this->port],
+        ]);
         return [
             "method" => "REGISTER",
-            "methodForParser" => "REGISTER sip:{$registerLine} SIP/2.0",
+            "methodForParser" => "REGISTER {$registerUri} SIP/2.0",
             "headers" => [
-                "Via" => ["SIP/2.0/UDP " . network::getLocalIp() . ":{$this->socketPortListen};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))],
+                "Via" => ["SIP/2.0/UDP {$this->sipViaAddress()};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))],
                 "From" => [sip::renderURI([
                     "user" => $this->username,
                     "peer" => [
@@ -3069,7 +3122,10 @@ class trunkController
                 "Max-Forwards" => ["70"],
                 "Call-ID" => [$this->callId],
                 "CSeq" => [$this->csq . " REGISTER"],
-                "Contact" => ["<sip:{$this->username}@{$this->localIp}:{$this->socketPortListen}>"],
+                "Contact" => [sip::renderURI([
+                    'user' => (string)$this->username,
+                    'peer' => ['host' => $this->sipLocalIp, 'port' => $this->socketPortListen],
+                ])],
                 "User-Agent" => [$this->userAgent],
                 "Expires" => ["$expire"],
                 "Allow" => ["INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, NOTIFY, MESSAGE, INFO, UPDATE"],
@@ -3190,21 +3246,31 @@ class trunkController
         $originTo = $this->calledNumber;
         $modelRefer = [
             "method" => "REFER",
-            "methodForParser" => "REFER sip:{$originTo}@{$this->host} SIP/2.0",
+            "methodForParser" => 'REFER ' . $this->sipServerUri((string)$originTo, false) . ' SIP/2.0',
             "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->localIp}:5060;branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))],
-                "From" => ["<sip:{$this->username}@{$this->host}>;tag=" . bin2hex(secure_random_bytes(8))],
-                "To" => ["<sip:{$originTo}@{$this->host}>"],
+                "Via" => ["SIP/2.0/UDP {$this->sipViaAddress()};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))],
+                "From" => [sip::renderURI([
+                    'user' => (string)$this->username,
+                    'peer' => ['host' => (string)$this->host, 'port' => $this->port],
+                    'additional' => ['tag' => bin2hex(secure_random_bytes(8))],
+                ])],
+                "To" => [sip::renderURI([
+                    'user' => (string)$originTo,
+                    'peer' => ['host' => (string)$this->host, 'port' => $this->port],
+                ])],
                 "Call-ID" => [$this->callId],
                 "Event" => ["refer"],
                 "CSeq" => [$this->csq . " REFER"],
-                "Contact" => ["<sip:{$this->username}@{$this->localIp}>"],
-                "Refer-To" => ["sip:{$to}@{$this->host}"],
-                "Referred-By" => ["sip:{$this->username}@{$this->host}"],
+                "Contact" => [sip::renderURI([
+                    'user' => (string)$this->username,
+                    'peer' => ['host' => $this->sipLocalIp, 'port' => $this->socketPortListen],
+                ])],
+                "Refer-To" => [$this->sipServerUri($to, false)],
+                "Referred-By" => [$this->sipServerUri((string)$this->username, false)],
                 "Content-Length" => ["0"],
             ],
         ];
-        return $this->socket->sendto($this->host, $this->port, sip::renderSolution($modelRefer));
+        return (bool)$this->sendSipTo($this->host, $this->port, $this->renderSip($modelRefer));
     }
 
     public function transferGroup(string $groupName, $retry = 0)

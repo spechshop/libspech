@@ -182,9 +182,9 @@ class sip
         // Divide o início do Via (protocolo e endereço) do resto
         if (preg_match('/^SIP\/2\.0\/(?P<transport>\w+)\s+(?P<host>[^;]+)/i', $line, $match)) {
             $result['transport'] = strtoupper($match['transport']);
-            $hostParts = explode(':', $match['host']);
-            $result['address'] = $hostParts[0];
-            $result['port'] = isset($hostParts[1]) ? (int)$hostParts[1] : null;
+            $hostParts = self::parseHostPort($match['host']);
+            $result['address'] = $hostParts['host'];
+            $result['port'] = $hostParts['port'] === null ? null : (int)$hostParts['port'];
         }
 
         // Extrai os parâmetros restantes (branch, rport, received, etc.)
@@ -199,68 +199,85 @@ class sip
 
     public static function extractURI($line): array
     {
-        if (!str_contains($line, 'sip:')) return [];
+        if (!is_string($line) || stripos($line, 'sip:') === false) {
+            return [];
+        }
 
-        $hasBrackets = str_contains($line, '<') && str_contains($line, '>');
+        $sipPosition = stripos($line, 'sip:');
+        $closingBracket = strpos($line, '>', $sipPosition);
+        $hasNameAddress = strrpos(substr($line, 0, $sipPosition), '<') !== false && $closingBracket !== false;
 
-        if ($hasBrackets) {
-            // Handle format: <sip:user@host:port>
-            $user = value($line, 'sip:', '@');
-            $peerFirst = value($line, $user . '@', '>');
-            $peerParts = explode(';', $peerFirst, 2);
-            $hostPort = explode(':', $peerParts[0], 2);
-            $additionalParams = [];
-
-            $remaining = substr($line, strpos($line, '>') + 1);
-            parse_str(str_replace(';', '&', $remaining), $additionalParams);
+        if ($hasNameAddress) {
+            $uriBody = substr($line, $sipPosition + 4, $closingBracket - ($sipPosition + 4));
+            $headerParams = substr($line, $closingBracket + 1);
         } else {
-            // Handle format: sip:user@host:port
-            $sipPart = substr($line, strpos($line, 'sip:'));
-            // Split by space or other delimiters to isolate the SIP URI
-            $sipUri = preg_split('/[\s,;]/', $sipPart)[0];
-
-            if (str_contains($sipUri, '@')) {
-                $user = value($sipUri, 'sip:', '@');
-                $peerPart = substr($sipUri, strpos($sipUri, '@') + 1);
-            } else {
-                $user = '';
-                $peerPart = substr($sipUri, 4); // Remove 'sip:'
-            }
-
-            // Parse additional parameters from the full line
-            $additionalParams = [];
-            if (str_contains($line, ';')) {
-                $paramsPart = substr($line, strpos($sipUri, ';') !== false ? strpos($line, $sipUri) + strlen($sipUri) : strlen($line));
-                if (str_starts_with($paramsPart, ';')) {
-                    parse_str(str_replace(';', '&', substr($paramsPart, 1)), $additionalParams);
-                }
-            }
-
-            $peerParts = explode(';', $peerPart, 2);
-            $hostPort = explode(':', $peerParts[0], 2);
+            $uriTail = substr($line, $sipPosition + 4);
+            $uriBody = preg_split('/[\s,>]/', $uriTail, 2)[0] ?? '';
+            $headerParams = '';
         }
 
-        if (str_contains($user, ':')) {
-            $user = str_replace('>', '', $user);
-            $hostPort = explode(':', $user, 2);
+        [$authority, $uriParams] = array_pad(explode(';', $uriBody, 2), 2, '');
+        $atPosition = strrpos($authority, '@');
+        if ($atPosition === false) {
             $user = '';
+            $hostPortText = $authority;
+        } else {
+            $user = substr($authority, 0, $atPosition);
+            $hostPortText = substr($authority, $atPosition + 1);
         }
 
-        $filterHost = filter_var($hostPort[0], FILTER_VALIDATE_IP);
-        if (!$filterHost) $hostPort[0] = '127.0.0.1';
-        if (empty($hostPort[1])) $hostPort[1] = '5060';
-        $filterPort = filter_var($hostPort[1], FILTER_VALIDATE_INT);
-        if (!$filterPort) $hostPort[1] = '5060';
+        $hostPort = self::parseHostPort($hostPortText, '5060');
+        $additionalParams = self::parseSemicolonParams($headerParams);
 
         return [
             'user' => $user,
             'peer' => [
-                'host' => $hostPort[0],
-                'port' => $hostPort[1] ?? '5060',
-                'extra' => $peerParts[1] ?? ''
+                'host' => $hostPort['host'],
+                'port' => $hostPort['port'] ?? '5060',
+                'extra' => $uriParams,
             ],
-            'additional' => $additionalParams ?? []
+            'additional' => $additionalParams,
         ];
+    }
+
+    /** @return array{host: string, port: ?string} */
+    public static function parseHostPort(string $hostPort, string|int|null $defaultPort = null): array
+    {
+        $hostPort = trim($hostPort);
+        $host = $hostPort;
+        $port = $defaultPort === null ? null : (string)$defaultPort;
+
+        if (preg_match('/^\[([^]]+)](?::(\d+))?$/', $hostPort, $match)) {
+            $host = $match[1];
+            if (isset($match[2]) && $match[2] !== '') {
+                $port = $match[2];
+            }
+        } elseif (!filter_var($hostPort, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+            if (preg_match('/^(.+):(\d+)$/', $hostPort, $match)) {
+                $host = $match[1];
+                $port = $match[2];
+            }
+        }
+
+        return ['host' => trim($host, '[]'), 'port' => $port];
+    }
+
+    private static function parseSemicolonParams(string $params): array
+    {
+        $params = ltrim(trim($params), ';');
+        if ($params === '') {
+            return [];
+        }
+
+        $result = [];
+        foreach (explode(';', $params) as $param) {
+            if ($param === '') {
+                continue;
+            }
+            [$key, $value] = array_pad(explode('=', $param, 2), 2, '');
+            $result[trim($key)] = trim($value);
+        }
+        return $result;
     }
 
 
@@ -536,7 +553,7 @@ class sip
         return $authHeader;
     }
 
-    public static function renderSolution(array $solution): string
+    public static function renderSolution(array $solution, ?string $originatingIp = null): string
     {
         if (!array_key_exists('headers', $solution)) $solution['headers'] = [];
         $needHeaders = [
@@ -556,7 +573,7 @@ class sip
             $solution['headers']['Date'] = [date('D, d M Y H:i:s T')];
 
         if (!array_key_exists('X-Originating-IP', $solution['headers'])) $solution['headers']['X-Originating-IP'] = [];
-        $solution['headers']['X-Originating-IP'][] = network::getLocalIp();
+        $solution['headers']['X-Originating-IP'][] = $originatingIp ?? network::getLocalIp();
         if (!array_key_exists('method', $solution)) {
 //            var_dump($solution);
 
@@ -724,22 +741,18 @@ class sip
 
     public static function renderURI(array $uriData): string
     {
-        $user = trim($uriData['user']) ?? 's';
+        $user = trim((string)($uriData['user'] ?? 's'));
 
         $peer = $uriData['peer'] ?? [];
         $additional = $uriData['additional'] ?? [];
-        $host = trim($peer['host']) ?? network::getLocalIp();
+        $host = trim((string)($peer['host'] ?? network::getLocalIp()));
         if (empty($host)) {
             $host = network::getLocalIp();
         }
         $port = $peer['port'] ?? '5060';
         $extra = $peer['extra'] ?? '';
 
-
-        $uri = "<sip:$user@$host";
-        if (!empty($port) and $port !== '5060') {
-            $uri .= ":$port";
-        }
+        $uri = '<' . self::renderSipUri($user, $host, $port, false);
         if (!empty($extra)) {
             $uri .= ";$extra";
         }
@@ -776,6 +789,32 @@ class sip
         }
 
         return $uri;
+    }
+
+    public static function formatHost(string $host): string
+    {
+        $host = trim($host);
+        $host = trim($host, '[]');
+        return str_contains($host, ':') ? "[{$host}]" : $host;
+    }
+
+    public static function formatHostPort(string $host, string|int|null $port = null, bool $includeDefaultPort = true): string
+    {
+        $formatted = self::formatHost($host);
+        if ($port !== null && $port !== '' && ($includeDefaultPort || (int)$port !== 5060)) {
+            $formatted .= ':' . $port;
+        }
+        return $formatted;
+    }
+
+    public static function renderSipUri(
+        string $user,
+        string $host,
+        string|int|null $port = null,
+        bool $includeDefaultPort = true
+    ): string {
+        $userPart = $user === '' ? '' : $user . '@';
+        return 'sip:' . $userPart . self::formatHostPort($host, $port, $includeDefaultPort);
     }
 }
 
@@ -873,4 +912,3 @@ function volumeAverage(string $pcm, int $sampleRate = 8000): float
 
     return max(1, min(100, round($normalized * 100, 2)));
 }
-

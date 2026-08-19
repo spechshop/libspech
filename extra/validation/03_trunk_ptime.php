@@ -329,6 +329,7 @@ $sdpTrunk->setPacketTime(40);
 $sdpTrunk->callerId = '1000';
 $sdpTrunk->username = '1000';
 $sdpTrunk->localIp = '127.0.0.1';
+$sdpTrunk->sipLocalIp = '127.0.0.1';
 $sdpTrunk->host = '127.0.0.1';
 $sdpTrunk->port = 5060;
 $sdpTrunk->ssrc = 1234;
