@@ -253,7 +253,7 @@ class trunkController
 
 
 
-        $this->sipHostSource = network::extractHost($host);
+        $this->sipHostSource = $this->domain;
 
         $this->host = network::resolveAddress($this->sipHostSource, $this->sipIpVersion);
 
