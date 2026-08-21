@@ -85,59 +85,19 @@ include 'plugins/autoloader.php';
         // ====================================================================
 
 
-        $phone->mountLineCodecSDP('PCMU/8000');
-        //$phone->mountLineCodecSDP('OPUS/48000/2');
+        //$phone->mountLineCodecSDP('G729/8000');
+        $phone->setPacketTime(60);$phone->mountLineCodecSDP('OPUS/48000/2');
+        $phone->enableStereoSound();
         $phone->enableAudioRecording();
         $phone->enableAudioMemorySharing();
-        $phone->defineAudioFile('silence_5m.wav');
+        $phone->defineAudioFile('music.wav');
 
         // Habilita a gravação de áudio durante a chamada
 
 
         // Callback executado quando uma chamada está tocando (ringing)
 
-        $detector = new EarlyGreetingDetector(
-            sampleRate: 8000,
-            frameDurationMs: 20,
-            analysisWindowMs: 200,
-            minimumGreetingVoiceMs: 800,
-            maximumInternalGapMs: 120,
-            minimumVoiceDbfs: -42.0,
-            noiseMarginDb: 10.0,
-        );
-
-
-
-
-        $detector->onGreetingDetected(
-            function (array $event): void {
-                printf(
-                    "[%8.3f s] SAUDACAO EM EARLY MEDIA | voz=%d ms\n",
-                    $event['audio_ms'] / 1000,
-                    $event['voiced_ms']
-                );
-            }
-        );
-
-        $detector->onVoiceEnd(
-            function (array $event): void {
-                if ( $event['greeting_detected'])
-                printf(
-                    "[%8.3f s] Voz finalizada | voz=%d ms | saudacao=%s\n",
-                    $event['audio_ms'] / 1000,
-                    $event['voiced_ms'],
-                    $event['greeting_detected'] ? 'SIM' : 'NAO'
-                );
-            }
-        );
-
-
-
-
-        $phone->onReceivePcm(function (string $pcmData, array $peer, trunkController $phone) use ($detector): void {
-            $detector->push($pcmData);
-        });
-        $phone->onRinging(function () use (&$phone) {
+  $phone->onRinging(function () use (&$phone) {
             cli::pcl($phone->lastPacket['method'] . " Chamada TOCANDO " . microtime(true), "yellow");
             //\Swoole\Coroutine::sleep(5);
             //$phone->cancel();
@@ -158,8 +118,8 @@ include 'plugins/autoloader.php';
             cli::pcl("SDP recebido " . microtime(true), "green");
             $phone->receiveMedia();
         });
-        $phone->onAnswer(function (trunkController $phone) use ($detector) {
-            $detector->markAnswered();
+        $phone->onAnswer(function (trunkController $phone)  {
+            interruptibleSleep(10, $phone->receiveBye);
 
 
 
@@ -198,7 +158,7 @@ include 'plugins/autoloader.php';
             cli::pcl("Digitado: " . $cpf, "green");
             $phone->waitSilence(false, 10);
 
-            interruptibleSleep(3, $phone->receiveBye);
+            interruptibleSleep(30, $phone->receiveBye);
 
 
             $phone->bye();
@@ -222,7 +182,7 @@ include 'plugins/autoloader.php';
         //$phone->enableStereoSound();
 
 
-        $phone->call('5569992388165');
+        $phone->call('notebook20');
 
 
         $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());

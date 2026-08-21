@@ -61,7 +61,7 @@ run(function () {
         mkdir('benchmark', 0755, true);
     }
     shell_exec('rm benchmark/*');
-    $totalCalls  = 10;
+    $totalCalls  = 50;
     $durationSec = 60;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
@@ -250,7 +250,8 @@ run(function () {
 
 
         });
-        Coroutine::sleep(1);
+        if ($i ==1) Coroutine::sleep(5);
+        else Coroutine::sleep(0.2);
     }
 
     // Periodic resource reporting

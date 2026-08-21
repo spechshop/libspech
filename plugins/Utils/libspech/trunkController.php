@@ -2183,25 +2183,7 @@ class trunkController
                     return;
                 }
 
-                while ($this->mediaChannel->active) {
-                    if (
-                        !$this->mediaChannel->dtmfInUse &&
-                        $this->audioFileHandle instanceof \Closure &&
-                        !empty($this->audioRemoteIp) &&
-                        !empty($this->audioRemotePort)
-                    ) {
-                        try {
-                            ($this->audioFileHandle)([
-                                'address' => $this->audioRemoteIp,
-                                'port' => $this->audioRemotePort,
-                            ], $this);
-                        } catch (\Throwable $e) {
-                            cli::pcl("[AUDIO-LOOP-ERROR] " . $e->getMessage(), 'red');
-                        }
-                    }
-
-                    \Swoole\Coroutine::sleep($this->packetTime / 1000);
-                }
+                $this->runAudioTransmissionLoop();
                 if (!$this->byeSent and !$this->receiveBye) {
                     $this->bye();
                 }
@@ -2210,6 +2192,80 @@ class trunkController
             $this->mediaChannel?->block();
         });
     }
+
+    /**
+     * Envia um frame por ptime usando um relógio monotônico.
+     *
+     * O deadline representa o início do próximo ciclo. Assim, o tempo gasto em
+     * leitura, resample, encode, cache e sendto é descontado do sleep seguinte,
+     * sem alterar a timeline RTP mantida por rtpChannel.
+     */
+    private function runAudioTransmissionLoop(): void
+    {
+        $pacedPacketTime = $this->packetTime;
+        $nextDeadlineNs = hrtime(true);
+        $audioWasSuspended = false;
+
+        while ($this->mediaChannel->active) {
+            $currentPacketTime = $this->packetTime;
+            if ($currentPacketTime !== $pacedPacketTime) {
+                $pacedPacketTime = $currentPacketTime;
+                $nextDeadlineNs = hrtime(true);
+            }
+
+            $canSendAudio =
+                !$this->mediaChannel->dtmfInUse &&
+                $this->audioFileHandle instanceof \Closure &&
+                !empty($this->audioRemoteIp) &&
+                !empty($this->audioRemotePort);
+
+            if ($canSendAudio) {
+                if ($audioWasSuspended) {
+                    // DTMF (ou ausência temporária do peer) não vira débito do
+                    // áudio e, portanto, não deve gerar uma rajada ao retornar.
+                    $nextDeadlineNs = hrtime(true);
+                    $audioWasSuspended = false;
+                }
+
+                try {
+                    ($this->audioFileHandle)([
+                        'address' => $this->audioRemoteIp,
+                        'port' => $this->audioRemotePort,
+                    ], $this);
+                } catch (\Throwable $e) {
+                    cli::pcl("[AUDIO-LOOP-ERROR] " . $e->getMessage(), 'red');
+                }
+            } else {
+                $nextDeadlineNs = hrtime(true);
+                $audioWasSuspended = true;
+            }
+
+            if (!$this->mediaChannel->active) {
+                break;
+            }
+
+            // setPacketTime() pode ter sido chamado enquanto o callback cedia
+            // a coroutine em I/O. A nova cadência começa a partir de agora.
+            $currentPacketTime = $this->packetTime;
+            if ($currentPacketTime !== $pacedPacketTime) {
+                $pacedPacketTime = $currentPacketTime;
+                $nextDeadlineNs = hrtime(true);
+            }
+
+            $nextDeadlineNs += $pacedPacketTime * 1_000_000;
+            $remainingNs = $nextDeadlineNs - hrtime(true);
+
+            if ($remainingNs > 0) {
+                // Swoole exige pelo menos 1 ms. Arredondar para esse piso evita
+                // busy-loop; eventual overshoot é absorvido pelo próximo deadline.
+                \Swoole\Coroutine::sleep(max(0.001, $remainingNs / 1_000_000_000));
+            } else {
+                // Não tenta recuperar tempo emitindo vários RTPs em sequência.
+                $nextDeadlineNs = hrtime(true);
+            }
+        }
+    }
+
     public function setPacketTime(int $packetTime): void
     {
         if ($packetTime <= 0) {

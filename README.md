@@ -1583,6 +1583,7 @@ Os testes são scripts PHP executáveis diretamente. Para validar ptime por memb
 php test_media_channel_member_ptime.php
 php extra/validation/02_dynamic_ptime.php
 php extra/validation/03_trunk_ptime.php
+php extra/validation/04_trunk_rtp_pacing.php
 ```
 
 Contribuições adicionais são bem-vindas para:

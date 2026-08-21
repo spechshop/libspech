@@ -14,7 +14,7 @@ include 'plugins/autoloader.php';
 
 run(function () {
     $priceMinute = '0.15';
-    $totalCalls = 2;
+    $totalCalls = 20;
     $durationSec = 30;
 
     $username = getenv('SIP_USERNAME') ?: '';
