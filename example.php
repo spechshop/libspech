@@ -58,9 +58,11 @@ include 'plugins/autoloader.php';
         // Se for hostname, resolve para IP usando DNS
 
 
+        //var_dump(\libspech\Network\network::resolveAddress($domain, 6));
+        //exit;
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $domain);
-        $phone->setSipIpVersion(6);
+        //$phone->setSipIpVersion(6);
         //$phone->enableVAD();
         //$phone->voiceActivityTimeout(3);
 

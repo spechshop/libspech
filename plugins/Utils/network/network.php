@@ -115,21 +115,50 @@ class network
             throw new \RuntimeException("O host {$host} não pertence à família IPv{$ipVersion} solicitada");
         }
 
-        $recordType = $ipVersion === 4 ? DNS_A : DNS_AAAA;
-        $recordKey = $ipVersion === 4 ? 'ip' : 'ipv6';
-        $records = @dns_get_record($host, $recordType);
+        $resolvedAddress = self::resolveHostname($host, $ipVersion);
 
-        if (is_array($records)) {
-            foreach ($records as $record) {
-                $resolvedAddress = $record[$recordKey] ?? null;
-                if (is_string($resolvedAddress) && filter_var($resolvedAddress, FILTER_VALIDATE_IP, $filterFlag)) {
-                    return $resolvedAddress;
+        if (is_string($resolvedAddress) && $resolvedAddress !== '') {
+            $packed = @inet_pton($resolvedAddress);
+            if ($packed !== false) {
+                $normalizedAddress = inet_ntop($packed);
+                if (is_string($normalizedAddress) && filter_var($normalizedAddress, FILTER_VALIDATE_IP, $filterFlag)) {
+                    return $normalizedAddress;
                 }
             }
         }
 
         $recordName = $ipVersion === 4 ? 'A' : 'AAAA';
         throw new \RuntimeException("Não foi possível resolver {$host} como IPv{$ipVersion} (registro {$recordName} ausente)");
+    }
+
+    /**
+     * Resolve um hostname para a família solicitada usando a API DNS nativa de
+     * coroutine do Swoole (Swoole\Coroutine\System::gethostbyname), evitando
+     * dns_get_record(). No Swoole 6.2 dns_get_record() passa pelo hook
+     * swoole_dns_get_record(), que inicializa o Swoole\RemoteObject\Server
+     * apenas para resolver DNS.
+     *
+     * gethostbyname() precisa rodar dentro de uma coroutine; quando chamado
+     * fora do escopo de coroutine, criamos uma coroutine temporária para não
+     * introduzir resolução bloqueante nas coroutines existentes.
+     *
+     * @return string|false o endereço resolvido ou false quando a família
+     *                      solicitada não possui registro.
+     */
+    private static function resolveHostname(string $host, int $ipVersion): string|false
+    {
+        $family = self::socketFamily($ipVersion);
+
+        if (\Swoole\Coroutine::getCid() >= 0) {
+            return \Swoole\Coroutine\System::gethostbyname($host, $family);
+        }
+
+        $resolvedAddress = false;
+        \Swoole\Coroutine\run(static function () use (&$resolvedAddress, $host, $family): void {
+            $resolvedAddress = \Swoole\Coroutine\System::gethostbyname($host, $family);
+        });
+
+        return $resolvedAddress;
     }
 
     /**
