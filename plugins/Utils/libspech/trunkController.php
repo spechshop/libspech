@@ -386,6 +386,11 @@ class trunkController
         }
 
         $socket = new SocketMutable($family, SOCK_DGRAM, SOL_UDP);
+        if ($sipIpVersion === 6 && !$socket->setOption(IPPROTO_IPV6, IPV6_V6ONLY, 0)) {
+            throw new \RuntimeException(
+                "Não foi possível habilitar o modo dual-stack no socket SIP IPv6: {$socket->errCode} {$socket->errMsg}"
+            );
+        }
         if (!$socket->bind($bindAddress, $port)) {
             throw new \RuntimeException(
                 "Erro ao bindar SIP IPv{$sipIpVersion} em {$bindAddress}:{$port}: {$socket->errCode} {$socket->errMsg}"
@@ -430,7 +435,7 @@ class trunkController
 
     private function sendSipTo(mixed $host, mixed $port, string $packet): int|false
     {
-        $address = network::resolveAddress($host, $this->sipIpVersion);
+        $address = network::resolveAddressForSocket($host, $this->sipIpVersion);
         return $this->socket->sendto($address, (int)$port, $packet);
     }
 

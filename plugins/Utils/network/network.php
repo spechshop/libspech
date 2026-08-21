@@ -132,6 +132,31 @@ class network
         throw new \RuntimeException("Não foi possível resolver {$host} como IPv{$ipVersion} (registro {$recordName} ausente)");
     }
 
+    /**
+     * Resolve um destino para a família do socket.
+     *
+     * Um socket IPv6 dual-stack alcança destinos IPv4 usando endereços
+     * IPv4-mapped. O caminho inverso não é possível em um socket IPv4.
+     */
+    public static function resolveAddressForSocket(mixed $address, int $socketIpVersion = 4): string
+    {
+        try {
+            return self::resolveAddress($address, $socketIpVersion);
+        } catch (\RuntimeException $ipv6Exception) {
+            if ($socketIpVersion !== 6) {
+                throw $ipv6Exception;
+            }
+
+            try {
+                $ipv4Address = self::resolveAddress($address, 4);
+            } catch (\RuntimeException) {
+                throw $ipv6Exception;
+            }
+
+            return "::ffff:{$ipv4Address}";
+        }
+    }
+
     public static function extractHost(mixed $address): string
     {
         $address = trim((string)$address);

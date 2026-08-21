@@ -72,6 +72,18 @@ try {
     $wrongLiteralFailed = str_contains($exception->getMessage(), 'IPv6');
 }
 sipIpAssertTrue($wrongLiteralFailed, 'literal incompatível deve indicar a família solicitada');
+sipIpAssertSame(
+    '::ffff:192.0.2.10',
+    network::resolveAddressForSocket('192.0.2.10', 6),
+    'socket IPv6 dual-stack deve mapear destino IPv4 recebido em Contact'
+);
+$ipv4SocketRejectsIpv6 = false;
+try {
+    network::resolveAddressForSocket('2001:db8::10', 4);
+} catch (RuntimeException $exception) {
+    $ipv4SocketRejectsIpv6 = str_contains($exception->getMessage(), 'IPv4');
+}
+sipIpAssertTrue($ipv4SocketRejectsIpv6, 'socket IPv4 não deve aceitar destino IPv6');
 
 // O factory real do trunk usa a família e o wildcard correspondentes.
 $createSipSocket = new ReflectionMethod(trunkController::class, 'createSipSocket');
@@ -81,6 +93,7 @@ $socketTrunk = sipIpWithoutConstructor();
 try {
     sipIpAssertSame('0.0.0.0', $sipSocket4->getsockname()['address'], 'socket SIP IPv4 faz bind no wildcard IPv4');
     sipIpAssertSame('::', $sipSocket6->getsockname()['address'], 'socket SIP IPv6 faz bind no wildcard IPv6');
+    sipIpAssertSame(0, $sipSocket6->getOption(IPPROTO_IPV6, IPV6_V6ONLY), 'socket SIP IPv6 aceita destinos IPv4 mapeados');
 } finally {
     $sipSocket4->close();
     $sipSocket6->close();
