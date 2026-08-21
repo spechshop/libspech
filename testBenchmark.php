@@ -62,7 +62,7 @@ run(function () {
     }
     shell_exec('rm benchmark/*');
     $totalCalls  = 50;
-    $durationSec = 60;
+    $durationSec = 120;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
     $domain      = getenv('SIP_HOST') ?: 'spechshop.com';
@@ -91,17 +91,20 @@ run(function () {
             &$stats
         ) {
             $callKey = "call_{$i}";
-            $phone   = new trunkController($username, $password, $host);
-            $phone->mountLineCodecSDP();
+            $phone   = new trunkController($username, $password, $host, 5060,$host);
+            $phone->setSipIpVersion(6);
+            $phone->mountLineCodecSDP('PCMA/8000');
+            $phone->setPacketTime(100);
             $phone->enableAudioMemorySharing();
-            $phone->enableAudioRecording();
-            $phone->setCallerId('5569992388165');
+            //$phone->enableAudioRecording();
+            $phone->setCallerId('testbench');
 
 
 
 
-            $audioFile = "/home/lotus/projetos/libspech/silence_5m.wav";
+            $audioFile = "music_mono_8000.wav";
             $phone->defineAudioFile($audioFile);
+
 
             $stats[$callKey] = [
                 'answered'       => false,
@@ -122,7 +125,7 @@ run(function () {
             $calls[$callKey] = $phone;
 
             $registerStart = microtime(true);
-            $registered    = $phone->register(2);
+            $registered    = $phone->register(10);
             if (!$registered) {
                 $stats[$callKey]['failed']   = true;
                 $stats[$callKey]['error']    = 'Erro ao registrar';
@@ -139,6 +142,7 @@ run(function () {
             $phone->onSdpReceived(function (trunkController $phone) use ($callKey) {
                 cli::pcl("[{$callKey}] SDP recebido", "blue");
                 $phone->receiveMedia();
+                $phone->mediaChannel->setAudioMetricsEnabled(true);
             });
             $phone->onAnswer(function (trunkController $phone) use (
                 $callKey,
@@ -162,7 +166,7 @@ run(function () {
                 foreach (mb_str_split($test, 1) as $digit) {
                     $phone->send2833($digit);
                 }
-                \libspech\Sip\interruptibleSleep(10, $phone->receiveBye);
+                \libspech\Sip\interruptibleSleep(60, $phone->receiveBye);
 
                 // Capture media metrics before closing
                 try {
@@ -242,7 +246,8 @@ run(function () {
                 return true;
             });
             cli::pcl("[{$callKey}] Ligando para {$destination}", "cyan");
-            $phone->setPacketTime(20);
+
+
             $phone->call($destination);
 
 
@@ -250,7 +255,7 @@ run(function () {
 
 
         });
-        if ($i ==1) Coroutine::sleep(5);
+        if ($i ==1) Coroutine::sleep(15);
         else Coroutine::sleep(0.2);
     }
 

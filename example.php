@@ -62,7 +62,12 @@ include 'plugins/autoloader.php';
         //exit;
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $domain);
-        //$phone->setSipIpVersion(6);
+        $phone->setSipIpVersion(6);
+        $phone->setPacketTime(60);$phone->mountLineCodecSDP('OPUS/48000/2');
+        //$phone->enableStereoSound();
+        $phone->enableAudioRecording();
+        $phone->enableAudioMemorySharing();
+        $phone->defineAudioFile('music.wav');
         //$phone->enableVAD();
         //$phone->voiceActivityTimeout(3);
 
@@ -86,11 +91,7 @@ include 'plugins/autoloader.php';
 
 
         //$phone->mountLineCodecSDP('G729/8000');
-        $phone->setPacketTime(60);$phone->mountLineCodecSDP('OPUS/48000/2');
-        $phone->enableStereoSound();
-        $phone->enableAudioRecording();
-        $phone->enableAudioMemorySharing();
-        $phone->defineAudioFile('music.wav');
+
 
         // Habilita a gravação de áudio durante a chamada
 
