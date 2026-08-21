@@ -51,7 +51,7 @@ include 'plugins/autoloader.php';
         // Se não estiverem definidas, usa strings vazias como fallback
         $username = getenv('SIP_USERNAME') ?: '';
         $password = getenv('SIP_PASSWORD') ?: '';
-        $domain = getenv('SIP_HOST') ?: 'example.com';
+        $domain = getenv('SIP_HOST') ?: 'spechshop.com';
 
 
         // Valida se o domínio é um IP ou hostname
@@ -60,8 +60,7 @@ include 'plugins/autoloader.php';
 
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $domain);
-        $phone->setSipIpVersion(4);
-
+        $phone->setSipIpVersion(6);
         //$phone->enableVAD();
         //$phone->voiceActivityTimeout(3);
 
@@ -72,16 +71,12 @@ include 'plugins/autoloader.php';
         // ====================================================================
         // Tenta registrar no servidor SIP com timeout de 10 segundos
         // Se falhar, lança uma exceção e interrompe a execução
-        cli::pcl("Registering <sip:$username@$domain>;$password");
-        if (!$phone->register(5)) {
-            cli::pcl("Erro ao registrar", "red");
-
-            return false;
-        } else {
+        if ($phone->register(5)) {
             cli::pcl("Registrado com sucesso", "green");
-
+        } else {
+            cli::pcl("Erro ao registrar", "red");
+            return false;
         }
-
 
         // ====================================================================
         // SESSÃO 5: CONFIGURAÇÃO DE CALLBACKS DE EVENTOS
@@ -225,7 +220,7 @@ include 'plugins/autoloader.php';
         //$phone->enableStereoSound();
 
 
-        $phone->call('553140040104');
+        $phone->call('5569992388165');
 
 
         $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());

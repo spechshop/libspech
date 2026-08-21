@@ -25,7 +25,6 @@ class trunkController
     public mixed $username;
     public mixed $password;
     public mixed $host;
-    public bool|string $domain = false;
     public mixed $port;
     public SocketMutable $socket;
     public int $expires;
@@ -132,7 +131,7 @@ class trunkController
         8 => ["rtpmap:8 PCMA/8000"],
     ];
     public array $members = [];
-
+    public bool|string $domain = false;
     public array $ssrcSequences = [];
     public string $currentState = "";
     public string $codecMediaLine = "";
@@ -195,7 +194,6 @@ class trunkController
     private ?int $remoteMaxPacketTime = null;
     private int $sipIpVersion = 4;
     private string $sipHostSource = '';
-    private bool $sipOperationInProgress = false;
 
 
     private function safeRecvfrom(&$peer, $timeout = 1)
@@ -231,7 +229,6 @@ class trunkController
         $this->callerId = $username ?? "";
         $this->password = $password ?? "";
         $this->domain = $domain ?? false;
-
         $this->socketInUse = false;
         $this->onHangupCallback = null;
         $this->onFailedCallback = null;
@@ -242,22 +239,8 @@ class trunkController
         $this->onDtmfCallable = fn($digit) => $digit;
 
         $this->sipIpVersion = $this->validateSipIpVersion((int)$sipIpVersion);
-        if (!filter_var($host, FILTER_VALIDATE_IP)) {
-            $hostSanitized = network::extractHost($host);
-            if (empty($domain)) $this->domain = $hostSanitized;
-            $host = gethostbyname($hostSanitized);
-        } else {
-            if (empty($domain)) $this->domain = $host;
-        }
-
-
-
-
-        $this->sipHostSource = $this->domain;
-
+        $this->sipHostSource = network::extractHost($host);
         $this->host = network::resolveAddress($this->sipHostSource, $this->sipIpVersion);
-
-
         $this->port = $port;
         $this->expires = 300;
         $this->timeoutCall = time();
@@ -308,7 +291,6 @@ class trunkController
 
 
         [$this->socket, $this->socketPortListen] = $this->createSipSocket($this->sipIpVersion);
-        $this->assertSipTransportFamily();
 
 
         $this->socketsList[] = $this->socket;
@@ -357,28 +339,13 @@ class trunkController
     public function setSipIpVersion(int $sipIpVersion): self
     {
         $sipIpVersion = $this->validateSipIpVersion($sipIpVersion);
-        if (
-            $this->closing ||
-            $this->isRegistered ||
-            $this->callActive ||
-            $this->socketReadInProgress ||
-            $this->sipOperationInProgress
-        ) {
+        if ($sipIpVersion === $this->sipIpVersion) {
+            return $this;
+        }
+        if ($this->closing || $this->isRegistered || $this->callActive || $this->socketReadInProgress) {
             throw new \LogicException('A versão IP do SIP só pode ser alterada antes de REGISTER/INVITE');
         }
 
-        $this->sipOperationInProgress = true;
-        try {
-            $this->applySipIpVersion($sipIpVersion);
-        } finally {
-            $this->sipOperationInProgress = false;
-        }
-
-        return $this;
-    }
-
-    private function applySipIpVersion(int $sipIpVersion): void
-    {
         $resolvedHost = network::resolveAddress($this->sipHostSource, $sipIpVersion);
         $sipLocalIp = network::getLocalIp($sipIpVersion);
         [$socket, $socketPort] = $this->createSipSocket($sipIpVersion);
@@ -390,7 +357,6 @@ class trunkController
         $this->sipLocalIp = $sipLocalIp;
         $this->host = $resolvedHost;
         $this->replaceSipSocketInList($oldSocket, $socket);
-        $this->assertSipTransportFamily();
 
         if (!$oldSocket->isClosed()) {
             $oldSocket->close();
@@ -399,35 +365,14 @@ class trunkController
         $options = $this->renderSip($this->modelOptions());
         $this->sendSipTo($this->host, $this->port, $options);
         $this->safeRecvfrom($peer, 1);
+
+        return $this;
     }
 
     private function validateSipIpVersion(int $sipIpVersion): int
     {
         network::socketFamily($sipIpVersion);
         return $sipIpVersion;
-    }
-
-    private function assertSipTransportFamily(): void
-    {
-        $filterFlag = $this->sipIpVersion === 4 ? FILTER_FLAG_IPV4 : FILTER_FLAG_IPV6;
-        $expectedBindAddress = $this->sipIpVersion === 4 ? '0.0.0.0' : '::';
-        $socketAddress = $this->socket->getsockname()['address'] ?? null;
-
-        if (!filter_var($this->sipLocalIp, FILTER_VALIDATE_IP, $filterFlag)) {
-            throw new \LogicException(
-                "O endereço SIP local {$this->sipLocalIp} não corresponde ao modo IPv{$this->sipIpVersion}"
-            );
-        }
-        if (!filter_var($this->host, FILTER_VALIDATE_IP, $filterFlag)) {
-            throw new \LogicException(
-                "O destino SIP {$this->host} não corresponde ao modo IPv{$this->sipIpVersion}"
-            );
-        }
-        if ($socketAddress !== $expectedBindAddress) {
-            throw new \LogicException(
-                "O socket SIP IPv{$this->sipIpVersion} está associado a {$socketAddress}, esperado {$expectedBindAddress}"
-            );
-        }
     }
 
     /** @return array{0: SocketMutable, 1: int} */
@@ -441,6 +386,11 @@ class trunkController
         }
 
         $socket = new SocketMutable($family, SOCK_DGRAM, SOL_UDP);
+        if ($sipIpVersion === 6 && !$socket->setOption(IPPROTO_IPV6, IPV6_V6ONLY, 0)) {
+            throw new \RuntimeException(
+                "Não foi possível habilitar o modo dual-stack no socket SIP IPv6: {$socket->errCode} {$socket->errMsg}"
+            );
+        }
         if (!$socket->bind($bindAddress, $port)) {
             throw new \RuntimeException(
                 "Erro ao bindar SIP IPv{$sipIpVersion} em {$bindAddress}:{$port}: {$socket->errCode} {$socket->errMsg}"
@@ -485,64 +435,8 @@ class trunkController
 
     private function sendSipTo(mixed $host, mixed $port, string $packet): int|false
     {
-        $address = network::resolveAddress($host, $this->sipIpVersion);
+        $address = network::resolveAddressForSocket($host, $this->sipIpVersion);
         return $this->socket->sendto($address, (int)$port, $packet);
-    }
-
-    /** @return array{host: string, port: int} */
-    private function selectSipDialogNextHop(array $responseHeaders, ?array $responsePeer = null): array
-    {
-        $candidates = [];
-
-        if (!empty($responseHeaders['Contact'][0])) {
-            $contact = sip::extractURI($responseHeaders['Contact'][0]);
-            if (!empty($contact['peer']['host'])) {
-                $candidates[] = [
-                    'host' => $contact['peer']['host'],
-                    'port' => (int)($contact['peer']['port'] ?? 5060),
-                ];
-            }
-        }
-
-        foreach (['Route', 'Record-Route'] as $routeHeader) {
-            if (empty($responseHeaders[$routeHeader][0])) {
-                continue;
-            }
-            $route = sip::extractURI($responseHeaders[$routeHeader][0]);
-            if (!empty($route['peer']['host'])) {
-                $candidates[] = [
-                    'host' => $route['peer']['host'],
-                    'port' => (int)($route['peer']['port'] ?? 5060),
-                ];
-            }
-        }
-
-        if (!empty($responsePeer['address'])) {
-            $candidates[] = [
-                'host' => $responsePeer['address'],
-                'port' => (int)($responsePeer['port'] ?? $this->port ?? 5060),
-            ];
-        }
-
-        $candidates[] = [
-            'host' => (string)$this->host,
-            'port' => (int)($this->port ?? 5060),
-        ];
-
-        foreach ($candidates as $candidate) {
-            try {
-                return [
-                    'host' => network::resolveAddress($candidate['host'], $this->sipIpVersion),
-                    'port' => $candidate['port'],
-                ];
-            } catch (\RuntimeException) {
-                // O Contact pode anunciar outra família; tenta o próximo salto do diálogo.
-            }
-        }
-
-        throw new \RuntimeException(
-            "Nenhum próximo salto IPv{$this->sipIpVersion} disponível para o diálogo SIP"
-        );
     }
 
     private function sipViaAddress(?int $port = null): string
@@ -552,10 +446,7 @@ class trunkController
 
     private function sipServerUri(string $user = '', bool $includeDefaultPort = false): string
     {
-
-        $x= sip::renderSipUri($user, (string)$this->domain??$this->host, $this->port, $includeDefaultPort);
-
-        return $x;
+        return sip::renderSipUri($user, (string)$this->host, $this->port, $includeDefaultPort);
     }
 
     /**
@@ -1001,8 +892,9 @@ class trunkController
                     // Always send ACK for 200 OK INVITE
                     $ackModel = $this->ackModel($receive["headers"]);
                     if (!empty($ackModel)) {
-                        $nextHop = $this->selectSipDialogNextHop($receive['headers'], $peer ?? null);
-                        $this->sendSipTo($nextHop['host'], $nextHop['port'], $this->renderSip($ackModel));
+                        $ifr = sip::extractURI($receive['headers']['Contact'][0])['peer'];
+                        $this->sendSipTo($this->host, $this->port, $this->renderSip($ackModel));
+                        $this->sendSipTo($ifr['host'], (int)$ifr['port'], $this->renderSip($ackModel));
                     }
 
                     // Update audio destination from SDP
@@ -1120,7 +1012,7 @@ class trunkController
          * Esse ACK é diálogo confirmado, então usa ackModel().
          * O ackModel precisa gerar Via limpo, não reaproveitar Via da resposta.
          */
-        $sendInvite200Ack = function (array $responseHeaders, ?array $responsePeer = null): void {
+        $sendInvite200Ack = function (array $responseHeaders): void {
             $ackModel = $this->ackModel($responseHeaders);
 
             if (empty($ackModel)) {
@@ -1129,8 +1021,22 @@ class trunkController
 
             $ackPacket = $this->renderSip($ackModel);
 
-            $nextHop = $this->selectSipDialogNextHop($responseHeaders, $responsePeer);
-            $this->sendSipTo($nextHop['host'], $nextHop['port'], $ackPacket);
+            $ackHost = $this->host;
+            $ackPort = (int)($this->port ?? 5060);
+
+            if (!empty($responseHeaders['Contact'][0])) {
+                $contactUri = sip::extractURI($responseHeaders['Contact'][0]);
+
+                if (!empty($contactUri['peer']['host'])) {
+                    $ackHost = $contactUri['peer']['host'];
+                }
+
+                if (!empty($contactUri['peer']['port'])) {
+                    $ackPort = (int)$contactUri['peer']['port'];
+                }
+            }
+
+            $this->sendSipTo($ackHost, $ackPort, $ackPacket);
         };
 
         $this->sendSipTo(
@@ -1421,7 +1327,7 @@ class trunkController
          * ACK do 200 OK do INVITE.
          * Envia uma vez, para o Contact.
          */
-        $sendInvite200Ack($receive["headers"], $peer ?? null);
+        $sendInvite200Ack($receive["headers"]);
 
         $remoteAddressAudioDestination = explode(" ", $receive["sdp"]["c"][0])[2] ?? null;
         $remotePortAudioDestination = explode(" ", $receive["sdp"]["m"][0])[1] ?? null;
@@ -1564,7 +1470,7 @@ class trunkController
                         $this->storeRemoteSdp($receive['sdp']);
                     }
 
-                    $sendInvite200Ack($receive["headers"], $peer ?? null);
+                    $sendInvite200Ack($receive["headers"]);
 
                     continue;
                 }
@@ -1643,7 +1549,7 @@ class trunkController
         $toCall = [
             'user' => $to,
             'peer' => [
-                'host' => $this->domain ?? $this->host,
+                'host' => $this->host ?? $this->domain,
                 'port' => $this->port ?? 5060,
             ]
         ];
@@ -1661,7 +1567,7 @@ class trunkController
                 "From" => [sip::renderURI([
                     "user" => !empty($this->callerId) ? $this->callerId : $this->username,
                     "peer" => [
-                        "host" => $this->domain ?? $this->host,
+                        "host" => $this->host ?? $this->domain,
                         "port" => $this->port,
                     ],
                     "additional" => ["tag" => bin2hex(secure_random_bytes(10))],
@@ -3081,90 +2987,80 @@ class trunkController
         if ($this->registerCount > 3) {
             return false;
         }
-        if ($this->sipOperationInProgress) {
-            throw new \LogicException('Já existe uma operação SIP em andamento');
-        }
-
-        $this->assertSipTransportFamily();
-        $this->sipOperationInProgress = true;
-        try {
-            $res = false;
-            $modelRegister = $this->modelRegister();
-            $renderSolution = $this->renderSip($modelRegister);
-            $startTimer = time();
-            $this->sendSipTo($this->host, $this->port, $renderSolution);
-            for (; ;) {
-                $elapsed = time() - $startTimer;
-                if ($elapsed > $maxWait) {
-                    cli::pcl("Falha ao registrar: tempo limite excedido", 'red');
+        $res = false;
+        $modelRegister = $this->modelRegister();
+        $renderSolution = $this->renderSip($modelRegister);
+        $startTimer = time();
+        $this->sendSipTo($this->host, $this->port, $renderSolution);
+        for (; ;) {
+            $elapsed = time() - $startTimer;
+            if ($elapsed > $maxWait) {
+                cli::pcl("Falha ao registrar: tempo limite excedido", 'red');
+                return false;
+            }
+            $res = $this->safeRecvfrom($peer, 1);
+            if ($res === null) {
+                // Socket ocupado, não podemos ler aqui
+                return true;
+            }
+            if ($res === false) {
+                if (time() - $startTimer > $maxWait) {
                     return false;
                 }
-                $res = $this->safeRecvfrom($peer, 1);
-                if ($res === null) {
-                    // Socket ocupado, não podemos ler aqui
-                    return true;
-                }
-                if ($res === false) {
-                    if (time() - $startTimer > $maxWait) {
+            }
+            $receive = sip::parse($res);
+            if (empty($receive['headers']['CSeq'])) {
+                cli::pcl($res, 'red');
+                continue;
+            }
+            $cseq = sip::letters($receive["headers"]["CSeq"][0]);
+            if ($cseq == 'OPTIONS') continue;
+            if ($receive['method'] == '401') {
+                $needAuth = $this->checkAuthHeaders($receive["headers"]);
+                if ($needAuth == "Proxy-Authorization") {
+                    $valueHeader = $receive["headers"]["Proxy-Authenticate"][0];
+                    if (str_contains($valueHeader, 'realm="')) {
+                        $realm = value($valueHeader, 'realm="', '"');
+                    } else {
+                        $realm = "asterisk";
+                    }
+                    if (str_contains($valueHeader, 'nonce="')) {
+                        $nonce = value($valueHeader, 'nonce="', '"');
+                    } else {
+                        $nonce = $this->nonce;
+                    }
+                    if (str_contains($valueHeader, 'qop="')) {
+                        $qop = value($valueHeader, 'qop="', '"');
+                    } else {
+                        $qop = "auth";
+                    }
+                    $isStale = str_contains($valueHeader, 'stale=true');
+                    if ($isStale || !$nonce) {
+                        continue;
+                    }
+                    $this->nonce = $nonce;
+                    $modelRegister["headers"][$needAuth][0] = sip::generateResponseProxy($this->username, $this->password, $realm, $nonce, $this->sipServerUri(), "REGISTER", $qop);
+                } else if ($needAuth == "Authorization") {
+                    $wwwAuthenticate = $receive["headers"]["WWW-Authenticate"][0];
+                    $nonce = value($wwwAuthenticate, 'nonce="', '"');
+                    $realm = value($wwwAuthenticate, 'realm="', '"');
+                    $isStale = str_contains($wwwAuthenticate, 'stale=true');
+                    if ($isStale || !$nonce) {
+                        cli::pcl("Erro ao registrar, stale=true e nonce ausente", 'bold_red');
                         return false;
                     }
+                    $this->nonce = $nonce;
+                    $modelRegister["headers"][$needAuth][0] = sip::generateAuthorizationHeader($this->username, $realm, $this->password, $nonce, $this->sipServerUri(), "REGISTER");
                 }
-                $receive = sip::parse($res);
-                if (empty($receive['headers']['CSeq'])) {
-                    cli::pcl($res, 'red');
-                    continue;
-                }
-                $cseq = sip::letters($receive["headers"]["CSeq"][0]);
-                if ($cseq == 'OPTIONS') continue;
-                if ($receive['method'] == '401') {
-                    $needAuth = $this->checkAuthHeaders($receive["headers"]);
-                    if ($needAuth == "Proxy-Authorization") {
-                        $valueHeader = $receive["headers"]["Proxy-Authenticate"][0];
-                        if (str_contains($valueHeader, 'realm="')) {
-                            $realm = value($valueHeader, 'realm="', '"');
-                        } else {
-                            $realm = "asterisk";
-                        }
-                        if (str_contains($valueHeader, 'nonce="')) {
-                            $nonce = value($valueHeader, 'nonce="', '"');
-                        } else {
-                            $nonce = $this->nonce;
-                        }
-                        if (str_contains($valueHeader, 'qop="')) {
-                            $qop = value($valueHeader, 'qop="', '"');
-                        } else {
-                            $qop = "auth";
-                        }
-                        $isStale = str_contains($valueHeader, 'stale=true');
-                        if ($isStale || !$nonce) {
-                            continue;
-                        }
-                        $this->nonce = $nonce;
-                        $modelRegister["headers"][$needAuth][0] = sip::generateResponseProxy($this->username, $this->password, $realm, $nonce, $this->sipServerUri(), "REGISTER", $qop);
-                    } else if ($needAuth == "Authorization") {
-                        $wwwAuthenticate = $receive["headers"]["WWW-Authenticate"][0];
-                        $nonce = value($wwwAuthenticate, 'nonce="', '"');
-                        $realm = value($wwwAuthenticate, 'realm="', '"');
-                        $isStale = str_contains($wwwAuthenticate, 'stale=true');
-                        if ($isStale || !$nonce) {
-                            cli::pcl("Erro ao registrar, stale=true e nonce ausente", 'bold_red');
-                            return false;
-                        }
-                        $this->nonce = $nonce;
-                        $modelRegister["headers"][$needAuth][0] = sip::generateAuthorizationHeader($this->username, $realm, $this->password, $nonce, $this->sipServerUri(), "REGISTER");
-                    }
-                    $renderSolution = $this->renderSip($modelRegister);
-                    $this->sendSipTo($this->host, $this->port, $renderSolution);
-                }
-                if ($receive['method'] == '200') {
-                    $this->csq++;
-                    $this->isRegistered = true;
-                    cli::pcl($receive['methodForParser'], 'bold_green');
-                    return true;
-                }
+                $renderSolution = $this->renderSip($modelRegister);
+                $this->sendSipTo($this->host, $this->port, $renderSolution);
             }
-        } finally {
-            $this->sipOperationInProgress = false;
+            if ($receive['method'] == '200') {
+                $this->csq++;
+                $this->isRegistered = true;
+                cli::pcl($receive['methodForParser'], 'bold_green');
+                return true;
+            }
         }
     }
 
