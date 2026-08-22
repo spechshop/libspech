@@ -239,7 +239,10 @@ class MediaChannel
 
     public function __construct(Socket|\SocketMutable &$socket, string $callId)
     {
-        $this->onDestructCallable=function (){};
+        // A non-static closure created here is bound to $this and makes the
+        // MediaChannel retain itself. That delays destruction of closed RTP
+        // sockets until cyclic GC happens to run.
+        $this->onDestructCallable = static function (): void {};
 
         $this->settings = [
             'sendSilenceProbeToMembers' => true,
@@ -509,6 +512,7 @@ class MediaChannel
     public function start(): void
     {
         Coroutine::create(function () {
+            try {
             $maxFrequency = 8000;
             $this->active = true;
 
@@ -527,7 +531,26 @@ class MediaChannel
 
             while (true) {
                 if (!$this->active) {
-                    cli::pcl("MediaChannel: Desligado", 'bold_red');
+                    // close() is normally called by the RTP control coroutine
+                    // while recvfrom() belongs to this coroutine. Swoole may
+                    // reject a cross-coroutine close, so the owner performs the
+                    // definitive close after the 200 ms receive timeout wakes.
+                    try {
+                        if (method_exists($this->socket, 'destroy')) {
+                            $this->socket->destroy();
+                        } elseif (!$this->socket->isClosed()) {
+                            $this->socket->close();
+                        }
+                    } catch (\Throwable) {
+                    }
+                    try {
+                        if (method_exists($this->eventSock, 'destroy')) {
+                            $this->eventSock->destroy();
+                        } elseif (!$this->eventSock->isClosed()) {
+                            $this->eventSock->close();
+                        }
+                    } catch (\Throwable) {
+                    }
                     return;
                 }
                 $peer = ['address' => '0.0.0.0', 'port' => 0];
@@ -738,9 +761,12 @@ class MediaChannel
                 }
 
                 if ($this->onReceiveCallable) {
-
-                        go($this->onReceiveCallable, $rtpc, $peer, $this, $this->rtpChans[$ssrc]);
-
+                    // This callback only updates in-memory session state and may
+                    // enqueue a coalesced maintenance mark. Spawning one
+                    // coroutine for every RTP packet adds scheduler pressure and
+                    // keeps MediaChannel/RtpSession references alive during
+                    // teardown. Run it inline with the receive coroutine.
+                    ($this->onReceiveCallable)($rtpc, $peer, $this, $this->rtpChans[$ssrc]);
                 }
 
                 try {
@@ -837,6 +863,25 @@ class MediaChannel
                         $lastDebug = microtime(true);
 
                     }
+                }
+            }
+            } finally {
+                $this->active = false;
+                try {
+                    if (method_exists($this->socket, 'destroy')) {
+                        $this->socket->destroy();
+                    } elseif (!$this->socket->isClosed()) {
+                        $this->socket->close();
+                    }
+                } catch (\Throwable) {
+                }
+                try {
+                    if (method_exists($this->eventSock, 'destroy')) {
+                        $this->eventSock->destroy();
+                    } elseif (!$this->eventSock->isClosed()) {
+                        $this->eventSock->close();
+                    }
+                } catch (\Throwable) {
                 }
             }
         });
@@ -1512,13 +1557,19 @@ class MediaChannel
     public function close(): void
     {
         $this->active = false;
-        try {
-            $this->socket->close();
-            if (!$this->socket->isClosed()) {
-                $this->socket->close();
-            }
-        } catch (\Throwable $e) {
-        }
+        // Do not close the RTP socket from the control coroutine. The receive
+        // coroutine owns recvfrom() and performs destroy() when its 200 ms
+        // timeout observes active=false.
+
+        // RtpSession installs closures that capture itself. Clear them
+        // explicitly so MediaChannel -> callback -> RtpSession -> socket does
+        // not retain closed kernel FDs until an eventual cyclic-GC pass.
+        $this->onReceiveCallable = null;
+        $this->onDtmfCallable = null;
+        $this->onVadChangeCallable = null;
+        $this->onRecordingCallable = null;
+        $this->onStartCallable = false;
+        $this->packetOnTimeoutCallable = false;
 
         try {
             if (!$this->eventSock->isClosed()) {
