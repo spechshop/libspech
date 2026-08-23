@@ -10,9 +10,9 @@ use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
 use Throwable;
-use function libspech\Sip\monoToStereo;
-use function libspech\Sip\stereoToMono;
-use function libspech\Sip\volumeAverage;
+use function libspech\RtpRuntime\monoToStereo;
+use function libspech\RtpRuntime\stereoToMono;
+use function libspech\RtpRuntime\volumeAverage;
 
 
 class MediaChannel
@@ -177,6 +177,9 @@ class MediaChannel
         'rtcp_packets' => 0,
         'dtmf_events' => 0,
         'bytes_received' => 0,
+        'packets_sent' => 0,
+        'bytes_sent' => 0,
+        'dropped_packets' => 0,
         'jitter' => 0.0,
         'first_arrival' => 0.0,
         'last_arrival' => 0.0,
@@ -409,14 +412,6 @@ class MediaChannel
 
             $frequencyMember = $this->ptCodecsFrequency[$info['codec']] ?? 8000;
 
-            // Encontrar o PT correto do telephone-event para este destino
-            $telephoneEventPt = $this->findTelephoneEventPt($frequencyMember);
-
-            // Configurar o PT do telephone-event no canal de destino
-            $this->members[$targetId]['rtpChannel']->setNewPtDTMF($telephoneEventPt);
-
-
-
             // Construir e enviar pacote DTMF mantendo a timeline própria do canal de destino.
             // Usar o timestamp do remetente quebra a continuidade RTP no destino, gerando
             // "Jitter buffer empty / lost frames". Aqui o timestamp do evento é congelado na
@@ -468,7 +463,7 @@ class MediaChannel
         while ($nextDuration <= $duration) {
             $payload = pack('CCn', $event, $volume & 0x3F, $nextDuration);
             $packet = $channel->buildRelayedDtmfPacket($payload, !$state['emitted'], false, $nextDuration);
-            $this->socket->sendto((string)$member['address'], (int)$member['port'], $packet);
+            $this->sendMediaPacket((string)$member['address'], (int)$member['port'], $packet);
             $state['emitted'] = true;
             $state['lastProgressDuration'] = $nextDuration;
             $nextDuration += $durationStep;
@@ -479,7 +474,7 @@ class MediaChannel
             // avançam novamente a timeline do destino.
             $payload = pack('CCn', $event, 0x80 | ($volume & 0x3F), $duration);
             $packet = $channel->buildRelayedDtmfPacket($payload, !$state['emitted'], true, $duration);
-            $this->socket->sendto((string)$member['address'], (int)$member['port'], $packet);
+            $this->sendMediaPacket((string)$member['address'], (int)$member['port'], $packet);
             $state['emitted'] = true;
             if (!$state['endForwarded'] && $duration > $state['lastProgressDuration']) {
                 $residualDuration = $duration - $state['lastProgressDuration'];
@@ -627,6 +622,16 @@ class MediaChannel
                     $lastPacketTime = microtime(true);
                 }
 
+                // RTP/RTCP needs at least the fixed header and media datagrams
+                // larger than this are never produced by the supported codecs.
+                // Keep an allocated session from becoming a generic UDP sink.
+                $packetLength = strlen($packet);
+                if ($packetLength < 12 || $packetLength > 4096) {
+                    if ($this->audioMetricsEnabled) {
+                        $this->audioMetrics['dropped_packets']++;
+                    }
+                    continue;
+                }
 
                 $idFrom = "{$peer['address']}:{$peer['port']}";
                 if ($this->audioMetricsEnabled) {
@@ -714,22 +719,6 @@ class MediaChannel
                     $this->rtpChans[$ssrc]->bcg729Channel = new bcg729Channel();
                 }
 
-                if (!$this->isMember($idFrom)) {
-                    $this->addMember([
-                        'address' => $peer['address'],
-                        'port' => $peer['port'],
-                        'codec' => $codec,
-                        'pt' => $pt,
-                        'ssrc' => $ssrcOrigin,
-                        'ssrcReceived' => $rtpc->ssrc,
-                        'timestamp' => $rtpc->timestamp,
-                        'config' => $this->options['config'] ?? [],
-                        'opus' => $this->members[$idFrom]['opus'] ?? null,
-                        'frequency' => $this->resolveFrequencyFromPt($rtpc->getCodec()) ?? 8000,
-                    ]);
-                }
-
-
                 $pcmData = false;
 
 
@@ -746,6 +735,12 @@ class MediaChannel
 
 
                 if (strtolower($codec) === 'telephone-event') {
+                    // Unknown sources never get to use an allocated session as
+                    // an RTP/DTMF relay. Comedia learning is driven by audio and
+                    // must first rebind a configured leg to this endpoint.
+                    if (!$this->isMember($idFrom)) {
+                        continue;
+                    }
                     //cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
                     if ($this->audioMetricsEnabled) {
                         $this->audioMetrics['dtmf_events']++;
@@ -767,6 +762,13 @@ class MediaChannel
                     // keeps MediaChannel/RtpSession references alive during
                     // teardown. Run it inline with the receive coroutine.
                     ($this->onReceiveCallable)($rtpc, $peer, $this, $this->rtpChans[$ssrc]);
+                }
+
+                // The callback may have confirmed an A-leg comedia candidate
+                // and atomically rebound its configured member. Until then the
+                // packet is observed but never forwarded to any destination.
+                if (!$this->isMember($idFrom)) {
+                    continue;
                 }
 
                 try {
@@ -1140,7 +1142,7 @@ class MediaChannel
                     $payload = pack('CCn', $event, $volume & 0x3F, $duration);
 
                     $packet = $rtpChannel->buildDtmfForwardPacket($payload, $eventTs, $isFirst);
-                    $this->socket->sendto($ip, $port, $packet);
+                    $this->sendMediaPacket((string)$ip, (int)$port, $packet);
 
                     // Dorme entre os pacotes, exceto depois do último "progresso"
                     if (!$isLast) {
@@ -1157,7 +1159,7 @@ class MediaChannel
                     }
 
                     $packet = $rtpChannel->buildDtmfForwardPacket($payloadEnd, $eventTs, false);
-                    $this->socket->sendto($ip, $port, $packet);
+                    $this->sendMediaPacket((string)$ip, (int)$port, $packet);
 
                     if ($r < $endRetransmits - 1) {
                         Coroutine::sleep($ptimeMs / 1000);
@@ -1374,7 +1376,7 @@ class MediaChannel
             $sequence = (int)$channel->sequenceNumber;
             $timestamp = (int)$channel->timestamp;
             $packet = $channel->buildAudioPacket($payload);
-            $this->socket->sendto((string)$member['address'], (int)$member['port'], $packet);
+            $this->sendMediaPacket((string)$member['address'], (int)$member['port'], $packet);
             $sent[] = [
                 'codec' => strtoupper((string)($member['codec'] ?? '')),
                 'payload_type' => (int)$channel->payloadType,
@@ -1449,6 +1451,42 @@ class MediaChannel
         }
 
         return null;
+    }
+
+    public function memberIdByLeg(string $leg): ?string
+    {
+        $leg = strtolower(trim($leg));
+        if (!in_array($leg, ['a', 'b'], true)) {
+            return null;
+        }
+        $this->memberByLeg($leg);
+        $id = $this->legMemberIds[$leg] ?? '';
+        return $id !== '' && isset($this->members[$id]) ? $id : null;
+    }
+
+    public function removeMemberByLeg(string $leg): bool
+    {
+        $id = $this->memberIdByLeg($leg);
+        if ($id === null) {
+            return false;
+        }
+        unset($this->members[$id], $this->registeredIds[$id], $this->lastVadActivity[$id]);
+        $this->legMemberIds[strtolower($leg)] = '';
+        foreach ($this->rtpChanMemberIds as $ssrc => $memberId) {
+            if ($memberId !== $id) continue;
+            unset($this->rtpChanMemberIds[$ssrc], $this->rtpChans[$ssrc], $this->rtpStats[$ssrc]);
+        }
+        return true;
+    }
+
+    private function sendMediaPacket(string $address, int $port, string $packet): bool
+    {
+        $sent = $this->socket->sendto($address, $port, $packet);
+        if ($sent !== false && $this->audioMetricsEnabled) {
+            $this->audioMetrics['packets_sent']++;
+            $this->audioMetrics['bytes_sent'] += strlen($packet);
+        }
+        return $sent !== false;
     }
 
     public function rebindMemberTransport(string $leg, string $address, int $port): bool
