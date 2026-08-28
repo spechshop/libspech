@@ -4,6 +4,7 @@ namespace libspech\Rtp;
 
 use bcg729Channel;
 use Closure;
+use gsmChannel;
 use libspech\Cache\cache;
 use libspech\Cli\cli;
 use opusChannel;
@@ -18,6 +19,23 @@ use function libspech\Sip\volumeAverage;
 class MediaChannel
 {
     public const DEFAULT_PACKET_TIME_MS = 20;
+    private const GSM_PCM_BYTES_PER_FRAME = 320;
+    private const GSM_BYTES_PER_FRAME = 33;
+    private const GSM_FRAME_DURATION_MS = 20;
+
+    /** @var array<int,string> */
+    private const RTP_AVP_STATIC_CODECS = [
+        0 => 'PCMU/8000/1',
+        // Historical libspech raw PCM binding retained for compatibility.
+        1 => 'PCM/8000/1',
+        3 => 'GSM/8000/1',
+        8 => 'PCMA/8000/1',
+        10 => 'L16/44100/2',
+        11 => 'L16/44100/1',
+        18 => 'G729/8000/1',
+        // PT 101 is not static RTP/AVP, but remains a legacy libspech fallback.
+        101 => 'telephone-event/8000/1',
+    ];
 
     public bool $active = true;
 
@@ -44,6 +62,13 @@ class MediaChannel
     {
         if ($ptimeMs <= 0) {
             throw new \InvalidArgumentException('Packet time deve ser maior que 0');
+        }
+
+        foreach ($this->members as $member) {
+            if (($member['ptimeExplicit'] ?? false) === true) {
+                continue;
+            }
+            $this->validatePacketTimeForCodec($ptimeMs, (string)($member['codec'] ?? ''));
         }
 
         $this->packetTimeMs = $ptimeMs;
@@ -122,13 +147,17 @@ class MediaChannel
      *     'address' => string,
      *     'port' => int,
      *     'codec' => string,
-     *     'pt' => int,
+     *     'pt' => int, // alias legado de txPt
+     *     'txPt' => int,
+     *     'rxPt' => int,
      *     'ptime' => int,
      *     'samplesPerPacket' => int,
      *     'pcmAccumulator' => string,
      *     'config' => array,
      *     'opusEncoder' => ?opusChannel,
      *     'opusDecoder' => ?opusChannel,
+     *     'gsmEncoder' => ?gsmChannel,
+     *     'gsmDecoder' => ?gsmChannel,
      *     'frequency' => int,
      *     'rtpChannel' => rtpChannel // owner de PT, sequence, timestamp e SSRC
      * ]
@@ -140,10 +169,19 @@ class MediaChannel
     public bcg729Channel $channelEncode;
     public bcg729Channel $channelDecode;
     public array $ptCodecs = [
+        0 => 'PCMU',
+        1 => 'PCM',
+        3 => 'GSM',
+        8 => 'PCMA',
         18 => 'G729', // G729
         101 => 'telephone-event', // DTMF
     ];
     public array $ptCodecsFrequency = [
+        'PCMU' => 8000,
+        'PCM' => 8000,
+        'GSM' => 8000,
+        'PCMA' => 8000,
+        'L16' => 44100,
         'G729' => 8000, // G729
         'telephone-event' => 8000, // DTMF
     ];
@@ -152,6 +190,10 @@ class MediaChannel
     public ?opusChannel $opusChannel = null;
     public string $callId;
     public array $codecMapper = [];
+    /** @var array<int,string> Explicit SDP mappings used for packets sent by libspech. */
+    public array $txCodecMapper = [];
+    /** @var array<int,string> Explicit SDP mappings used for packets received by libspech. */
+    public array $rxCodecMapper = [];
     private ?\Swoole\Coroutine\Channel $blockChannel = null;
     public $onReceiveCallable = null;
     public $onDtmfCallable = null;
@@ -268,41 +310,79 @@ class MediaChannel
 
     public function resolveCodecNameFromPt(int $pt): ?string
     {
-        if (isset($this->ptCodecs[$pt])) {
-            return $this->ptCodecs[$pt];
-        } elseif (in_array($pt, array_keys($this->codecMapper))) {
-            return explode('/', $this->codecMapper[$pt])[0];
-        } elseif ($pt === 0) {
-            return "PCMU";
-        } elseif ($pt === 1) {
-            return "PCM";
-        } elseif ($pt === 8) {
-            return "PCMA";
-        } elseif ($pt === 18) {
-            return "G729";
-        } elseif ($pt === 101) {
-            return "telephone-event";
+        $mapper = $this->rxCodecMapper !== [] ? $this->rxCodecMapper : $this->codecMapper;
+        $mapped = $this->codecNameFromMapper($mapper, $pt);
+        if ($mapped !== null) {
+            return $mapped;
         }
-        return "G729";
+
+        // `ptCodecs` remains a legacy registry. Directional SDP maps take
+        // precedence whenever present, including for static PT numbers.
+        if ($this->rxCodecMapper === [] && isset($this->ptCodecs[$pt])) {
+            return $this->ptCodecs[$pt];
+        }
+
+        return $this->codecNameFromMapper(self::RTP_AVP_STATIC_CODECS, $pt);
     }
 
     public function resolveFrequencyFromPt(int $pt): int
     {
-
-        if (isset($this->ptFrequencies[$pt])) {
-            return $this->ptFrequencies[$pt];
-        } elseif (!empty($this->ptCodecsFrequency[$this->ptCodecs[$pt]])) {
-            return $this->ptCodecsFrequency[$this->ptCodecs[$pt]];
-        } elseif (in_array($pt, array_keys($this->codecMapper))) {
-            return (int)explode('/', $this->codecMapper[$pt])[1] ?? 8000;
-        } elseif ($pt === 0) {
-            return 8000;
-        } elseif ($pt === 1) {
-            return 8000;
-        } elseif ($pt === 8) {
-            return 8000;
+        $mapper = $this->rxCodecMapper !== [] ? $this->rxCodecMapper : $this->codecMapper;
+        $mapped = $this->frequencyFromMapper($mapper, $pt);
+        if ($mapped !== null) {
+            return $mapped;
         }
-        return 8000;
+
+        if ($this->rxCodecMapper === [] && isset($this->ptFrequencies[$pt])) {
+            return $this->ptFrequencies[$pt];
+        }
+
+        return $this->frequencyFromMapper(self::RTP_AVP_STATIC_CODECS, $pt) ?? 8000;
+    }
+
+    /** @param array<int,string> $mapper */
+    private function codecNameFromMapper(array $mapper, int $pt): ?string
+    {
+        if (!array_key_exists($pt, $mapper)) {
+            return null;
+        }
+        $codec = trim((string)explode('/', (string)$mapper[$pt], 2)[0]);
+        return $codec === '' ? null : $codec;
+    }
+
+    /** @param array<int,string> $mapper */
+    private function frequencyFromMapper(array $mapper, int $pt): ?int
+    {
+        if (!array_key_exists($pt, $mapper)) {
+            return null;
+        }
+        $parts = explode('/', (string)$mapper[$pt]);
+        $frequency = (int)($parts[1] ?? 0);
+        return $frequency > 0 ? $frequency : null;
+    }
+
+    /** @param array<string,mixed>|null $member */
+    private function resolveRxCodecNameForMember(int $pt, ?array $member): ?string
+    {
+        if (is_array($member)) {
+            $mapped = $this->codecNameFromMapper((array)($member['rxCodecMapper'] ?? []), $pt);
+            if ($mapped !== null) {
+                return $mapped;
+            }
+        }
+        return $this->resolveCodecNameFromPt($pt);
+    }
+
+    /** @param array<string,mixed>|null $member */
+    private function resolveRxFrequencyForMember(int $pt, ?array $member): int
+    {
+        if (is_array($member)) {
+            $mapped = $this->frequencyFromMapper((array)($member['rxCodecMapper'] ?? []), $pt);
+            if ($mapped !== null) {
+                return $mapped;
+            }
+        }
+        return $this->resolveFrequencyFromPt($pt);
     }
 
     public function enableVAD(float $threshold = 2.0): void
@@ -656,21 +736,19 @@ class MediaChannel
                 $ssrc = $ssrcOrigin;
 
 
-                if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
-                    $member = $this->members[$idFrom] ?? null;
-                    if ($member) {
-                        $this->ptCodecs[$rtpc->getCodec()] = $member['codec'] ?? $this->defaultCodec;
-                    }
+                $sourceMember = $this->members[$idFrom] ?? null;
+                $codec = $this->resolveRxCodecNameForMember($pt, $sourceMember);
+                if ($codec === null) {
+                    // PT sem rtpmap explícito e sem binding RTP/AVP conhecido.
+                    continue;
                 }
-
-                $codec = $this->resolveCodecNameFromPt($pt) ?? $pt;
 
 
                 if ($this->audioMetricsEnabled) {
                     // Contagem por codec, perda e jitter (RFC 3550).
                     $this->audioMetrics['codecs'][$codec] = ($this->audioMetrics['codecs'][$codec] ?? 0) + 1;
 
-                    $freqStat = (int)($this->ptCodecsFrequency[$codec] ?? 8000);
+                    $freqStat = $this->resolveRxFrequencyForMember($pt, $sourceMember);
                     $arrivalTs = $currentTime * $freqStat;
                     if (isset($this->rtpStats[$ssrc])) {
                         $prev = $this->rtpStats[$ssrc];
@@ -707,7 +785,7 @@ class MediaChannel
                     $sourcePtime = ($sourceMember['rtpChannel'] ?? null) instanceof rtpChannel
                         ? $sourceMember['rtpChannel']->packetTimeMs
                         : (int)($sourceMember['ptime'] ?? $this->packetTimeMs);
-                    $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->ptCodecsFrequency[$codec] ?? 8000, $sourcePtime, $ssrc);
+                    $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->resolveRxFrequencyForMember($pt, $sourceMember), $sourcePtime, $ssrc);
                     $this->rtpChanMemberIds[$ssrc] = $idFrom;
                     $this->rtpChans[$ssrc]->sequenceNumber = $rtpc->sequence++;
                     $this->rtpChans[$ssrc]->timestamp = $rtpc->timestamp;
@@ -720,12 +798,14 @@ class MediaChannel
                         'port' => $peer['port'],
                         'codec' => $codec,
                         'pt' => $pt,
+                        'txPt' => $pt,
+                        'rxPt' => $pt,
                         'ssrc' => $ssrcOrigin,
                         'ssrcReceived' => $rtpc->ssrc,
                         'timestamp' => $rtpc->timestamp,
                         'config' => $this->options['config'] ?? [],
                         'opus' => $this->members[$idFrom]['opus'] ?? null,
-                        'frequency' => $this->resolveFrequencyFromPt($rtpc->getCodec()) ?? 8000,
+                        'frequency' => $this->resolveRxFrequencyForMember($pt, $sourceMember),
                     ]);
                 }
 
@@ -734,13 +814,6 @@ class MediaChannel
 
 
 
-
-                if (!array_key_exists($rtpc->getCodec(), $this->ptCodecs)) {
-                    $member = $this->members[$idFrom] ?? null;
-                    if ($member) {
-                        $this->ptCodecs[$rtpc->getCodec()] = $member['codec'] ?? $this->defaultCodec;
-                    }
-                }
 
                 $pt = $rtpc->getCodec();
 
@@ -760,6 +833,21 @@ class MediaChannel
                     continue;
                 }
 
+                // GSM is decoded once because its decoder is stateful. The trunk
+                // callback consumes the transient PCM copy instead of advancing
+                // the same decoder a second time.
+                if (strtoupper($codec) === 'GSM') {
+                    try {
+                        $pcmData = $this->decodeGsmPayloadForMember($idFrom, $rtpc->payloadRaw);
+                    } catch (Throwable) {
+                        $pcmData = false;
+                    }
+                    if ($pcmData === false) {
+                        continue;
+                    }
+                    $this->members[$idFrom]['gsmDecodedPcm'] = $pcmData;
+                }
+
                 if ($this->onReceiveCallable) {
                     // This callback only updates in-memory session state and may
                     // enqueue a coalesced maintenance mark. Spawning one
@@ -769,17 +857,19 @@ class MediaChannel
                     ($this->onReceiveCallable)($rtpc, $peer, $this, $this->rtpChans[$ssrc]);
                 }
 
-                try {
-                    $pcmData = match (strtoupper($codec)) {
-                        'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
-                        'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
-                        'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
-                        'OPUS' => ($this->members[$idFrom]['opusDecoder'] ?? $this->members[$idFrom]['opus'])->decode($rtpc->payloadRaw),
-                        'L16' => decodeL16ToPcm($rtpc->payloadRaw),
-                        default => false
-                    };
-                } catch (Throwable $e) {
-                    continue;
+                if (strtoupper($codec) !== 'GSM') {
+                    try {
+                        $pcmData = match (strtoupper($codec)) {
+                            'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
+                            'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
+                            'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
+                            'OPUS' => ($this->members[$idFrom]['opusDecoder'] ?? $this->members[$idFrom]['opus'])->decode($rtpc->payloadRaw),
+                            'L16' => decodeL16ToPcm($rtpc->payloadRaw),
+                            default => false
+                        };
+                    } catch (Throwable $e) {
+                        continue;
+                    }
                 }
                 if ($pcmData === false) continue;
                 if ($this->vadEnabled) {
@@ -813,7 +903,7 @@ class MediaChannel
 
                 $sourceCodec = strtoupper((string)$codec);
                 $sourceMember = $this->members[$idFrom] ?? [];
-                $sourceFrequency = (int)($sourceMember['frequency'] ?? $this->ptCodecsFrequency[$sourceCodec] ?? $this->resolveFrequencyFromPt($pt) ?? 8000);
+                $sourceFrequency = $this->resolveRxFrequencyForMember($pt, $sourceMember);
                 if ($sourceFrequency <= 0) $sourceFrequency = 8000;
 
                 $sourceChannels = (int)($sourceMember['channels'] ?? $this->ptCodecsChannels[$pt] ?? 1);
@@ -850,6 +940,9 @@ class MediaChannel
                             cli::pcl("{$this->callId} MediaChannel transcode {$sourceCodec}->{$targetCodec}: {$e->getMessage()}", 'red');
                         }
                     }
+                }
+                if ($sourceCodec === 'GSM') {
+                    unset($this->members[$idFrom]['gsmDecodedPcm']);
                 }
                 if ($this->debugEnabled) {
                     if (empty($lastDebug)) $lastDebug = microtime(true);
@@ -894,6 +987,13 @@ class MediaChannel
 
     public function addMember(array $peer): void
     {
+        $txPt = (int)($peer['txPt'] ?? $peer['pt']);
+        $rxPt = (int)($peer['rxPt'] ?? $peer['pt']);
+        // `pt` has always represented the payload emitted by this member's
+        // rtpChannel. Keep that contract while exposing both directions.
+        $peer['pt'] = $txPt;
+        $peer['txPt'] = $txPt;
+        $peer['rxPt'] = $rxPt;
         $peer['config'] = is_array($peer['config'] ?? null) ? $peer['config'] : [];
         if (isset($peer['channels'])) {
             $nc = max(1, (int)$peer['channels']);
@@ -902,7 +1002,7 @@ class MediaChannel
             $nc = $stereo ? 2 : 1;
         }
         $codec = strtoupper((string)($peer['codec'] ?? ''));
-        if (in_array($codec, ['PCMA', 'PCMU', 'G729'], true)) {
+        if (in_array($codec, ['PCMA', 'PCMU', 'G729', 'GSM'], true)) {
             $peer['frequency'] = 8000;
             $nc = 1;
         }
@@ -912,12 +1012,25 @@ class MediaChannel
         if ($ptimeMs <= 0) {
             throw new \InvalidArgumentException('Packet time do membro deve ser maior que 0');
         }
+        $this->validatePacketTimeForCodec($ptimeMs, $codec);
+
+        $mapping = $codec . '/' . (int)$peer['frequency'] . '/' . $nc;
+        $peer['txCodecMapper'] = is_array($peer['txCodecMapper'] ?? null)
+            ? $peer['txCodecMapper']
+            : ($this->txCodecMapper !== [] ? $this->txCodecMapper : [$txPt => $mapping]);
+        $peer['rxCodecMapper'] = is_array($peer['rxCodecMapper'] ?? null)
+            ? $peer['rxCodecMapper']
+            : ($this->rxCodecMapper !== [] ? $this->rxCodecMapper : [$rxPt => $mapping]);
 
         // Encoder e decoder Opus separados evitam compartilhar estado entre as duas
         // direções do mesmo membro. `opus` permanece como alias legado do decoder.
         $peer['opusEncoder'] = new opusChannel(48000, $nc);
         $peer['opusDecoder'] = new opusChannel(48000, $nc);
         $peer['opus'] = $peer['opusDecoder'];
+        if ($codec === 'GSM') {
+            $peer['gsmEncoder'] = new gsmChannel();
+            $peer['gsmDecoder'] = new gsmChannel();
+        }
         $id = "{$peer['address']}:{$peer['port']}";
 
         if (!empty($peer['config'])) {
@@ -947,7 +1060,7 @@ class MediaChannel
             $opus->setBitrate($peer['config']['maxplaybackrate'] ?? 24000);
         }
 
-        $peer['rtpChannel'] = new rtpChannel((int)$peer['pt'], (int)$peer['frequency'], $ptimeMs, $this->generateDeterministicSsrc($id));
+        $peer['rtpChannel'] = new rtpChannel($txPt, (int)$peer['frequency'], $ptimeMs, $this->generateDeterministicSsrc($id));
         $peer['rtpChannel']->setSsrc($this->generateDeterministicSsrc($id));
         $peer['ptime'] = $ptimeMs;
         $peer['ptimeExplicit'] = $ptimeExplicit;
@@ -957,8 +1070,8 @@ class MediaChannel
         if ($codec === 'G729') {
             $peer['bcg729Channel'] = new bcg729Channel();
         }
-        $this->ptCodecsChannels[$peer['pt']] = $nc;
-        $this->ptFrequencies[$peer['pt']] = (int)$peer['frequency'];
+        $this->ptCodecsChannels[$txPt] = $nc;
+        $this->ptFrequencies[$txPt] = (int)$peer['frequency'];
         $this->members[$id] = $peer;
         if (in_array((string)($peer['leg'] ?? ''), ['a', 'b'], true)) {
             $this->legMemberIds[(string)$peer['leg']] = $id;
@@ -1299,7 +1412,7 @@ class MediaChannel
         $frequency = max(1, (int)($member['frequency'] ?? 8000));
         $channels = max(1, (int)($member['channels'] ?? 1));
 
-        if (in_array($codec, ['PCMA', 'PCMU', 'G729'], true)) {
+        if (in_array($codec, ['PCMA', 'PCMU', 'G729', 'GSM'], true)) {
             $frequency = 8000;
             $channels = 1;
         }
@@ -1399,8 +1512,43 @@ class MediaChannel
             'PCM' => $pcmFrame,
             'OPUS' => $this->encodeOpusFrameForMember($id, $pcmFrame),
             'G729' => $this->encodeG729FrameForMember($id, $pcmFrame),
+            'GSM' => $this->encodeGsmFrameForMember($id, $pcmFrame),
             default => throw new \RuntimeException('playback_codec_not_supported'),
         };
+    }
+
+    private function encodeGsmFrameForMember(string $id, string $pcmFrame): string
+    {
+        $encoder = $this->members[$id]['gsmEncoder'] ?? null;
+        $pcmBytes = strlen($pcmFrame);
+        if (!$encoder instanceof gsmChannel) {
+            throw new \RuntimeException('playback_gsm_encoder_not_found');
+        }
+        if ($pcmBytes === 0 || ($pcmBytes % self::GSM_PCM_BYTES_PER_FRAME) !== 0) {
+            throw new \RuntimeException('playback_gsm_frame_invalid');
+        }
+
+        $payload = $encoder->encode($pcmFrame);
+        $expectedBytes = intdiv($pcmBytes, self::GSM_PCM_BYTES_PER_FRAME) * self::GSM_BYTES_PER_FRAME;
+        if ($payload === false || strlen($payload) !== $expectedBytes) {
+            throw new \RuntimeException('playback_gsm_encode_failed');
+        }
+        return $payload;
+    }
+
+    private function decodeGsmPayloadForMember(string $id, string $payload): string|false
+    {
+        $decoder = $this->members[$id]['gsmDecoder'] ?? null;
+        if (!$decoder instanceof gsmChannel || $payload === '' || (strlen($payload) % self::GSM_BYTES_PER_FRAME) !== 0) {
+            return false;
+        }
+
+        $pcm = $decoder->decode($payload);
+        $expectedBytes = intdiv(strlen($payload), self::GSM_BYTES_PER_FRAME) * self::GSM_PCM_BYTES_PER_FRAME;
+        if ($pcm === false || strlen($pcm) !== $expectedBytes) {
+            return false;
+        }
+        return $pcm;
     }
 
     private function encodeOpusFrameForMember(string $id, string $pcmFrame): string
@@ -1533,6 +1681,16 @@ class MediaChannel
                 }
                 return $payload;
 
+            case 'GSM':
+                $encoder = $member['gsmEncoder'] ?? null;
+                if (!$encoder instanceof gsmChannel || $samplesPerPacket % 160 !== 0) {
+                    return null;
+                }
+                $pcm = str_repeat("\x00\x00", $samplesPerPacket);
+                $payload = $encoder->encode($pcm);
+                $expectedBytes = intdiv($samplesPerPacket, 160) * self::GSM_BYTES_PER_FRAME;
+                return $payload !== false && strlen($payload) === $expectedBytes ? $payload : null;
+
             default:
                 return null;
         }
@@ -1552,6 +1710,13 @@ class MediaChannel
     private function samplesForPacket(int $frequency, ?int $ptimeMs = null): int
     {
         return max(1, (int)round(($frequency * ($ptimeMs ?? $this->packetTimeMs)) / 1000));
+    }
+
+    private function validatePacketTimeForCodec(int $ptimeMs, string $codec): void
+    {
+        if (strtoupper(trim($codec)) === 'GSM' && ($ptimeMs % self::GSM_FRAME_DURATION_MS) !== 0) {
+            throw new \InvalidArgumentException('Packet time de GSM deve ser múltiplo de 20 ms');
+        }
     }
 
     public function close(): void
@@ -1634,6 +1799,12 @@ class MediaChannel
                 if (($member['bcg729Channel'] ?? null) instanceof bcg729Channel) {
                     $member['bcg729Channel']->close();
                 }
+                foreach (['gsmEncoder', 'gsmDecoder'] as $gsmKey) {
+                    $gsm = $member[$gsmKey] ?? null;
+                    if ($gsm instanceof gsmChannel) {
+                        $gsm->close();
+                    }
+                }
                 $this->members[$id]['pcmAccumulator'] = '';
                 if (isset($member['rtpChannel'])) {
                     unset($member['rtpChannel']);
@@ -1693,7 +1864,11 @@ class MediaChannel
     {
         $preRender = [
             0 => 'PCMU/8000',
+            1 => 'PCM/8000',
+            3 => 'GSM/8000',
             8 => 'PCMA/8000',
+            10 => 'L16/44100/2',
+            11 => 'L16/44100/1',
             18 => 'G729/8000',
             101 => 'telephone-event/8000',
         ];
@@ -1744,10 +1919,7 @@ class MediaChannel
 
     public function getFrequencyFromPtCodec(int $pt)
     {
-        if (isset($this->ptCodecsFrequency[$this->ptCodecs[$pt]])) {
-            return $this->ptCodecsFrequency[$this->ptCodecs[$pt]];
-        }
-        return 8000;
+        return $this->resolveFrequencyFromPt($pt);
     }
 
 

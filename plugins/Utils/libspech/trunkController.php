@@ -20,6 +20,14 @@ use Swoole\Timer;
 class trunkController
 {
     private const OPUS_PACKET_TIMES_MS = [5, 10, 20, 40, 60, 80, 100, 120];
+    private const RTP_AVP_STATIC_CODECS = [
+        0 => 'PCMU/8000/1',
+        3 => 'GSM/8000/1',
+        8 => 'PCMA/8000/1',
+        10 => 'L16/44100/2',
+        11 => 'L16/44100/1',
+        18 => 'G729/8000/1',
+    ];
 
     public bool $callableRingInvoked = false;
     public mixed $username;
@@ -129,6 +137,7 @@ class trunkController
             "fmtp:101 0-16",
         ],
         8 => ["rtpmap:8 PCMA/8000"],
+        3 => ["rtpmap:3 GSM/8000"],
     ];
     public array $members = [];
     public bool|string $domain = false;
@@ -175,6 +184,12 @@ class trunkController
     public string $userAgent = 'SPECHSHOP LIB';
     private string|int|null $ptTelephoneEvent;
     private string|int|null $ptUse=8;
+    private string|int|null $txPt=8;
+    private string|int|null $rxPt=8;
+    /** @var array<int,string> Explicit mappings from the remote SDP used for TX. */
+    public array $txCodecMapper = [];
+    /** @var array<int,string> Explicit mappings from libspech's local SDP used for RX. */
+    public array $rxCodecMapper = [];
     public array $sdp;
     public $bcgChannel;
     public bool $closing = false;
@@ -547,6 +562,7 @@ class trunkController
 
         $ptStrict = [
             'PCMU' => 0,
+            'GSM' => 3,
             'PCMA' => 8,
             'G729' => 18,
             'TELEPHONE-EVENT' => 101,
@@ -626,10 +642,17 @@ class trunkController
     public function setupForIncoming(int $ptUse, string $codecName, int $frequencyCall, array $sdpReceived = []): void
     {
         $this->validatePacketTimeForCodec($this->configuredPacketTime, $codecName);
+        $this->txPt = $ptUse;
+        $this->rxPt = $ptUse;
         $this->ptUse = $ptUse;
         $this->codecName = $codecName;
         $this->frequencyCall = $frequencyCall;
+        $this->rxCodecMapper = [];
         $this->storeRemoteSdp($sdpReceived);
+        $remoteMapper = self::codecMapperFromSdp($sdpReceived);
+        $mapping = strtoupper($codecName) . '/' . $frequencyCall . '/1';
+        $this->rxCodecMapper = $remoteMapper !== [] ? $remoteMapper : [$ptUse => $mapping];
+        $this->txCodecMapper = [$ptUse => $mapping];
         $this->mapLearn[$ptUse] = ["rtpmap:{$ptUse} {$codecName}/{$frequencyCall}"];
     }
 
@@ -1536,9 +1559,15 @@ class trunkController
         $this->sdp = $sdp;
         cli::pcl("audio {$this->rtpSocket->getsockname()['port']} RTP/AVP " . implode(' ', array_keys($this->mapLearn)), 'bold_green');
         $this->ptUse = array_key_first($this->mapLearn);
-        $this->ptTelephoneEvent = array_key_last($this->mapLearn);
-        $this->codecName = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['name'];
-        $this->frequencyCall = self::getSDPModelCodecs($this->sdp['a'])['preferredCodec']['rate'];
+        $this->rxPt = $this->ptUse;
+        $this->txPt = $this->ptUse;
+        $this->rxCodecMapper = self::codecMapperFromSdp($this->sdp);
+        // Until an answer arrives, preserve the legacy symmetric PT behavior.
+        $this->txCodecMapper = $this->rxCodecMapper;
+        $parsedLocalSdp = self::getSDPModelCodecs($this->sdp['a']);
+        $this->ptTelephoneEvent = $parsedLocalSdp['dtmfCodec']['pt'] ?? array_key_last($this->mapLearn);
+        $this->codecName = $parsedLocalSdp['preferredCodec']['name'];
+        $this->frequencyCall = $parsedLocalSdp['preferredCodec']['rate'];
 
         if (strlen($prefix) > 0 && !str_starts_with($to, $prefix)) {
             $to = $prefix . $to;
@@ -1705,10 +1734,97 @@ class trunkController
             "codecRtpMap" => $codecRtpMap,
             "preferredCodec" => $preferredCodec,
             "dtmfCodec" => $dtmfCodec,
-            "config" => [
+            "config" => $preferredCodec === null ? [] : [
                 (int)$preferredCodec['pt'] => $lineArg
             ]
         ];
+    }
+
+    /** @return array<int,string> Explicit rtpmap entries keyed by payload type. */
+    private static function codecMapperFromSdp(array $sdp): array
+    {
+        $mapper = [];
+        foreach ((array)($sdp['a'] ?? []) as $attribute) {
+            if (!is_string($attribute)) {
+                continue;
+            }
+            if (preg_match('/^(?:a=)?rtpmap\s*:\s*(\d+)\s+([^\s]+)\s*$/i', trim($attribute), $match) !== 1) {
+                continue;
+            }
+            $mapper[(int)$match[1]] = $match[2];
+        }
+        return $mapper;
+    }
+
+    /** @return list<int> */
+    private static function audioPayloadTypesFromSdp(array $sdp): array
+    {
+        foreach ((array)($sdp['m'] ?? []) as $mediaLine) {
+            if (!is_string($mediaLine)) {
+                continue;
+            }
+            $parts = preg_split('/\s+/', trim(preg_replace('/^m=/i', '', $mediaLine)));
+            if (($parts[0] ?? '') !== 'audio') {
+                continue;
+            }
+            return array_values(array_map('intval', array_slice($parts, 3)));
+        }
+        return [];
+    }
+
+    /** @return array{pt:int,name:string,rate:int,channels:int}|null */
+    private static function preferredAudioCodecFromSdp(array $sdp): ?array
+    {
+        $explicitMapper = self::codecMapperFromSdp($sdp);
+        $payloadTypes = self::audioPayloadTypesFromSdp($sdp);
+        if ($payloadTypes === []) {
+            $payloadTypes = array_keys($explicitMapper);
+        }
+
+        foreach ($payloadTypes as $pt) {
+            $descriptor = $explicitMapper[$pt] ?? self::RTP_AVP_STATIC_CODECS[$pt] ?? null;
+            if ($descriptor === null) {
+                continue;
+            }
+            $parts = explode('/', $descriptor);
+            $name = strtoupper(trim((string)($parts[0] ?? '')));
+            if ($name === '' || $name === 'TELEPHONE-EVENT') {
+                continue;
+            }
+            return [
+                'pt' => (int)$pt,
+                'name' => $name,
+                'rate' => max(1, (int)($parts[1] ?? 8000)),
+                'channels' => max(1, (int)($parts[2] ?? 1)),
+            ];
+        }
+        return null;
+    }
+
+    /** @param array{pt:int,name:string,rate:int,channels:int} $remoteCodec */
+    private function applyRemoteAnswerNegotiation(array $remoteCodec): void
+    {
+        $this->txPt = $remoteCodec['pt'];
+        $this->txCodecMapper[$remoteCodec['pt']] ??= implode('/', [
+            $remoteCodec['name'],
+            $remoteCodec['rate'],
+            $remoteCodec['channels'],
+        ]);
+        $this->ptUse = $this->txPt;
+        $this->codecName = $remoteCodec['name'];
+        $this->frequencyCall = $remoteCodec['rate'];
+        $this->defaultChannels = $remoteCodec['channels'];
+
+        foreach ($this->rxCodecMapper as $pt => $descriptor) {
+            $parts = explode('/', $descriptor);
+            $name = strtoupper(trim((string)($parts[0] ?? '')));
+            $rate = max(1, (int)($parts[1] ?? 8000));
+            $channels = max(1, (int)($parts[2] ?? 1));
+            if ($name === $remoteCodec['name'] && $rate === $remoteCodec['rate'] && $channels === $remoteCodec['channels']) {
+                $this->rxPt = (int)$pt;
+                return;
+            }
+        }
     }
 
     public static function parseArgumentRtpMap(string $line): array
@@ -2026,16 +2142,24 @@ class trunkController
 
             $this->mediaChannel->portList = $this->audioReceivePort;
             $this->mediaChannel->onDtmfCallable = $this->onDtmfCallable;
-            $this->mediaChannel->codecMapper = [
-                $this->ptUse => strtoupper(implode('/', [
-                    $this->codecName,
-                    $this->frequencyCall,
-                    $this->defaultChannels
-                ])),
-            ];
+            $txPt = (int)($this->txPt ?? $this->ptUse);
+            $rxPt = (int)($this->rxPt ?? $this->ptUse);
+            $fallbackMapping = strtoupper(implode('/', [
+                $this->codecName,
+                $this->frequencyCall,
+                $this->defaultChannels
+            ]));
+            $this->mediaChannel->txCodecMapper = $this->txCodecMapper !== []
+                ? $this->txCodecMapper
+                : [$txPt => $fallbackMapping];
+            $this->mediaChannel->rxCodecMapper = $this->rxCodecMapper !== []
+                ? $this->rxCodecMapper
+                : [$rxPt => $fallbackMapping];
+            // Legacy mapper follows the legacy PT field: both describe TX.
+            $this->mediaChannel->codecMapper = $this->mediaChannel->txCodecMapper;
             $this->mediaChannel->registerPtCodecs($this->mediaChannel->codecMapper);
             $audioAttributes = [];
-            foreach ($this->sdpReceived['a'] as $value) {
+            foreach ((array)($this->sdpReceived['a'] ?? []) as $value) {
                 $commons = explode(' ', $value);
                 foreach ($commons as $common) {
                     $parts = explode(':', $common);
@@ -2045,10 +2169,10 @@ class trunkController
                     }
                 }
             }
-            $parser = trunkController::getSDPModelCodecs($this->sdpReceived['a']);
+            $parser = trunkController::getSDPModelCodecs((array)($this->sdpReceived['a'] ?? []));
 
-            if (array_key_exists('config', $parser) && array_key_exists('stereo', $parser['config'][$this->ptUse])) {
-                $this->defaultChannels = $parser['config'][$this->ptUse]['stereo'] ? 2 : 1;
+            if (array_key_exists('config', $parser) && array_key_exists('stereo', $parser['config'][$txPt] ?? [])) {
+                $this->defaultChannels = $parser['config'][$txPt]['stereo'] ? 2 : 1;
             } else {
                 $this->defaultChannels = 1;
             }
@@ -2057,9 +2181,13 @@ class trunkController
                 'address' => $this->audioRemoteIp,
                 'port' => $this->audioRemotePort,
                 'codec' => $this->codecName,
-                'pt' => $this->ptUse,
+                'pt' => $txPt,
+                'txPt' => $txPt,
+                'rxPt' => $rxPt,
+                'txCodecMapper' => $this->mediaChannel->txCodecMapper,
+                'rxCodecMapper' => $this->mediaChannel->rxCodecMapper,
                 'timestamp' => time(),
-                'config' => $parser['config'][$this->ptUse] ?? [],
+                'config' => $parser['config'][$txPt] ?? [],
                 'ssrc' => $audioAttributes['ssrc'] ?? $this->ssrc,
                 'frequency' => $this->frequencyCall,
                 'channels' => $this->defaultChannels,
@@ -2115,6 +2243,10 @@ class trunkController
                             ->members[$targetId]['rtpChannel']
                             ->bcg729Channel
                             ->decode($rtpc->payloadRaw);
+                        break;
+
+                    case 'GSM':
+                        $pcmData = $this->mediaChannel->members[$targetId]['gsmDecodedPcm'] ?? null;
                         break;
 
                     case 'OPUS':
@@ -2316,6 +2448,13 @@ class trunkController
         $this->sdpReceived = array_merge(['a' => [], 'm' => [], 'c' => []], $sdp);
         $attributes = is_array($this->sdpReceived['a'] ?? null) ? $this->sdpReceived['a'] : [];
         $this->remoteMaxPacketTime = $this->extractMaxPacketTime($attributes);
+        $this->txCodecMapper = self::codecMapperFromSdp($this->sdpReceived);
+        if ($this->rxCodecMapper !== []) {
+            $remoteCodec = self::preferredAudioCodecFromSdp($this->sdpReceived);
+            if ($remoteCodec !== null) {
+                $this->applyRemoteAnswerNegotiation($remoteCodec);
+            }
+        }
         $this->applyConfiguredPacketTime();
     }
 
@@ -2353,6 +2492,10 @@ class trunkController
             $compatiblePacketTime = intdiv($remoteMaxPacketTime, 10) * 10;
             return $compatiblePacketTime > 0 ? $compatiblePacketTime : null;
         }
+        if ($codec === 'GSM') {
+            $compatiblePacketTime = intdiv($remoteMaxPacketTime, 20) * 20;
+            return $compatiblePacketTime > 0 ? $compatiblePacketTime : null;
+        }
         return $remoteMaxPacketTime;
     }
 
@@ -2367,6 +2510,9 @@ class trunkController
         }
         if ($codec === 'G729' && $packetTime % 10 !== 0) {
             throw new \InvalidArgumentException('Packet time de G.729 deve ser múltiplo de 10 ms');
+        }
+        if ($codec === 'GSM' && $packetTime % 20 !== 0) {
+            throw new \InvalidArgumentException('Packet time de GSM deve ser múltiplo de 20 ms');
         }
     }
 
@@ -2514,6 +2660,7 @@ class trunkController
                     if ($this->defaultChannels > 1) $pcm= stereoToMono($pcm);
                     switch ($codecName) {
                         case 'G729':
+                        case 'GSM':
                             $channels[] = $pcm;
                             break;
                         case 'PCMU':
@@ -3684,13 +3831,15 @@ class trunkController
                 // Encoder dedicado p/ build de cache global (stateful). Não compartilhar com encoder da chamada.
                 if ($codec === 'G729') {
                     $this->preEncodedInfo['fileEncoder'] = new \bcg729Channel();
+                } elseif ($codec === 'GSM') {
+                    $this->preEncodedInfo['fileEncoder'] = new \gsmChannel();
                 } elseif ($codec === 'OPUS') {
                     $this->preEncodedInfo['fileEncoder'] = new \opusChannel(48000, $channelsMember);
                 }
             }
 
             // Codecs stateless são seguros p/ cache por chunk; stateful exige sequência inteira.
-            $stateful = in_array($codec, ['G729', 'OPUS'], true);
+            $stateful = in_array($codec, ['G729', 'GSM', 'OPUS'], true);
 
             $encodedKey = null;
             if ($this->audioMemorySharingEnabled) {
@@ -3821,6 +3970,23 @@ class trunkController
                             }
                             break;
 
+                        case 'GSM':
+                            if ($frequencyPacket !== 8000) {
+                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000, [
+                                    'input_channels' => $channelsMember,
+                                    'output_channels' => 1,
+                                ]);
+                            }
+                            $pcmChunk = $phone->fitPcmToPacketTime($pcmChunk, 8000, 1);
+                            if (isset($this->preEncodedInfo['fileEncoder']) && strlen($pcmChunk) % 320 === 0) {
+                                $gsmPayload = $this->preEncodedInfo['fileEncoder']->encode($pcmChunk);
+                                $expectedGsmBytes = intdiv(strlen($pcmChunk), 320) * 33;
+                                $encode = $gsmPayload !== false && strlen($gsmPayload) === $expectedGsmBytes
+                                    ? $gsmPayload
+                                    : null;
+                            }
+                            break;
+
                         case 'OPUS':
                             if ($frequencyPacket !== 48000) {
                                 $pcm48 = $phone->doResample($pcmChunk, $frequencyPacket, 48000, [
@@ -3905,7 +4071,7 @@ class trunkController
 
     /**
      * Pré-constrói a sequência inteira de frames encoded para codecs stateful
-     * (G729/OPUS), usando um encoder dedicado para não corromper o estado da chamada.
+     * (G729/GSM/OPUS), usando um encoder dedicado para não corromper o estado da chamada.
      * Publica o payload completo no cache global apenas se ninguém estiver construindo.
      *
      * Retorna o payload (com 'chunks' e 'complete' => true) em caso de sucesso,
@@ -3942,6 +4108,8 @@ class trunkController
             $fileEncoder = null;
             if ($codec === 'G729') {
                 $fileEncoder = new \bcg729Channel();
+            } elseif ($codec === 'GSM') {
+                $fileEncoder = new \gsmChannel();
             } elseif ($codec === 'OPUS') {
                 $fileEncoder = new \opusChannel(48000, $channelsMember);
             } else {
@@ -3972,15 +4140,21 @@ class trunkController
                     ]);
                 }
 
-                if ($codec === 'G729') {
+                if ($codec === 'G729' || $codec === 'GSM') {
                     if ($frequencyPacket !== 8000) {
                         $pcmChunk = $this->doResample($pcmChunk, $frequencyPacket, 8000, [
                             'input_channels' => $channelsMember,
-                            'output_channels' => $channelsMember,
+                            'output_channels' => $codec === 'GSM' ? 1 : $channelsMember,
                         ]);
                     }
-                    $pcmChunk = $this->fitPcmToPacketTime($pcmChunk, 8000, $channelsMember);
+                    $pcmChunk = $this->fitPcmToPacketTime($pcmChunk, 8000, $codec === 'GSM' ? 1 : $channelsMember);
                     $enc = $fileEncoder->encode($pcmChunk);
+                    if ($codec === 'GSM') {
+                        $expectedGsmBytes = intdiv(strlen($pcmChunk), 320) * 33;
+                        if ($enc === false || strlen($enc) !== $expectedGsmBytes) {
+                            $enc = null;
+                        }
+                    }
                 } else { // OPUS
                     if ($frequencyPacket !== 48000) {
                         $pcm48 = $this->doResample($pcmChunk, $frequencyPacket, 48000, [

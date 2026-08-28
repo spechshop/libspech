@@ -17,6 +17,7 @@ class rtpChannel
 
     // Tipos de payload de áudio
     public const PAYLOAD_PCMU = 0;   // G.711 µ-law
+    public const PAYLOAD_GSM = 3;    // GSM 06.10
     public const PAYLOAD_PCMA = 8;   // G.711 A-law
     public const PAYLOAD_G729 = 18;  // G.729
     public const PAYLOAD_DTMF = 101; // RFC 2833 DTMF

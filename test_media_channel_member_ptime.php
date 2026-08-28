@@ -88,6 +88,7 @@ function memberPtimeAdd(
 ): string {
     $payloadType = match ($codec) {
         'PCMU' => rtpChannel::PAYLOAD_PCMU,
+        'GSM' => rtpChannel::PAYLOAD_GSM,
         'PCMA' => rtpChannel::PAYLOAD_PCMA,
         'G729' => rtpChannel::PAYLOAD_G729,
         'OPUS' => 111,
@@ -340,5 +341,209 @@ $l16Id = memberPtimeAdd($l16Media, 'b', 26410, 'L16', 10, 16000, 2);
 $l16Media->sendPcmToLeg('b', memberPtimePcm(160 * 2), 16000, 2);
 memberPtimeAssertSame(640, strlen(memberPtimeDecodeRtp($l16Socket->packets[0]['data'])['payload']), 'L16/16k/stereo/10 gera frame completo');
 memberPtimeAssertSame(160, $l16Media->members[$l16Id]['samplesPerPacket'], 'L16/16k/10 tem 160 samples por canal');
+
+// GSM usa o accumulator normal, um encode multi-frame por RTP e timeline do rtpChannel.
+foreach ([20 => 33, 40 => 66, 60 => 99, 80 => 132] as $ptime => $gsmBytes) {
+    $gsmSocket = new MemberPtimeCaptureSocket();
+    $gsmMedia = memberPtimeMedia($gsmSocket);
+    $gsmId = memberPtimeAdd($gsmMedia, 'a', 28000 + $ptime, 'GSM', $ptime);
+    $gsmChannel = $gsmMedia->members[$gsmId]['rtpChannel'];
+    $gsmChannel->timestamp = 50000;
+    $pcm = memberPtimePcm(8 * $ptime);
+    $gsmMedia->sendPcmToLeg('a', $pcm, 8000);
+    $decodedRtp = memberPtimeDecodeRtp($gsmSocket->packets[0]['data']);
+    memberPtimeAssertSame($gsmBytes, strlen($decodedRtp['payload']), "GSM/$ptime: payload");
+    memberPtimeAssertSame(0x0d, (ord($decodedRtp['payload'][0]) >> 4) & 0x0f, "GSM/$ptime: framing RTP");
+    memberPtimeAssertSame(50000 + (8 * $ptime), $gsmChannel->timestamp, "GSM/$ptime: timestamp");
+    $decodedPcm = $gsmMedia->members[$gsmId]['gsmDecoder']->decode($decodedRtp['payload']);
+    memberPtimeAssertSame(16 * $ptime, strlen($decodedPcm), "GSM/$ptime: decode PCM");
+
+    $silence = $silenceMethod->invoke($gsmMedia, $gsmMedia->members[$gsmId]);
+    memberPtimeAssertSame($gsmBytes, strlen($silence), "GSM/$ptime: silence probe");
+}
+
+foreach ([10, 30, 50] as $invalidGsmPtime) {
+    try {
+        memberPtimeAdd(memberPtimeMedia(new MemberPtimeCaptureSocket()), 'a', 29000 + $invalidGsmPtime, 'GSM', $invalidGsmPtime);
+        throw new RuntimeException("GSM aceitou ptime inválido de $invalidGsmPtime ms");
+    } catch (InvalidArgumentException) {
+    }
+}
+$inheritedGsmMedia = memberPtimeMedia(new MemberPtimeCaptureSocket());
+$inheritedGsmMedia->addMember([
+    'address' => '127.0.0.1', 'port' => 29080, 'leg' => 'a', 'codec' => 'GSM',
+    'pt' => 3, 'frequency' => 8000, 'channels' => 1, 'config' => [],
+]);
+try {
+    $inheritedGsmMedia->setPacketTime(30);
+    throw new RuntimeException('setPacketTime aceitou 30 ms com membro GSM herdado');
+} catch (InvalidArgumentException) {
+}
+memberPtimeAssertSame(20, $inheritedGsmMedia->getPacketTime(), 'ptime GSM inválido não altera default do MediaChannel');
+
+// O mapa SDP explícito da direção RX ganha até de bindings estáticos.
+$mappingMedia = memberPtimeMedia(new MemberPtimeCaptureSocket());
+$mappingMedia->rxCodecMapper = [18 => 'GSM/8000', 96 => 'L16/8000/1'];
+memberPtimeAssertSame('GSM', strtoupper((string)$mappingMedia->resolveCodecNameFromPt(18)), 'rtpmap explícito 18=GSM ganha de G729 estático');
+memberPtimeAssertSame('L16', strtoupper((string)$mappingMedia->resolveCodecNameFromPt(96)), 'rtpmap explícito resolve L16 dinâmico');
+$mappingMedia->rxCodecMapper = [];
+$mappingMedia->codecMapper = [];
+memberPtimeAssertSame('G729', strtoupper((string)$mappingMedia->resolveCodecNameFromPt(18)), 'binding padrão 18=G729');
+memberPtimeAssertSame('GSM', strtoupper((string)$mappingMedia->resolveCodecNameFromPt(3)), 'binding padrão 3=GSM');
+memberPtimeAssertSame('PCMU', strtoupper((string)$mappingMedia->resolveCodecNameFromPt(0)), 'binding padrão 0=PCMU');
+memberPtimeAssertSame('PCMA', strtoupper((string)$mappingMedia->resolveCodecNameFromPt(8)), 'binding padrão 8=PCMA');
+memberPtimeAssertSame('PCM', strtoupper((string)$mappingMedia->resolveCodecNameFromPt(1)), 'binding PCM legado permanece disponível');
+memberPtimeAssertSame(null, $mappingMedia->resolveCodecNameFromPt(127), 'PT desconhecido não assume G729');
+
+// Compatibilidade do member público: pt continua sendo TX e addMember legado é simétrico.
+$legacyMedia = memberPtimeMedia(new MemberPtimeCaptureSocket());
+$legacyId = memberPtimeAdd($legacyMedia, 'a', 29100, 'PCMA', 20);
+memberPtimeAssertSame(8, $legacyMedia->members[$legacyId]['pt'], 'member legado preserva pt');
+memberPtimeAssertSame(8, $legacyMedia->members[$legacyId]['txPt'], 'member legado deriva txPt de pt');
+memberPtimeAssertSame(8, $legacyMedia->members[$legacyId]['rxPt'], 'member legado deriva rxPt de pt');
+$directionalId = '127.0.0.1:29101';
+$legacyMedia->addMember([
+    'address' => '127.0.0.1', 'port' => 29101, 'leg' => 'b', 'codec' => 'GSM',
+    'pt' => 110, 'txPt' => 110, 'rxPt' => 96, 'frequency' => 8000,
+    'ptime' => 20, 'channels' => 1, 'config' => [],
+    'txCodecMapper' => [110 => 'GSM/8000'],
+    'rxCodecMapper' => [96 => 'GSM/8000'],
+]);
+memberPtimeAssertSame(110, $legacyMedia->members[$directionalId]['pt'], 'pt legado acompanha txPt assimétrico');
+memberPtimeAssertSame(110, $legacyMedia->members[$directionalId]['rtpChannel']->payloadType, 'rtpChannel usa txPt');
+memberPtimeAssertSame(96, $legacyMedia->members[$directionalId]['rxPt'], 'member preserva rxPt distinto');
+$legacyMedia->sendPcmToLeg('b', memberPtimePcm(160), 8000);
+memberPtimeAssertSame(110, ord($legacyMedia->socket->packets[0]['data'][1]) & 0x7f, 'RTP GSM assimétrico é emitido com txPt');
+
+// Falhas baratas de framing não avançam/corrompem o decoder do membro.
+$decodeGsm = new ReflectionMethod(MediaChannel::class, 'decodeGsmPayloadForMember');
+$validGsm = $legacyMedia->members[$directionalId]['gsmEncoder']->encode(memberPtimePcm(160));
+memberPtimeAssertSame(false, $decodeGsm->invoke($legacyMedia, $directionalId, substr($validGsm, 0, 32)), 'GSM RX ignora 32 bytes');
+memberPtimeAssertSame(false, $decodeGsm->invoke($legacyMedia, $directionalId, $validGsm . "\x00"), 'GSM RX ignora 34 bytes');
+$invalidNibbleGsm = $validGsm;
+$invalidNibbleGsm[0] = chr(ord($invalidNibbleGsm[0]) & 0x0f);
+memberPtimeAssertSame(false, $decodeGsm->invoke($legacyMedia, $directionalId, $invalidNibbleGsm), 'GSM RX ignora nibble inválido');
+memberPtimeAssertSame(320, strlen($decodeGsm->invoke($legacyMedia, $directionalId, $validGsm)), 'GSM RX válido funciona após inválidos');
+
+// Transcoding nos dois sentidos passa pelo mesmo PCM16LE e queue do MediaChannel.
+$sourcePcm8k = memberPtimePcm(160);
+$sourceCodecs = [];
+$sourceCodecs['PCMA'] = [decodePcmaToPcm(encodePcmToPcma($sourcePcm8k)), 8000];
+$sourceCodecs['PCMU'] = [decodePcmuToPcm(encodePcmToPcmu($sourcePcm8k)), 8000];
+$g729Encoder = new bcg729Channel();
+$g729Decoder = new bcg729Channel();
+$g729Payload = $g729Encoder->encode(substr($sourcePcm8k, 0, 160)) . $g729Encoder->encode(substr($sourcePcm8k, 160, 160));
+$sourceCodecs['G729'] = [$g729Decoder->decode($g729Payload), 8000];
+$opusEncoder = new opusChannel(48000, 1);
+$opusDecoder = new opusChannel(48000, 1);
+$sourcePcm48k = memberPtimePcm(960);
+$sourceCodecs['OPUS'] = [$opusDecoder->decode($opusEncoder->encode($sourcePcm48k)), 48000];
+$sourcePcm16k = memberPtimePcm(320);
+$sourceCodecs['L16'] = [decodeL16ToPcm(encodePcmToL16($sourcePcm16k)), 16000];
+
+foreach ($sourceCodecs as $sourceCodec => [$decodedPcm, $sourceRate]) {
+    $toGsmSocket = new MemberPtimeCaptureSocket();
+    $toGsmMedia = memberPtimeMedia($toGsmSocket);
+    memberPtimeAdd($toGsmMedia, 'b', 29200 + count($toGsmSocket->packets), 'GSM', 20);
+    $toGsmMedia->sendPcmToLeg('b', $decodedPcm, $sourceRate);
+    memberPtimeAssertSame(1, count($toGsmSocket->packets), "$sourceCodec -> GSM envia RTP");
+    memberPtimeAssertSame(33, strlen(memberPtimeDecodeRtp($toGsmSocket->packets[0]['data'])['payload']), "$sourceCodec -> GSM payload");
+}
+
+$gsmTranscoder = new gsmChannel();
+$gsmPcm = (new gsmChannel())->decode($gsmTranscoder->encode($sourcePcm8k));
+foreach ([
+    ['PCMA', 8000, 1], ['PCMU', 8000, 1], ['G729', 8000, 1],
+    ['OPUS', 48000, 1], ['L16', 16000, 1],
+] as [$targetCodec, $targetRate, $targetChannels]) {
+    $fromGsmSocket = new MemberPtimeCaptureSocket();
+    $fromGsmMedia = memberPtimeMedia($fromGsmSocket);
+    memberPtimeAdd($fromGsmMedia, 'b', 29300 + $targetRate + strlen($targetCodec), $targetCodec, 20, $targetRate, $targetChannels);
+    $fromGsmMedia->sendPcmToLeg('b', $gsmPcm, 8000);
+    memberPtimeAssertSame(1, count($fromGsmSocket->packets), "GSM -> $targetCodec envia RTP");
+    memberPtimeAssertSame(true, strlen(memberPtimeDecodeRtp($fromGsmSocket->packets[0]['data'])['payload']) > 0, "GSM -> $targetCodec payload");
+}
+$g729Encoder->close();
+$g729Decoder->close();
+$opusEncoder->destroy();
+$opusDecoder->destroy();
+
+// Lifecycle defensivo: canais GSM são independentes e close do MediaChannel é repetível.
+$lifecycleMedia = memberPtimeMedia(new MemberPtimeCaptureSocket());
+$lifeA = memberPtimeAdd($lifecycleMedia, 'a', 29401, 'GSM', 20);
+$lifeB = memberPtimeAdd($lifecycleMedia, 'b', 29402, 'GSM', 40);
+memberPtimeAssertSame(false, $lifecycleMedia->members[$lifeA]['gsmEncoder'] === $lifecycleMedia->members[$lifeA]['gsmDecoder'], 'GSM separa encoder/decoder por membro');
+memberPtimeAssertSame(false, $lifecycleMedia->members[$lifeA]['gsmEncoder'] === $lifecycleMedia->members[$lifeB]['gsmEncoder'], 'GSM não compartilha encoder entre membros');
+$closedEncoder = $lifecycleMedia->members[$lifeA]['gsmEncoder'];
+$closedDecoder = $lifecycleMedia->members[$lifeA]['gsmDecoder'];
+$lifecycleMedia->close();
+$lifecycleMedia->close();
+memberPtimeAssertSame([], $lifecycleMedia->members, 'close repetido libera members GSM');
+memberPtimeAssertSame(false, $closedEncoder->encode($sourcePcm8k), 'encoder GSM fechado rejeita encode');
+memberPtimeAssertSame(false, $closedDecoder->decode($validGsm), 'decoder GSM fechado rejeita decode');
+
+// Fluxo RTP real: datagrama GSM RX assimétrico entra pelo socket, é decodificado,
+// transcodificado e sai como PCMA. PT desconhecido e GSM inválido não geram saída.
+Swoole\Coroutine\run(static function (): void {
+    $mediaSocket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
+    $sourceSocket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
+    $destinationSocket = new SocketMutable(AF_INET, SOCK_DGRAM, SOL_UDP);
+    $mediaSocket->bind('127.0.0.1', 0);
+    $sourceSocket->bind('127.0.0.1', 0);
+    $destinationSocket->bind('127.0.0.1', 0);
+
+    $media = new MediaChannel($mediaSocket, 'gsm-real-rtp');
+    $sourcePort = $sourceSocket->getsockname()['port'];
+    $destinationPort = $destinationSocket->getsockname()['port'];
+    $media->rxCodecMapper = [96 => 'GSM/8000'];
+    $media->txCodecMapper = [8 => 'PCMA/8000'];
+    $media->addMember([
+        'address' => '127.0.0.1', 'port' => $sourcePort, 'codec' => 'GSM',
+        'pt' => 110, 'txPt' => 110, 'rxPt' => 96, 'frequency' => 8000,
+        'ptime' => 20, 'channels' => 1, 'config' => [],
+        'txCodecMapper' => [110 => 'GSM/8000'], 'rxCodecMapper' => [96 => 'GSM/8000'],
+    ]);
+    $media->addMember([
+        'address' => '127.0.0.1', 'port' => $destinationPort, 'codec' => 'PCMA',
+        'pt' => 8, 'frequency' => 8000, 'ptime' => 20, 'channels' => 1, 'config' => [],
+    ]);
+    $receivedGsmPcmBytes = 0;
+    $media->onReceive(static function ($packet, array $peer, MediaChannel $channel) use (&$receivedGsmPcmBytes): void {
+        $memberId = $peer['address'] . ':' . $peer['port'];
+        $receivedGsmPcmBytes = strlen((string)($channel->members[$memberId]['gsmDecodedPcm'] ?? ''));
+    });
+    $media->start();
+    Swoole\Coroutine::sleep(0.01);
+
+    $encoder = new gsmChannel();
+    $validPayload = $encoder->encode(memberPtimePcm(160));
+    $buildPacket = static function (int $pt, string $payload, int $sequence): string {
+        $rtp = new rtpChannel($pt, 8000, 20, 0x11223344);
+        $rtp->sequenceNumber = $sequence;
+        $rtp->timestamp = 70000 + ($sequence * 160);
+        return $rtp->buildAudioPacket($payload);
+    };
+
+    $mediaPort = $mediaSocket->getsockname()['port'];
+    $sourceSocket->sendto('127.0.0.1', $mediaPort, $buildPacket(127, $validPayload, 1));
+    $sourceSocket->sendto('127.0.0.1', $mediaPort, $buildPacket(96, substr($validPayload, 0, 32), 2));
+    $sourceSocket->sendto('127.0.0.1', $mediaPort, $buildPacket(96, $validPayload . "\x00", 3));
+    Swoole\Coroutine::sleep(0.03);
+    $destinationPeer = [];
+    memberPtimeAssertSame(false, $destinationSocket->recvfrom($destinationPeer, 0.03), 'RTP real descarta PT desconhecido e GSM inválido');
+
+    $sourceSocket->sendto('127.0.0.1', $mediaPort, $buildPacket(96, $validPayload, 4));
+    $relayed = $destinationSocket->recvfrom($destinationPeer, 1);
+    memberPtimeAssertSame(true, is_string($relayed), 'RTP real recebe pacote após GSM inválido');
+    memberPtimeAssertSame(8, ord($relayed[1]) & 0x7f, 'RTP real usa PT TX PCMA do destino');
+    memberPtimeAssertSame(160, strlen(substr($relayed, 12)), 'RTP real GSM->PCMA preserva 20 ms');
+    memberPtimeAssertSame(320, $receivedGsmPcmBytes, 'callback do fluxo RTP reutiliza o único decode GSM');
+
+    $media->close();
+    Swoole\Coroutine::sleep(0.25);
+    $encoder->close();
+    $sourceSocket->close();
+    $destinationSocket->close();
+});
 
 echo "PASS: ptime individual, accumulator PCM, RTP, silêncio, DTMF e legado de 20 ms validados.\n";

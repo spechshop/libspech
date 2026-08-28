@@ -123,7 +123,7 @@ include 'plugins/autoloader.php';
         });
 
 
-        $phone->mountLineCodecSDP('G729/8000');
+        $phone->mountLineCodecSDP('GSM/8000');
         $phone->enableStereoSound();
         $phone->enableAudioRecording();
         $phone->enableAudioMemorySharing();
@@ -172,7 +172,7 @@ include 'plugins/autoloader.php';
             $phone->close();
             return true;
         });
-        $phone->setPacketTime(40);
+        $phone->setPacketTime(20);
 
 
 

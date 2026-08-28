@@ -86,6 +86,19 @@ function trunkPtimeInvokePrivate(trunkController $trunk, string $method, mixed .
     return (new ReflectionMethod($trunk, $method))->invoke($trunk, ...$arguments);
 }
 
+function trunkPtimePrivateProperty(trunkController $trunk, string $property): mixed
+{
+    return (new ReflectionProperty($trunk, $property))->getValue($trunk);
+}
+
+function trunkPtimeNegotiate(array $offerMapper, array $answerSdp): trunkController
+{
+    $trunk = trunkPtimeWithoutConstructor();
+    $trunk->rxCodecMapper = $offerMapper;
+    trunkPtimeInvokePrivate($trunk, 'storeRemoteSdp', $answerSdp);
+    return $trunk;
+}
+
 $ptimes = [10, 20, 30, 40, 60, 120];
 $trunk = trunkPtimeWithoutConstructor();
 trunkPtimeAssertSame(20, $trunk->getPacketTime(), 'trunkController mantém ptime legado por padrão');
@@ -125,6 +138,50 @@ try {
 } catch (InvalidArgumentException) {
 }
 trunkPtimeAssertSame(20, $g729ValidationTrunk->getPacketTime(), 'ptime incompatível com G.729 não altera a configuração');
+
+$gsmValidationTrunk = trunkPtimeWithoutConstructor();
+$gsmValidationTrunk->codecName = 'GSM';
+foreach ([10, 30, 50] as $invalidGsmPtime) {
+    try {
+        $gsmValidationTrunk->setPacketTime($invalidGsmPtime);
+        throw new RuntimeException("ptime de $invalidGsmPtime ms foi aceito para GSM");
+    } catch (InvalidArgumentException) {
+    }
+}
+foreach ([20, 40, 60, 80, 100, 120] as $validGsmPtime) {
+    $gsmValidationTrunk->setPacketTime($validGsmPtime);
+    trunkPtimeAssertSame($validGsmPtime, $gsmValidationTrunk->getPacketTime(), "GSM aceita ptime $validGsmPtime ms");
+}
+
+// Offer/answer guarda PT por direção; ptUse continua sendo o PT de transmissão.
+foreach ([
+    [[3 => 'GSM/8000'], ['m' => ['audio 50000 RTP/AVP 3'], 'a' => ['rtpmap:3 GSM/8000']], 3, 3, 'GSM'],
+    [[3 => 'GSM/8000'], ['m' => ['audio 50000 RTP/AVP 18'], 'a' => ['rtpmap:18 GSM/8000']], 18, 3, 'GSM'],
+    [[96 => 'GSM/8000'], ['m' => ['audio 50000 RTP/AVP 110'], 'a' => ['rtpmap:110 GSM/8000']], 110, 96, 'GSM'],
+    [[96 => 'L16/8000'], ['m' => ['audio 50000 RTP/AVP 110'], 'a' => ['rtpmap:110 L16/8000']], 110, 96, 'L16'],
+    [[3 => 'GSM/8000'], ['m' => ['audio 50000 RTP/AVP 18'], 'a' => ['rtpmap:18 GSM/8000']], 18, 3, 'GSM'],
+] as [$offerMapper, $answerSdp, $expectedTx, $expectedRx, $expectedCodec]) {
+    $negotiated = trunkPtimeNegotiate($offerMapper, $answerSdp);
+    trunkPtimeAssertSame($expectedTx, trunkPtimePrivateProperty($negotiated, 'txPt'), "$expectedCodec: TX vem do answer");
+    trunkPtimeAssertSame($expectedRx, trunkPtimePrivateProperty($negotiated, 'rxPt'), "$expectedCodec: RX vem do offer");
+    trunkPtimeAssertSame($expectedTx, trunkPtimePrivateProperty($negotiated, 'ptUse'), "$expectedCodec: ptUse legado acompanha TX");
+    trunkPtimeAssertSame($expectedCodec, strtoupper((string)$negotiated->codecName), "$expectedCodec: codec negociado");
+}
+
+$staticG729 = trunkPtimeNegotiate([18 => 'G729/8000'], [
+    'm' => ['audio 50000 RTP/AVP 18'],
+    'a' => [],
+]);
+trunkPtimeAssertSame('G729', strtoupper((string)$staticG729->codecName), 'answer sem rtpmap usa binding 18=G729');
+trunkPtimeAssertSame(18, trunkPtimePrivateProperty($staticG729, 'txPt'), 'binding estático preserva PT TX');
+
+$gsmMaxPtimeTrunk = trunkPtimeWithoutConstructor();
+$gsmMaxPtimeTrunk->setPacketTime(80);
+$gsmMaxPtimeTrunk->setupForIncoming(3, 'GSM', 8000, [
+    'm' => ['audio 50000 RTP/AVP 3'],
+    'a' => ['rtpmap:3 GSM/8000', 'maxptime:50'],
+]);
+trunkPtimeAssertSame(40, $gsmMaxPtimeTrunk->getPacketTime(), 'maxptime GSM escolhe múltiplo de 20 ms');
 
 $pcmaMaxPtimeTrunk = trunkPtimeWithoutConstructor();
 $pcmaMaxPtimeMedia = trunkPtimeMediaWithoutConstructor();
@@ -273,6 +330,28 @@ try {
     trunkPtimeAssertSame(960, $lateCallbackState['chunkSize'], 'playback recalcula chunk após mudança tardia para 60 ms');
     trunkPtimeAssertSame(60, $lateCallbackState['configuredPacketTime'], 'playback acompanha mudança tardia de ptime');
     trunkPtimeAssertSame(492, strlen($captureSocket->packets[0]), 'playback envia RTP com payload PCMA de 60 ms');
+
+    $gsmPlaybackTrunk = trunkPtimeWithoutConstructor();
+    $gsmPlaybackTrunk->disableAudioMemorySharing();
+    $gsmPlaybackTrunk->codecName = 'GSM';
+    $gsmPlaybackTrunk->setPacketTime(60);
+    $gsmPlaybackTrunk->defineAudioFile($wavPath);
+    $gsmCapture = new TrunkPtimeCaptureSocket();
+    $gsmPlaybackMedia = trunkPtimeMediaWithoutConstructor();
+    $gsmPlaybackMedia->socket = $gsmCapture;
+    $gsmRtp = new rtpChannel(rtpChannel::PAYLOAD_GSM, 8000, 60);
+    $gsmRtp->timestamp = 2000;
+    $gsmPlaybackMedia->members['127.0.0.1:30500'] = [
+        'address' => '127.0.0.1', 'port' => 30500, 'codec' => 'GSM',
+        'channels' => 1, 'config' => [], 'rtpChannel' => $gsmRtp,
+    ];
+    $gsmPlaybackTrunk->mediaChannel = $gsmPlaybackMedia;
+    $gsmPlaybackTrunk->frequencyCall = 8000;
+    $gsmPlaybackTrunk->callActive = true;
+    $gsmCallback = (new ReflectionProperty($gsmPlaybackTrunk, 'audioFileHandle'))->getValue($gsmPlaybackTrunk);
+    $gsmCallback(['address' => '127.0.0.1', 'port' => 30500], $gsmPlaybackTrunk);
+    trunkPtimeAssertSame(111, strlen($gsmCapture->packets[0]), 'playback GSM/60 envia 99 bytes em um RTP');
+    trunkPtimeAssertSame(2480, $gsmRtp->timestamp, 'playback GSM/60 avança 480 samples');
 } finally {
     unlink($wavPath);
 }
@@ -349,5 +428,11 @@ $sdpTrunk->rtpSocket = new class {
 $invite = $sdpTrunk->modelInvite('2000');
 trunkPtimeAssertSame(true, in_array('ptime:40', $invite['sdp']['a'], true), 'SDP anuncia o ptime configurado');
 trunkPtimeAssertSame(false, in_array('minptime:40', $invite['sdp']['a'], true), 'SDP não anuncia minptime genérico inválido');
+$sdpTrunk->mountLineCodecSDP('GSM/8000');
+$inviteWithGsm = $sdpTrunk->modelInvite('2000');
+trunkPtimeAssertSame(true, in_array('rtpmap:3 GSM/8000', $inviteWithGsm['sdp']['a'], true), 'SDP anuncia GSM no PT padrão 3');
+trunkPtimeAssertSame(true, str_contains($inviteWithGsm['sdp']['m'][0], 'RTP/AVP 8 '), 'GSM é adicionado sem virar preferência automaticamente');
+trunkPtimeAssertSame('PCMA', strtoupper((string)$sdpTrunk->codecName), 'preferência existente PCMA é preservada após adicionar GSM');
+trunkPtimeAssertSame(101, (int)trunkPtimePrivateProperty($sdpTrunk, 'ptTelephoneEvent'), 'PT DTMF não depende de ser o último codec adicionado');
 
 echo "OK: trunkController validado com ptime 10, 20, 30, 40, 60 e 120 ms.\n";

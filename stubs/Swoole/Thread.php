@@ -6,7 +6,7 @@ namespace Swoole;
 
 
 class Thread {
-    public const HARDWARE_CONCURRENCY = 12;
+    public const HARDWARE_CONCURRENCY = 16;
     public const API_NAME = 'POSIX Threads';
     public const SCHED_OTHER = 0;
     public const SCHED_FIFO = 1;
