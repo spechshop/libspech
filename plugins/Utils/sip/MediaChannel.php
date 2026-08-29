@@ -481,7 +481,7 @@ class MediaChannel
                 continue;
             }
             $isFirstPacket = ($rtpc->marker === 1);
-            if ($isFirstPacket) cli::pcl("DTMF: {$event} {$volume} {$duration} {$end} {$targetId}", 'bold_green');
+            //if ($isFirstPacket) cli::pcl("DTMF: {$event} {$volume} {$duration} {$end} {$targetId}", 'bold_green');
 
 
             //
