@@ -914,7 +914,9 @@ class MediaChannel
                     $this->processVAD($sourcePcmData, $idFrom, $sourceFrequency, $sourceChannels);
                 }
 
-                foreach ($this->members as $targetId => $info) {
+                // Itera somente IDs: carregar o array do membro no valor do
+                // foreach o mantém compartilhado durante a mutação do destino.
+                foreach (array_keys($this->members) as $targetId) {
                     if ($targetId === $idFrom) continue;
 
                     // Durante o envio de DTMF (RFC 4733) o relay de áudio é suspenso
@@ -936,7 +938,7 @@ class MediaChannel
                         $this->queuePcmForMember($targetId, $pcmForTarget);
                     } catch (Throwable $e) {
                         if ($this->debugEnabled) {
-                            $targetCodec = strtoupper((string)($info['codec'] ?? ''));
+                            $targetCodec = strtoupper((string)($this->members[$targetId]['codec'] ?? ''));
                             cli::pcl("{$this->callId} MediaChannel transcode {$sourceCodec}->{$targetCodec}: {$e->getMessage()}", 'red');
                         }
                     }
@@ -1458,9 +1460,11 @@ class MediaChannel
      */
     private function queuePcmForMember(string $id, string $pcm): array
     {
-        $member = $this->members[$id] ?? null;
-        $channel = $member['rtpChannel'] ?? null;
-        if (!is_array($member) || !$channel instanceof rtpChannel) {
+        if (!isset($this->members[$id]) || !is_array($this->members[$id])) {
+            throw new \RuntimeException('playback_rtp_channel_not_found');
+        }
+        $channel = $this->members[$id]['rtpChannel'] ?? null;
+        if (!$channel instanceof rtpChannel) {
             throw new \RuntimeException('playback_rtp_channel_not_found');
         }
 
@@ -1472,7 +1476,7 @@ class MediaChannel
 
         $this->members[$id]['ptime'] = $channel->packetTimeMs;
         $this->members[$id]['samplesPerPacket'] = $channel->samplesPerPacket;
-        $this->members[$id]['pcmAccumulator'] = (string)($member['pcmAccumulator'] ?? '') . $pcm;
+        $this->members[$id]['pcmAccumulator'] = (string)($this->members[$id]['pcmAccumulator'] ?? '') . $pcm;
 
         $sent = [];
         while (strlen($this->members[$id]['pcmAccumulator']) >= $frameBytes) {
@@ -1487,9 +1491,9 @@ class MediaChannel
             $sequence = (int)$channel->sequenceNumber;
             $timestamp = (int)$channel->timestamp;
             $packet = $channel->buildAudioPacket($payload);
-            $this->socket->sendto((string)$member['address'], (int)$member['port'], $packet);
+            $this->socket->sendto((string)$this->members[$id]['address'], (int)$this->members[$id]['port'], $packet);
             $sent[] = [
-                'codec' => strtoupper((string)($member['codec'] ?? '')),
+                'codec' => strtoupper((string)($this->members[$id]['codec'] ?? '')),
                 'payload_type' => (int)$channel->payloadType,
                 'frequency' => (int)$channel->sampleRate,
                 'sequence' => $sequence,
