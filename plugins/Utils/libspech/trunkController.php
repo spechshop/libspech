@@ -3317,7 +3317,7 @@ class trunkController
             "method" => "REGISTER",
             "methodForParser" => "REGISTER {$registerUri} SIP/2.0",
             "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->sipViaAddress()};branch=z9hG4bK-" . bin2hex(secure_random_bytes(4))],
+                "Via" => ["SIP/2.0/UDP {$this->sipViaAddress()};branch=z9hG4bK-" . bin2hex(secure_random_bytes(8)).';rport'],
                 "From" => [sip::renderURI([
                     "user" => $this->username,
                     "peer" => [
