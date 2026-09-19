@@ -94,6 +94,7 @@ class MediaChannel
                 // Um residual criado com o frame anterior não pode ser reinterpretado
                 // com outro tamanho de packetização.
                 $this->members[$id]['pcmAccumulator'] = '';
+                $this->members[$id]['relayPcmAccumulator'] = '';
             }
         }
     }
@@ -243,6 +244,9 @@ class MediaChannel
 
     /** @var array<string,bool> legs currently driven by an internal media source */
     private array $injectedLegs = [];
+
+    /** @var array<string,bool> members whose relayed PCM is being drained by a pacer */
+    private array $relayPacerRunning = [];
 
 
     public function block($callback = null): void
@@ -935,7 +939,7 @@ class MediaChannel
                             $sourceFrequency,
                             $sourceChannels
                         );
-                        $this->queuePcmForMember($targetId, $pcmForTarget);
+                        $this->queueRelayedPcmForMember($targetId, $pcmForTarget);
                     } catch (Throwable $e) {
                         if ($this->debugEnabled) {
                             $targetCodec = strtoupper((string)($this->members[$targetId]['codec'] ?? ''));
@@ -1068,6 +1072,7 @@ class MediaChannel
         $peer['ptimeExplicit'] = $ptimeExplicit;
         $peer['samplesPerPacket'] = $peer['rtpChannel']->samplesPerPacket;
         $peer['pcmAccumulator'] = '';
+        $peer['relayPcmAccumulator'] = '';
         $peer['channels'] = $nc;
         if ($codec === 'G729') {
             $peer['bcg729Channel'] = new bcg729Channel();
@@ -1483,26 +1488,99 @@ class MediaChannel
             $frame = substr($this->members[$id]['pcmAccumulator'], 0, $frameBytes);
             $this->members[$id]['pcmAccumulator'] = substr($this->members[$id]['pcmAccumulator'], $frameBytes);
 
-            $payload = $this->encodePcmFrameForMember($id, $frame);
-            if ($payload === '') {
-                throw new \RuntimeException('playback_encode_failed');
-            }
-
-            $sequence = (int)$channel->sequenceNumber;
-            $timestamp = (int)$channel->timestamp;
-            $packet = $channel->buildAudioPacket($payload);
-            $this->socket->sendto((string)$this->members[$id]['address'], (int)$this->members[$id]['port'], $packet);
-            $sent[] = [
-                'codec' => strtoupper((string)($this->members[$id]['codec'] ?? '')),
-                'payload_type' => (int)$channel->payloadType,
-                'frequency' => (int)$channel->sampleRate,
-                'sequence' => $sequence,
-                'timestamp' => $timestamp,
-                'ssrc' => (int)$channel->ssrc,
-            ];
+            $sent[] = $this->sendPcmFrameForMember($id, $channel, $frame);
         }
 
         return $sent;
+    }
+
+    /**
+     * Repacketized bridge audio must leave at the destination ptime. A source RTP
+     * carrying 40/60 ms can produce two or three 20 ms destination frames; sending
+     * those frames in the receive callback creates a burst followed by an equally
+     * long gap and repeatedly starves endpoint jitter buffers.
+     */
+    private function queueRelayedPcmForMember(string $id, string $pcm): void
+    {
+        if (!isset($this->members[$id]) || !is_array($this->members[$id])) {
+            throw new \RuntimeException('relay_rtp_channel_not_found');
+        }
+        $channel = $this->members[$id]['rtpChannel'] ?? null;
+        if (!$channel instanceof rtpChannel) {
+            throw new \RuntimeException('relay_rtp_channel_not_found');
+        }
+
+        $this->members[$id]['relayPcmAccumulator'] =
+            (string)($this->members[$id]['relayPcmAccumulator'] ?? '') . $pcm;
+        if (isset($this->relayPacerRunning[$id])) {
+            return;
+        }
+
+        $this->relayPacerRunning[$id] = true;
+        Coroutine::create(function () use ($id): void {
+            $nextSendAtNs = hrtime(true);
+            try {
+                while ($this->active && isset($this->members[$id])) {
+                    $channel = $this->members[$id]['rtpChannel'] ?? null;
+                    if (!$channel instanceof rtpChannel) {
+                        return;
+                    }
+                    $format = $this->pcmFormatForMember($id);
+                    $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
+                    $queued = (string)($this->members[$id]['relayPcmAccumulator'] ?? '');
+                    if ($frameBytes <= 0 || strlen($queued) < $frameBytes) {
+                        return;
+                    }
+
+                    $frame = substr($queued, 0, $frameBytes);
+                    $this->members[$id]['relayPcmAccumulator'] = substr($queued, $frameBytes);
+                    $this->sendPcmFrameForMember($id, $channel, $frame);
+
+                    $intervalNs = $channel->packetTimeMs * 1_000_000;
+                    $nextSendAtNs += $intervalNs;
+                    $nowNs = hrtime(true);
+                    if ($nextSendAtNs <= $nowNs) {
+                        // Do not compensate an encoder/scheduler overrun with a burst.
+                        $nextSendAtNs = $nowNs + $intervalNs;
+                    }
+                    $remainingNs = $nextSendAtNs - $nowNs;
+                    if ($remainingNs > 0) {
+                        Coroutine::sleep(max(0.001, $remainingNs / 1_000_000_000));
+                    }
+                }
+            } catch (Throwable $e) {
+                if ($this->debugEnabled) {
+                    cli::pcl("{$this->callId} MediaChannel relay pacer {$id}: {$e->getMessage()}", 'red');
+                }
+            } finally {
+                unset($this->relayPacerRunning[$id]);
+            }
+        });
+    }
+
+    /**
+     * @return array{codec:string,payload_type:int,frequency:int,sequence:int,timestamp:int,ssrc:int}
+     */
+    private function sendPcmFrameForMember(string $id, rtpChannel $channel, string $frame): array
+    {
+        $payload = $this->encodePcmFrameForMember($id, $frame);
+        if ($payload === '') {
+            throw new \RuntimeException('playback_encode_failed');
+        }
+
+        $sequence = (int)$channel->sequenceNumber;
+        $timestamp = (int)$channel->timestamp;
+        $packet = $channel->buildAudioPacket($payload);
+        $this->socket->sendto((string)$this->members[$id]['address'], (int)$this->members[$id]['port'], $packet);
+
+        return [
+            'codec' => strtoupper((string)($this->members[$id]['codec'] ?? '')),
+            'payload_type' => (int)$channel->payloadType,
+            'frequency' => (int)$channel->sampleRate,
+            'sequence' => $sequence,
+            'timestamp' => $timestamp,
+            'ssrc' => (int)$channel->ssrc,
+        ];
     }
 
     private function encodePcmFrameForMember(string $id, string $pcmFrame): string
@@ -1810,6 +1888,7 @@ class MediaChannel
                     }
                 }
                 $this->members[$id]['pcmAccumulator'] = '';
+                $this->members[$id]['relayPcmAccumulator'] = '';
                 if (isset($member['rtpChannel'])) {
                     unset($member['rtpChannel']);
                 }
@@ -1820,6 +1899,7 @@ class MediaChannel
         // Limpa arrays
         $this->members = [];
         $this->injectedLegs = [];
+        $this->relayPacerRunning = [];
         $this->rtpChans = [];
         $this->rtpChanMemberIds = [];
         $this->openChannels = [];
