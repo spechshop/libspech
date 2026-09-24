@@ -3,6 +3,7 @@
 namespace libspech\Rtp;
 
 use bcg729Channel;
+use ByteBuffer;
 use Closure;
 use gsmChannel;
 use libspech\Cache\cache;
@@ -22,6 +23,7 @@ class MediaChannel
     private const GSM_PCM_BYTES_PER_FRAME = 320;
     private const GSM_BYTES_PER_FRAME = 33;
     private const GSM_FRAME_DURATION_MS = 20;
+    private const MAX_RELAY_BACKLOG_MS = 200;
 
     /** @var array<int,string> */
     private const RTP_AVP_STATIC_CODECS = [
@@ -94,7 +96,8 @@ class MediaChannel
                 // Um residual criado com o frame anterior não pode ser reinterpretado
                 // com outro tamanho de packetização.
                 $this->members[$id]['pcmAccumulator'] = '';
-                $this->members[$id]['relayPcmAccumulator'] = '';
+                $this->clearRelayBufferForMember($id);
+                unset($this->relayNextSendAtNs[$id]);
             }
         }
     }
@@ -154,6 +157,7 @@ class MediaChannel
      *     'ptime' => int,
      *     'samplesPerPacket' => int,
      *     'pcmAccumulator' => string,
+     *     'relayPcmBuffer' => ByteBuffer,
      *     'config' => array,
      *     'opusEncoder' => ?opusChannel,
      *     'opusDecoder' => ?opusChannel,
@@ -247,6 +251,12 @@ class MediaChannel
 
     /** @var array<string,bool> members whose relayed PCM is being drained by a pacer */
     private array $relayPacerRunning = [];
+
+    /** @var array<string,int> next monotonic send deadline per destination member */
+    private array $relayNextSendAtNs = [];
+
+    /** @var array<string,array<string,int|float|string>> */
+    private array $relayMetrics = [];
 
 
     public function block($callback = null): void
@@ -1072,7 +1082,7 @@ class MediaChannel
         $peer['ptimeExplicit'] = $ptimeExplicit;
         $peer['samplesPerPacket'] = $peer['rtpChannel']->samplesPerPacket;
         $peer['pcmAccumulator'] = '';
-        $peer['relayPcmAccumulator'] = '';
+        $peer['relayPcmBuffer'] = new ByteBuffer(4096);
         $peer['channels'] = $nc;
         if ($codec === 'G729') {
             $peer['bcg729Channel'] = new bcg729Channel();
@@ -1510,15 +1520,44 @@ class MediaChannel
             throw new \RuntimeException('relay_rtp_channel_not_found');
         }
 
-        $this->members[$id]['relayPcmAccumulator'] =
-            (string)($this->members[$id]['relayPcmAccumulator'] ?? '') . $pcm;
+        $format = $this->pcmFormatForMember($id);
+        $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
+        if ($frameBytes <= 0) {
+            throw new \RuntimeException('relay_frame_size_invalid');
+        }
+
+        $buffer = $this->relayBufferForMember($id);
+        if ($pcm !== '') {
+            $buffer->append($pcm);
+        }
+        $this->initializeRelayMetrics($id, $channel);
+
+        $maxFrames = max(2, (int)ceil(self::MAX_RELAY_BACKLOG_MS / $channel->packetTimeMs));
+        while ($buffer->length() > ($frameBytes * $maxFrames)) {
+            $buffer->discard($frameBytes);
+            $this->relayMetrics[$id]['dropped_frames']++;
+        }
+        $queuedFrames = intdiv($buffer->length(), $frameBytes);
+        $this->relayMetrics[$id]['max_queue_frames'] = max(
+            (int)$this->relayMetrics[$id]['max_queue_frames'],
+            $queuedFrames,
+        );
+
         if (isset($this->relayPacerRunning[$id])) {
+            return;
+        }
+
+        $this->startRelayPacerForMember($id);
+    }
+
+    private function startRelayPacerForMember(string $id): void
+    {
+        if (!$this->active || !isset($this->members[$id]) || isset($this->relayPacerRunning[$id])) {
             return;
         }
 
         $this->relayPacerRunning[$id] = true;
         Coroutine::create(function () use ($id): void {
-            $nextSendAtNs = hrtime(true);
             try {
                 while ($this->active && isset($this->members[$id])) {
                     $channel = $this->members[$id]['rtpChannel'] ?? null;
@@ -1527,26 +1566,45 @@ class MediaChannel
                     }
                     $format = $this->pcmFormatForMember($id);
                     $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
-                    $queued = (string)($this->members[$id]['relayPcmAccumulator'] ?? '');
-                    if ($frameBytes <= 0 || strlen($queued) < $frameBytes) {
+                    $buffer = $this->relayBufferForMember($id);
+                    if ($frameBytes <= 0 || !$buffer->has($frameBytes)) {
                         return;
                     }
 
-                    $frame = substr($queued, 0, $frameBytes);
-                    $this->members[$id]['relayPcmAccumulator'] = substr($queued, $frameBytes);
-                    $this->sendPcmFrameForMember($id, $channel, $frame);
-
                     $intervalNs = $channel->packetTimeMs * 1_000_000;
-                    $nextSendAtNs += $intervalNs;
                     $nowNs = hrtime(true);
-                    if ($nextSendAtNs <= $nowNs) {
-                        // Do not compensate an encoder/scheduler overrun with a burst.
-                        $nextSendAtNs = $nowNs + $intervalNs;
+                    $nextSendAtNs = $this->relayNextSendAtNs[$id] ?? $nowNs;
+                    if ($nextSendAtNs < ($nowNs - $intervalNs)) {
+                        // Atraso maior que um ptime nunca é compensado com rajada.
+                        $nextSendAtNs = $nowNs;
                     }
                     $remainingNs = $nextSendAtNs - $nowNs;
                     if ($remainingNs > 0) {
                         Coroutine::sleep(max(0.001, $remainingNs / 1_000_000_000));
                     }
+
+                    if (!$this->active || !isset($this->members[$id]) || !$buffer->has($frameBytes)) {
+                        return;
+                    }
+                    $actualSendAtNs = hrtime(true);
+                    $lateNs = max(0, $actualSendAtNs - $nextSendAtNs);
+                    if ($lateNs >= 2_000_000) {
+                        $this->relayMetrics[$id]['late_packets']++;
+                    }
+                    $this->relayMetrics[$id]['max_late_ms'] = max(
+                        (float)$this->relayMetrics[$id]['max_late_ms'],
+                        $lateNs / 1_000_000,
+                    );
+
+                    $frame = $buffer->pop($frameBytes);
+                    $this->recordRelayInterval($id, $actualSendAtNs, $channel->packetTimeMs);
+                    $this->sendPcmFrameForMember($id, $channel, $frame);
+                    $this->relayMetrics[$id]['packets_sent']++;
+                    // Compensa apenas o jitter pequeno do scheduler. Um atraso
+                    // relevante reinicia a cadência e nunca gera catch-up em rajada.
+                    $this->relayNextSendAtNs[$id] = $lateNs <= intdiv($intervalNs, 2)
+                        ? $nextSendAtNs + $intervalNs
+                        : $actualSendAtNs + $intervalNs;
                 }
             } catch (Throwable $e) {
                 if ($this->debugEnabled) {
@@ -1554,8 +1612,104 @@ class MediaChannel
                 }
             } finally {
                 unset($this->relayPacerRunning[$id]);
+                if ($this->active && isset($this->members[$id])) {
+                    $channel = $this->members[$id]['rtpChannel'] ?? null;
+                    if ($channel instanceof rtpChannel) {
+                        $format = $this->pcmFormatForMember($id);
+                        $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
+                        if ($frameBytes > 0 && $this->relayBufferForMember($id)->has($frameBytes)) {
+                            // Fecha a corrida: áudio pode entrar entre a leitura vazia
+                            // e a remoção do marcador do pacer.
+                            $this->startRelayPacerForMember($id);
+                        }
+                    }
+                }
             }
         });
+    }
+
+    private function relayBufferForMember(string $id): ByteBuffer
+    {
+        $buffer = $this->members[$id]['relayPcmBuffer'] ?? null;
+        if ($buffer instanceof ByteBuffer) {
+            return $buffer;
+        }
+
+        $buffer = new ByteBuffer(4096);
+        $legacy = (string)($this->members[$id]['relayPcmAccumulator'] ?? '');
+        if ($legacy !== '') {
+            $buffer->append($legacy);
+        }
+        $this->members[$id]['relayPcmBuffer'] = $buffer;
+        unset($this->members[$id]['relayPcmAccumulator']);
+        return $buffer;
+    }
+
+    private function clearRelayBufferForMember(string $id): void
+    {
+        $buffer = $this->members[$id]['relayPcmBuffer'] ?? null;
+        if ($buffer instanceof ByteBuffer) {
+            $buffer->clear();
+        }
+        unset($this->members[$id]['relayPcmAccumulator']);
+    }
+
+    private function initializeRelayMetrics(string $id, rtpChannel $channel): void
+    {
+        $this->relayMetrics[$id] ??= [
+            'leg' => strtolower((string)($this->members[$id]['leg'] ?? '')),
+            'codec' => strtoupper((string)($this->members[$id]['codec'] ?? '')),
+            'ptime_ms' => $channel->packetTimeMs,
+            'packets_sent' => 0,
+            'dropped_frames' => 0,
+            'late_packets' => 0,
+            'max_late_ms' => 0.0,
+            'max_queue_frames' => 0,
+            'interval_samples' => 0,
+            'interval_error_ms_sum' => 0.0,
+            'min_interval_ms' => 0.0,
+            'max_interval_ms' => 0.0,
+            'last_send_at_ns' => 0,
+        ];
+        $this->relayMetrics[$id]['ptime_ms'] = $channel->packetTimeMs;
+    }
+
+    private function recordRelayInterval(string $id, int $sentAtNs, int $ptimeMs): void
+    {
+        $lastSentAtNs = (int)($this->relayMetrics[$id]['last_send_at_ns'] ?? 0);
+        if ($lastSentAtNs > 0) {
+            $intervalMs = ($sentAtNs - $lastSentAtNs) / 1_000_000;
+            $this->relayMetrics[$id]['interval_samples']++;
+            $this->relayMetrics[$id]['interval_error_ms_sum'] += abs($intervalMs - $ptimeMs);
+            $minimum = (float)$this->relayMetrics[$id]['min_interval_ms'];
+            $this->relayMetrics[$id]['min_interval_ms'] = $minimum === 0.0
+                ? $intervalMs
+                : min($minimum, $intervalMs);
+            $this->relayMetrics[$id]['max_interval_ms'] = max(
+                (float)$this->relayMetrics[$id]['max_interval_ms'],
+                $intervalMs,
+            );
+        }
+        $this->relayMetrics[$id]['last_send_at_ns'] = $sentAtNs;
+    }
+
+    /** @return array<string,array<string,int|float|string>> */
+    public function getRelayMetrics(): array
+    {
+        $result = [];
+        foreach ($this->relayMetrics as $id => $metrics) {
+            $samples = (int)$metrics['interval_samples'];
+            $metrics['avg_interval_error_ms'] = $samples > 0
+                ? round((float)$metrics['interval_error_ms_sum'] / $samples, 3)
+                : 0.0;
+            $metrics['max_late_ms'] = round((float)$metrics['max_late_ms'], 3);
+            $metrics['min_interval_ms'] = round((float)$metrics['min_interval_ms'], 3);
+            $metrics['max_interval_ms'] = round((float)$metrics['max_interval_ms'], 3);
+            unset($metrics['interval_error_ms_sum'], $metrics['last_send_at_ns']);
+            $leg = (string)($metrics['leg'] ?: $id);
+            $result[$leg] = $metrics;
+        }
+        return $result;
     }
 
     /**
@@ -1888,7 +2042,7 @@ class MediaChannel
                     }
                 }
                 $this->members[$id]['pcmAccumulator'] = '';
-                $this->members[$id]['relayPcmAccumulator'] = '';
+                $this->clearRelayBufferForMember($id);
                 if (isset($member['rtpChannel'])) {
                     unset($member['rtpChannel']);
                 }
@@ -1900,6 +2054,8 @@ class MediaChannel
         $this->members = [];
         $this->injectedLegs = [];
         $this->relayPacerRunning = [];
+        $this->relayNextSendAtNs = [];
+        $this->relayMetrics = [];
         $this->rtpChans = [];
         $this->rtpChanMemberIds = [];
         $this->openChannels = [];
