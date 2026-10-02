@@ -122,26 +122,6 @@ class MediaChannel
         $this->onVadChangeCallable = $callback;
     }
 
-    /**
-     * Habilita o sistema de adaptação automática
-     */
-    public function enableAdaptation(bool $useBuffer = true): void
-    {
-        $this->adaptationEnabled = true;
-        if ($useBuffer) {
-            $this->adaptiveBuffer->enable();
-        }
-    }
-
-    /**
-     * Desabilita o sistema de adaptação automática
-     */
-    public function disableAdaptation(): void
-    {
-        $this->adaptationEnabled = false;
-        $this->adaptiveBuffer->disable();
-    }
-
     public \SocketMutable $socket;
 
 
@@ -233,8 +213,7 @@ class MediaChannel
     private bool $audioMetricsEnabled = false;
     // Estado por ssrc para cálculo barato de perda/jitter (RFC 3550), sem funções pesadas
     private array $rtpStats = [];
-    private AudioQualityDetector $qualityDetector;
-    private AdaptiveBuffer $adaptiveBuffer;
+
     private bool $adaptationEnabled = false;
     private array $qualityReports = [];
     private int $adaptationCheckInterval = 50;
@@ -309,7 +288,7 @@ class MediaChannel
 
         $this->channelEncode = new bcg729Channel();
         $this->channelDecode = new bcg729Channel();
-        $this->adaptiveBuffer = new AdaptiveBuffer($this->callId);
+
         $this->blockChannel = new \Swoole\Coroutine\Channel(1);
 
 
