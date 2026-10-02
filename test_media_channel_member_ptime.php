@@ -211,7 +211,11 @@ for ($frame = 0; $frame < 3; $frame++) {
 }
 memberPtimeAssertSame(1, count($resampleSocket->packets), 'resample 16k->8k respeita packetização de 20 ms');
 memberPtimeAssertSame(160, strlen(memberPtimeDecodeRtp($resampleSocket->packets[0]['data'])['payload']), 'resample gera payload PCMA de 160 samples');
-memberPtimeAssertSame(160, strlen($resampleMedia->members[$resampleId]['pcmAccumulator']), 'resample preserva residual de 80 samples');
+memberPtimeAssertSame(128, strlen($resampleMedia->members[$resampleId]['pcmAccumulator']), 'FIR preserva 32 samples de lookahead antes do flush');
+$tailPackets = $resampleMedia->finishPcmToLeg('b');
+memberPtimeAssertSame(1, count($tailPackets ?? []), 'finish emite frame final com tail FIR');
+memberPtimeAssertSame(2, count($resampleSocket->packets), '30 ms de fonte resultam em dois RTPs de 20 ms');
+memberPtimeAssertSame('', $resampleMedia->members[$resampleId]['pcmAccumulator'], 'finish limpa residual da stream');
 
 // VAD e métricas usam a duração real do PCM da origem individual.
 $vadSocket = new MemberPtimeCaptureSocket();
@@ -446,6 +450,7 @@ foreach ($sourceCodecs as $sourceCodec => [$decodedPcm, $sourceRate]) {
     $toGsmMedia = memberPtimeMedia($toGsmSocket);
     memberPtimeAdd($toGsmMedia, 'b', 29200 + count($toGsmSocket->packets), 'GSM', 20);
     $toGsmMedia->sendPcmToLeg('b', $decodedPcm, $sourceRate);
+    $toGsmMedia->finishPcmToLeg('b');
     memberPtimeAssertSame(1, count($toGsmSocket->packets), "$sourceCodec -> GSM envia RTP");
     memberPtimeAssertSame(33, strlen(memberPtimeDecodeRtp($toGsmSocket->packets[0]['data'])['payload']), "$sourceCodec -> GSM payload");
 }
@@ -460,6 +465,7 @@ foreach ([
     $fromGsmMedia = memberPtimeMedia($fromGsmSocket);
     memberPtimeAdd($fromGsmMedia, 'b', 29300 + $targetRate + strlen($targetCodec), $targetCodec, 20, $targetRate, $targetChannels);
     $fromGsmMedia->sendPcmToLeg('b', $gsmPcm, 8000);
+    $fromGsmMedia->finishPcmToLeg('b');
     memberPtimeAssertSame(1, count($fromGsmSocket->packets), "GSM -> $targetCodec envia RTP");
     memberPtimeAssertSame(true, strlen(memberPtimeDecodeRtp($fromGsmSocket->packets[0]['data'])['payload']) > 0, "GSM -> $targetCodec payload");
 }
@@ -545,5 +551,40 @@ Swoole\Coroutine\run(static function (): void {
     $sourceSocket->close();
     $destinationSocket->close();
 });
+
+// A canceled 44.1 kHz stream must discard both FIR history and partial PCM.
+$lifecyclePcm = '';
+for ($i = 0; $i < 4410; $i++) {
+    $sample = (int)(11000 * sin(2 * M_PI * 425 * $i / 44100));
+    $lifecyclePcm .= pack('vv', $sample & 0xffff, $sample & 0xffff);
+}
+$discardedPcm = str_repeat(pack('vv', 18000, 18000), 882);
+$freshSocket = new MemberPtimeCaptureSocket();
+$freshMedia = memberPtimeMedia($freshSocket);
+memberPtimeAdd($freshMedia, 'a', 26001, 'PCMA', 20);
+for ($i = 0; $i < 5; $i++) {
+    $freshMedia->pushPcmToLeg('a', substr($lifecyclePcm, $i * 3528, 3528), 44100, 2);
+}
+$freshMedia->finishPcmToLeg('a');
+memberPtimeAssertSame(5, count($freshSocket->packets), '44.1 kHz finish envia cauda e duração completa');
+$freshPayloads = array_map(static fn(array $packet): string => memberPtimeDecodeRtp($packet['data'])['payload'],
+    $freshSocket->packets);
+
+$cancelSocket = new MemberPtimeCaptureSocket();
+$cancelMedia = memberPtimeMedia($cancelSocket);
+memberPtimeAdd($cancelMedia, 'a', 26002, 'PCMA', 20);
+memberPtimeAssertSame([], $cancelMedia->pushPcmToLeg('a', $discardedPcm, 44100, 2),
+    'primeiro chunk stateful pode ser aceito sem RTP');
+$cancelMedia->cancelPcmToLeg('a');
+memberPtimeAssertSame(0, count($cancelSocket->packets), 'cancel não emite cauda FIR');
+for ($i = 0; $i < 5; $i++) {
+    $cancelMedia->pushPcmToLeg('a', substr($lifecyclePcm, $i * 3528, 3528), 44100, 2);
+}
+$cancelMedia->finishPcmToLeg('a');
+$cancelPayloads = array_map(static fn(array $packet): string => memberPtimeDecodeRtp($packet['data'])['payload'],
+    $cancelSocket->packets);
+memberPtimeAssertSame($freshPayloads, $cancelPayloads,
+    'playback substituído inicia FIR novo sem tail ou PCM residual da stream cancelada');
+memberPtimeAssertSame([], $cancelMedia->finishPcmToLeg('a'), 'finish não repete tail');
 
 echo "PASS: ptime individual, accumulator PCM, RTP, silêncio, DTMF e legado de 20 ms validados.\n";

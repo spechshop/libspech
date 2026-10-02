@@ -9,12 +9,14 @@ use libspech\Cli\cli;
 use libspech\Network\network;
 use libspech\Packet\renderMessages;
 use libspech\Rtp\MediaChannel;
+use libspech\Rtp\PcmStreamConverter;
 use libspech\Rtp\rtpc;
 use libspech\Rtp\rtpChannel;
 use Random\RandomException;
 use SocketMutable;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
+use Swoole\StringObject;
 use Swoole\Timer;
 
 class trunkController
@@ -2279,10 +2281,10 @@ class trunkController
                     $frequencyPacket = $channel->getFrequencyFromPtCodec($rtpc->payloadType);
                 }
 
-
+                $channelsPacket = max(1, (int)($this->mediaChannel->members[$targetId]['channels'] ?? 1));
                 if ($this->waitingSilence) {
                     $frequencyPacket ??= $channel->getFrequencyFromPtCodec($rtpc->payloadType);
-                    $channelsPacket = max(1, (int)($this->mediaChannel->members[$targetId]['channels'] ?? 1));
+
                     $this->processWaitSilenceFrame($pcmData, (int)$frequencyPacket, $channelsPacket);
                 }
 
@@ -2292,9 +2294,9 @@ class trunkController
 
                     $this->bufferWriteSound[$ssrc] ??= [];
                     $this->bufferWriteSound[$ssrc][$frequencyPacket] ??= [];
-                    $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] ??= '';
+                    $this->bufferWriteSound[$ssrc][$frequencyPacket][$channelsPacket] ??= '';
 
-                    $this->bufferWriteSound[$ssrc][$frequencyPacket][$packetCodecName] .= $pcmData;
+                    $this->bufferWriteSound[$ssrc][$frequencyPacket][$channelsPacket] .= $pcmData;
                 }
 
                 if ($hasPcmCallback) {
@@ -2646,7 +2648,7 @@ class trunkController
     }
 
 
-    public function getBuffer(): string
+    public function getBuffer(): string|StringObject
     {
         $mixed = '';
         $channels = [];
@@ -2654,39 +2656,21 @@ class trunkController
 
 
         foreach ($this->bufferWriteSound as $ssrc => $freq) {
-
-            foreach ($freq as $freqPacket => $codec) {
-                foreach ($codec as $codecName => $pcm) {
-                    if ($this->defaultChannels > 1) $pcm= stereoToMono($pcm);
-                    switch ($codecName) {
-                        case 'G729':
-                        case 'GSM':
-                            $channels[] = $pcm;
-                            break;
-                        case 'PCMU':
-                            $channels[] = $pcm;
-                            break;
-                        case 'PCMA':
-                            $channels[] = $pcm;
-                            break;
-                        case 'L16':
-                            $channels[] = $pcm;
-                            break;
-                        case 'OPUS':
-                            $dec = $pcm;
-                            $channels[] = $dec;
-                            break;
-                        default:
-                            $channels[] = '';
-                            break;
-                    }
+            foreach ($freq as $freqPacket => $chansGroup) {
+                foreach ($chansGroup as $nchan => $pcm) {
+                    $channels[] = $pcm;
                 }
             }
         }
 
-        $mixed=mixAudioChannels($channels);
-        if ($this->defaultChannels > 1) $mixed=monoToStereo($mixed);
-        return $mixed;
+        $uni='';
+        if (count($channels) > 1) {
+            $uni = mixAudioChannels($channels);
+        }
+        else $uni=$channels[0];
+
+
+        return swoole_string($uni);
     }
 
 
@@ -3345,7 +3329,9 @@ class trunkController
     public function saveBufferToWavFile(string $caminho, string $audioBuffer): void
     {
 
-        $audio = waveHead3(strlen($audioBuffer), $this->frequencyCall, $this->defaultChannels, 1) . $audioBuffer;
+        $chans=1;
+        if ($this->stereoMode) $chans=2;
+        $audio = waveHead3(strlen($audioBuffer), $this->frequencyCall, $chans, 1) . $audioBuffer;
         Coroutine::writeFile($caminho, $audio);
     }
 

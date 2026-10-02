@@ -12,8 +12,6 @@ use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
 use Throwable;
-use function libspech\Sip\monoToStereo;
-use function libspech\Sip\stereoToMono;
 use function libspech\Sip\volumeAverage;
 
 
@@ -227,6 +225,12 @@ class MediaChannel
 
     /** @var array<string,bool> legs currently driven by an internal media source */
     private array $injectedLegs = [];
+
+    /** @var array<string,PcmStreamConverter> Logical source leg/member to target leg/member. */
+    private array $relayPcmStreams = [];
+
+    /** @var array<string,PcmStreamConverter> One active injection stream per leg. */
+    private array $injectionPcmStreams = [];
 
     /** @var array<string,bool> members whose relayed PCM is being drained by a pacer */
     private array $relayPacerRunning = [];
@@ -926,7 +930,9 @@ class MediaChannel
                             $targetId,
                             $sourcePcmData,
                             $sourceFrequency,
-                            $sourceChannels
+                            $sourceChannels,
+                            $this->logicalMemberKey($idFrom),
+                            false,
                         );
                         $this->queueRelayedPcmForMember($targetId, $pcmForTarget);
                     } catch (Throwable $e) {
@@ -1051,9 +1057,17 @@ class MediaChannel
                 }
             }
         }
+        /** @var opusChannel $opus */
         foreach ([$peer['opusEncoder'], $peer['opusDecoder']] as $opus) {
-            $opus->setBitrate($peer['config']['maxplaybackrate'] ?? 24000);
+
+
+            $opus->setComplexity(8);
+            $opus->setSignalVoice(true);
+            $opus->setDTX(false);
+            $opus->setVBR(false);
+            $opus->setBitrate(24000);
         }
+
 
         $peer['rtpChannel'] = new rtpChannel($txPt, (int)$peer['frequency'], $ptimeMs, $this->generateDeterministicSsrc($id));
         $peer['rtpChannel']->setSsrc($this->generateDeterministicSsrc($id));
@@ -1359,41 +1373,63 @@ class MediaChannel
      */
     public function sendPcmToLeg(string $leg, string $pcm, int $sourceFrequency, int $sourceChannels = 1): ?array
     {
-        $leg = strtolower(trim($leg));
-        if (!$this->active || !in_array($leg, ['a', 'b'], true) || $pcm === '' || $sourceFrequency <= 0) {
-            return null;
-        }
-
-        $canonicalId = $this->legMemberIds[$leg] ?? '';
-        if ($canonicalId !== '' && isset($this->members[$canonicalId])) {
-            $member = $this->members[$canonicalId];
-            if (isset($member['rtpChannel'])) {
-                return $this->sendPcmToMember($canonicalId, $member, $pcm, $sourceFrequency, $sourceChannels);
-            }
-        }
-
-        foreach ($this->members as $id => $member) {
-            if (strtolower((string)($member['leg'] ?? '')) !== $leg || !isset($member['rtpChannel'])) {
-                continue;
-            }
-            return $this->sendPcmToMember($id, $member, $pcm, $sourceFrequency, $sourceChannels);
-        }
-        return null;
+        $sent = $this->pushPcmToLeg($leg, $pcm, $sourceFrequency, $sourceChannels);
+        return $sent === null || $sent === [] ? null : $sent[array_key_last($sent)];
     }
 
-    /**
-     * Converte, acumula e envia somente frames completos no ptime do membro.
-     * Retorna os metadados do último RTP enviado ou null quando restou apenas PCM
-     * parcial no accumulator.
-     *
-     * @param array<string,mixed> $member
-     * @return array{codec:string,payload_type:int,frequency:int,sequence:int,timestamp:int,ssrc:int}|null
-     */
-    private function sendPcmToMember(string $id, array $member, string $pcm, int $sourceFrequency, int $sourceChannels): ?array
+    /** @return list<array<string,int|string>>|null Null means the leg is unavailable; [] means accepted and buffered. */
+    public function pushPcmToLeg(string $leg, string $pcm, int $sourceFrequency, int $sourceChannels = 1): ?array
     {
-        $converted = $this->convertPcmForMember($id, $pcm, $sourceFrequency, $sourceChannels);
-        $sent = $this->queuePcmForMember($id, $converted);
-        return empty($sent) ? null : $sent[array_key_last($sent)];
+        $leg = strtolower(trim($leg));
+        if (!$this->active || !in_array($leg, ['a', 'b'], true) || $sourceFrequency <= 0
+            || !in_array($sourceChannels, [1, 2], true)) {
+            return null;
+        }
+        $id = $this->readyMemberIdForLeg($leg);
+        if ($id === null) return null;
+        $converted = $this->convertPcmForMember($id, $pcm, $sourceFrequency, $sourceChannels, $leg, true);
+        return $this->queuePcmForMember($id, $converted);
+    }
+
+    /** Finish a normal injection. A final partial ptime is padded with silence. */
+    public function finishPcmToLeg(string $leg): ?array
+    {
+        $leg = strtolower(trim($leg));
+        $converter = $this->injectionPcmStreams[$leg] ?? null;
+        unset($this->injectionPcmStreams[$leg]);
+        $id = $this->readyMemberIdForLeg($leg);
+        if ($id === null) return null;
+        $tail = $converter?->finish() ?? '';
+        $sent = $this->queuePcmForMember($id, $tail);
+        $channel = $this->members[$id]['rtpChannel'];
+        $format = $this->pcmFormatForMember($id);
+        $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
+        $residual = (string)($this->members[$id]['pcmAccumulator'] ?? '');
+        if ($residual !== '') {
+            $sent = array_merge($sent, $this->queuePcmForMember($id,
+                str_repeat("\0", $frameBytes - strlen($residual))));
+        }
+        return $sent;
+    }
+
+    public function cancelPcmToLeg(string $leg): void
+    {
+        $leg = strtolower(trim($leg));
+        unset($this->injectionPcmStreams[$leg]);
+        $id = $this->readyMemberIdForLeg($leg);
+        if ($id !== null) $this->members[$id]['pcmAccumulator'] = '';
+    }
+
+    private function readyMemberIdForLeg(string $leg): ?string
+    {
+        if (!in_array($leg, ['a', 'b'], true)) return null;
+        $id = $this->legMemberIds[$leg] ?? '';
+        if ($id !== '' && ($this->members[$id]['rtpChannel'] ?? null) instanceof rtpChannel) return $id;
+        foreach ($this->members as $id => $member) {
+            if (strtolower((string)($member['leg'] ?? '')) === $leg
+                && ($member['rtpChannel'] ?? null) instanceof rtpChannel) return $id;
+        }
+        return null;
     }
 
     /** @return array{frequency:int,channels:int} */
@@ -1416,9 +1452,10 @@ class MediaChannel
         return ['frequency' => $frequency, 'channels' => $channels];
     }
 
-    private function convertPcmForMember(string $id, string $pcm, int $sourceFrequency, int $sourceChannels): string
+    private function convertPcmForMember(string $id, string $pcm, int $sourceFrequency, int $sourceChannels,
+        string $sourceKey, bool $injection): string
     {
-        if ($pcm === '' || $sourceFrequency <= 0 || $sourceChannels <= 0) {
+        if ($sourceFrequency <= 0 || $sourceChannels <= 0) {
             throw new \RuntimeException('playback_pcm_invalid');
         }
         if ((strlen($pcm) % (2 * $sourceChannels)) !== 0) {
@@ -1426,27 +1463,32 @@ class MediaChannel
         }
 
         $format = $this->pcmFormatForMember($id);
-        $converted = $pcm;
-        $pcmChannels = $sourceChannels;
-
-        if ($pcmChannels === 2 && $format['channels'] === 1) {
-            $converted = stereoToMono($converted);
-            $pcmChannels = 1;
-        } elseif ($pcmChannels === 1 && $format['channels'] === 2) {
-            $converted = monoToStereo($converted);
-            $pcmChannels = 2;
+        // A matching format has no DSP state. Keep the common G.711 relay and
+        // silence injection on the original direct PCM path.
+        if ($sourceFrequency === $format['frequency'] && $sourceChannels === $format['channels']) {
+            if ($injection) unset($this->injectionPcmStreams[$sourceKey]);
+            elseif ($this->relayPcmStreams !== []) {
+                unset($this->relayPcmStreams[$sourceKey . '>' . $this->logicalMemberKey($id)]);
+            }
+            return $pcm;
         }
-
-        if ($pcmChannels !== $format['channels']) {
-            throw new \RuntimeException('playback_channels_not_supported');
+        $targetKey = $this->logicalMemberKey($id);
+        $key = $injection ? $sourceKey : $sourceKey . '>' . $targetKey;
+        $streams = &$this->{$injection ? 'injectionPcmStreams' : 'relayPcmStreams'};
+        $stream = $streams[$key] ?? null;
+        if (!$stream instanceof PcmStreamConverter
+            || $stream->sourceRate !== $sourceFrequency || $stream->sourceChannels !== $sourceChannels
+            || $stream->targetRate !== $format['frequency'] || $stream->targetChannels !== $format['channels']) {
+            $stream = new PcmStreamConverter($sourceFrequency, $sourceChannels, $format['frequency'], $format['channels']);
+            $streams[$key] = $stream;
         }
+        return $stream->push($pcm);
+    }
 
-        if ($sourceFrequency !== $format['frequency']) {
-            // O accumulator é sempre PCM16LE. L16 só vira big-endian no encoder.
-            $converted = resampler($converted, $sourceFrequency, $format['frequency'], false);
-        }
-
-        return $converted;
+    private function logicalMemberKey(string $id): string
+    {
+        $leg = strtolower((string)($this->members[$id]['leg'] ?? ''));
+        return in_array($leg, ['a', 'b'], true) ? $leg : $id;
     }
 
     /**
@@ -1937,6 +1979,9 @@ class MediaChannel
     public function close(): void
     {
         $this->active = false;
+        // Teardown discards DSP history and residual PCM; it must never emit a FIR tail.
+        $this->relayPcmStreams = [];
+        $this->injectionPcmStreams = [];
         // Do not close the RTP socket from the control coroutine. The receive
         // coroutine owns recvfrom() and performs destroy() when its 200 ms
         // timeout observes active=false.
