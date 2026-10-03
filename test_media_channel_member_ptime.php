@@ -26,7 +26,7 @@ final class MemberPtimeCaptureSocket extends SocketMutable
         return false;
     }
 
-    public function sendto(string $addr, int $port, string $data): int|false
+    public function sendto(mixed $addr, mixed $port, mixed $data): int|false
     {
         $this->packets[] = ['address' => $addr, 'port' => $port, 'data' => $data];
         return strlen($data);
@@ -441,7 +441,7 @@ $sourceCodecs['G729'] = [$g729Decoder->decode($g729Payload), 8000];
 $opusEncoder = new opusChannel(48000, 1);
 $opusDecoder = new opusChannel(48000, 1);
 $sourcePcm48k = memberPtimePcm(960);
-$sourceCodecs['OPUS'] = [$opusDecoder->decode($opusEncoder->encode($sourcePcm48k)), 48000];
+$sourceCodecs['OPUS'] = [$opusDecoder->decode($opusEncoder->encode($sourcePcm48k, 48000),48000), 48000];
 $sourcePcm16k = memberPtimePcm(320);
 $sourceCodecs['L16'] = [decodeL16ToPcm(encodePcmToL16($sourcePcm16k)), 16000];
 
