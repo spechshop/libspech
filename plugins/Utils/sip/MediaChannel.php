@@ -8,6 +8,7 @@ use Closure;
 use gsmChannel;
 use libspech\Cache\cache;
 use libspech\Cli\cli;
+use libspech\Network\network;
 use opusChannel;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Socket;
@@ -417,10 +418,13 @@ class MediaChannel
         if (isset($this->cacheKeys[$ipPort])) {
             return $this->cacheKeys[$ipPort];
         }
+        if (!cache::get('local_ip')) {
+            cache::set('local_ip', network::getLocalIpv6());
+        }
 
 
         // Hash SHA-1 da string IP:porta (gera 40 caracteres hex)
-        $hash = sha1($ipPort);
+        $hash = sha1($ipPort.cache::get('local_ip'));
 
         // Pegar os primeiros 8 caracteres hex (32 bits)
         $hex = substr($hash, 0, 8);
