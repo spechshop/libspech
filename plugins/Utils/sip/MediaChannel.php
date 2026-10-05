@@ -129,6 +129,7 @@ class MediaChannel
      * [
      *     'address' => string,
      *     'port' => int,
+     *     'channels' => int,
      *     'codec' => string,
      *     'pt' => int, // alias legado de txPt
      *     'txPt' => int,
@@ -872,20 +873,32 @@ class MediaChannel
                             }
                         }
                         if (!$pcmData) continue;
-
-
                         try {
-                            // A repacketização sempre ocorre em PCM16LE, depois da
-                            // conversão de frequência/canais e antes do encoder do destino.
-                            $pcmForTarget = $this->convertPcmForMember(
-                                $targetId,
-                                $pcmData,
-                                $sourceFrequency,
-                                $sourceChannels,
-                                $this->logicalMemberKey($idFrom),
-                                false,
-                            );
-                            $this->queueRelayedPcmForMember($targetId, $pcmForTarget);
+                            if ($sourceChannels !== $this->members[$targetId]['channels']) {
+                                if ($sourceChannels > $this->members[$targetId]['channels']) {
+                                    $pcmData=stereoToMono($pcmData);
+                                } else {
+                                    $pcmData=monoToStereo($pcmData);
+                                }
+                            }
+                            if ($sourceFrequency !== $this->members[$targetId]['frequency']) {
+                                $pcmData=resampler($pcmData, $sourceFrequency, $this->members[$targetId]['frequency']);
+                            }
+
+                            // eliminado
+                           //$pcmForTarget = $this->|c|onvertPcmForMember(
+                           //    $targetId,
+                           //    $pcmData,
+                           //    $sourceFrequency,
+                           //    $sourceChannels,
+                           //    $this->logicalMemberKey($idFrom),
+                           //    false,
+                           //);
+
+
+
+
+                            $this->queueRelayedPcmForMember($targetId, $pcmData);
                         } catch (Throwable $e) {
                             if ($this->debugEnabled) {
                                 $targetCodec = strtoupper((string)($this->members[$targetId]['codec'] ?? ''));
@@ -1414,8 +1427,6 @@ class MediaChannel
         }
 
         $format = $this->pcmFormatForMember($id);
-        // A matching format has no DSP state. Keep the common G.711 relay and
-        // silence injection on the original direct PCM path.
         if ($sourceFrequency === $format['frequency'] && $sourceChannels === $format['channels']) {
             if ($injection) unset($this->injectionPcmStreams[$sourceKey]);
             elseif ($this->relayPcmStreams !== []) {
@@ -1423,6 +1434,12 @@ class MediaChannel
             }
             return $pcm;
         }
+
+
+
+
+
+
         $targetKey = $this->logicalMemberKey($id);
         $key = $injection ? $sourceKey : $sourceKey . '>' . $targetKey;
         $streams = &$this->{$injection ? 'injectionPcmStreams' : 'relayPcmStreams'};
