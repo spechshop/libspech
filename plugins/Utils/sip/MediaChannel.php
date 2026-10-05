@@ -976,7 +976,7 @@ class MediaChannel
         if ($pcm !== '') {
             $buffer->append($pcm);
         }
-        $this->initializeRelayMetrics($id, $channel);
+
 
         $maxFrames = max(2, (int)ceil(self::MAX_RELAY_BACKLOG_MS / $channel->packetTimeMs));
         while ($buffer->length() > ($frameBytes * $maxFrames)) {
