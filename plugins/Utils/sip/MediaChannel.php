@@ -1625,11 +1625,13 @@ class MediaChannel
                     $this->recordRelayInterval($id, $actualSendAtNs, $channel->packetTimeMs);
                     $this->sendPcmFrameForMember($id, $channel, $frame);
                     $this->relayMetrics[$id]['packets_sent']++;
+                    $completedAtNs = hrtime(true);
                     // Compensa apenas o jitter pequeno do scheduler. Um atraso
-                    // relevante reinicia a cadência e nunca gera catch-up em rajada.
+                    // relevante, inclusive dentro do envio, reinicia a cadência.
                     $this->relayNextSendAtNs[$id] = $lateNs <= intdiv($intervalNs, 2)
+                        && ($completedAtNs - $actualSendAtNs) <= intdiv($intervalNs, 2)
                         ? $nextSendAtNs + $intervalNs
-                        : $actualSendAtNs + $intervalNs;
+                        : $completedAtNs + $intervalNs;
                 }
             } catch (Throwable $e) {
                 if ($this->debugEnabled) {
