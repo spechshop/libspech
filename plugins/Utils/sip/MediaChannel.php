@@ -950,6 +950,51 @@ class MediaChannel
             }
         });
     }
+    /**
+     * Repacketized bridge audio must leave at the destination ptime. A source RTP
+     * carrying 40/60 ms can produce two or three 20 ms destination frames; sending
+     * those frames in the receive callback creates a burst followed by an equally
+     * long gap and repeatedly starves endpoint jitter buffers.
+     */
+    private function queueRelayedPcmForMember(string $id, string $pcm): void
+    {
+        if (!isset($this->members[$id]) || !is_array($this->members[$id])) {
+            throw new \RuntimeException('relay_rtp_channel_not_found');
+        }
+        $channel = $this->members[$id]['rtpChannel'] ?? null;
+        if (!$channel instanceof rtpChannel) {
+            throw new \RuntimeException('relay_rtp_channel_not_found');
+        }
+
+        $format = $this->pcmFormatForMember($id);
+        $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
+        if ($frameBytes <= 0) {
+            throw new \RuntimeException('relay_frame_size_invalid');
+        }
+
+        $buffer = $this->relayBufferForMember($id);
+        if ($pcm !== '') {
+            $buffer->append($pcm);
+        }
+        $this->initializeRelayMetrics($id, $channel);
+
+        $maxFrames = max(2, (int)ceil(self::MAX_RELAY_BACKLOG_MS / $channel->packetTimeMs));
+        while ($buffer->length() > ($frameBytes * $maxFrames)) {
+            $buffer->discard($frameBytes);
+            $this->relayMetrics[$id]['dropped_frames']++;
+        }
+        $queuedFrames = intdiv($buffer->length(), $frameBytes);
+        $this->relayMetrics[$id]['max_queue_frames'] = max(
+            (int)$this->relayMetrics[$id]['max_queue_frames'],
+            $queuedFrames,
+        );
+
+        if (isset($this->relayPacerRunning[$id])) {
+            return;
+        }
+
+        $this->startRelayPacerForMember($id);
+    }
 
     public function isMember(string $id): bool
     {
@@ -1499,51 +1544,7 @@ class MediaChannel
         return $sent;
     }
 
-    /**
-     * Repacketized bridge audio must leave at the destination ptime. A source RTP
-     * carrying 40/60 ms can produce two or three 20 ms destination frames; sending
-     * those frames in the receive callback creates a burst followed by an equally
-     * long gap and repeatedly starves endpoint jitter buffers.
-     */
-    private function queueRelayedPcmForMember(string $id, string $pcm): void
-    {
-        if (!isset($this->members[$id]) || !is_array($this->members[$id])) {
-            throw new \RuntimeException('relay_rtp_channel_not_found');
-        }
-        $channel = $this->members[$id]['rtpChannel'] ?? null;
-        if (!$channel instanceof rtpChannel) {
-            throw new \RuntimeException('relay_rtp_channel_not_found');
-        }
 
-        $format = $this->pcmFormatForMember($id);
-        $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
-        if ($frameBytes <= 0) {
-            throw new \RuntimeException('relay_frame_size_invalid');
-        }
-
-        $buffer = $this->relayBufferForMember($id);
-        if ($pcm !== '') {
-            $buffer->append($pcm);
-        }
-        $this->initializeRelayMetrics($id, $channel);
-
-        $maxFrames = max(2, (int)ceil(self::MAX_RELAY_BACKLOG_MS / $channel->packetTimeMs));
-        while ($buffer->length() > ($frameBytes * $maxFrames)) {
-            $buffer->discard($frameBytes);
-            $this->relayMetrics[$id]['dropped_frames']++;
-        }
-        $queuedFrames = intdiv($buffer->length(), $frameBytes);
-        $this->relayMetrics[$id]['max_queue_frames'] = max(
-            (int)$this->relayMetrics[$id]['max_queue_frames'],
-            $queuedFrames,
-        );
-
-        if (isset($this->relayPacerRunning[$id])) {
-            return;
-        }
-
-        $this->startRelayPacerForMember($id);
-    }
 
     private function startRelayPacerForMember(string $id): void
     {
