@@ -1008,7 +1008,6 @@ class MediaChannel
                     $nowNs = hrtime(true);
                     $nextSendAtNs = $this->relayNextSendAtNs[$id] ?? $nowNs;
                     if ($nextSendAtNs < ($nowNs - $intervalNs)) {
-                        // Atraso maior que um ptime nunca é compensado com rajada.
                         $nextSendAtNs = $nowNs;
                     }
                     $remainingNs = $nextSendAtNs - $nowNs;
@@ -1019,22 +1018,16 @@ class MediaChannel
                     if (!$this->active || !isset($this->members[$id]) || !$buffer->has($frameBytes)) {
                         return;
                     }
-                    $actualSendAtNs = hrtime(true);
-                    $lateNs = max(0, $actualSendAtNs - $nextSendAtNs);
+
+
 
 
 
                     $frame = $buffer->pop($frameBytes);
-                    $this->recordRelayInterval($id, $actualSendAtNs, $channel->packetTimeMs);
                     $this->sendPcmFrameForMember($id, $channel, $frame);
 
-                    $completedAtNs = hrtime(true);
-                    // Compensa apenas o jitter pequeno do scheduler. Um atraso
-                    // relevante, inclusive dentro do envio, reinicia a cadência.
-                    $this->relayNextSendAtNs[$id] = $lateNs <= intdiv($intervalNs, 2)
-                    && ($completedAtNs - $actualSendAtNs) <= intdiv($intervalNs, 2)
-                        ? $nextSendAtNs + $intervalNs
-                        : $completedAtNs + $intervalNs;
+
+
                 }
             } catch (Throwable $e) {
                 if ($this->debugEnabled) {
