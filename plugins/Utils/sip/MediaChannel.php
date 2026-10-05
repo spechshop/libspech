@@ -977,20 +977,85 @@ class MediaChannel
             $buffer->append($pcm);
         }
 
-
         $maxFrames = max(2, (int)ceil(self::MAX_RELAY_BACKLOG_MS / $channel->packetTimeMs));
         while ($buffer->length() > ($frameBytes * $maxFrames)) {
             $buffer->discard($frameBytes);
         }
-
-
-
-
         if (isset($this->relayPacerRunning[$id])) {
             return;
         }
 
-        $this->startRelayPacerForMember($id);
+        if (!$this->active || !isset($this->members[$id]) || isset($this->relayPacerRunning[$id])) {
+            return;
+        }
+
+        $this->relayPacerRunning[$id] = true;
+        Coroutine::create(function () use ($id): void {
+            try {
+                while ($this->active && isset($this->members[$id])) {
+                    $channel = $this->members[$id]['rtpChannel'] ?? null;
+                    if (!$channel instanceof rtpChannel) {
+                        return;
+                    }
+                    $format = $this->pcmFormatForMember($id);
+                    $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
+                    $buffer = $this->relayBufferForMember($id);
+                    if ($frameBytes <= 0 || !$buffer->has($frameBytes)) {
+                        return;
+                    }
+
+                    $intervalNs = $channel->packetTimeMs * 1_000_000;
+                    $nowNs = hrtime(true);
+                    $nextSendAtNs = $this->relayNextSendAtNs[$id] ?? $nowNs;
+                    if ($nextSendAtNs < ($nowNs - $intervalNs)) {
+                        // Atraso maior que um ptime nunca é compensado com rajada.
+                        $nextSendAtNs = $nowNs;
+                    }
+                    $remainingNs = $nextSendAtNs - $nowNs;
+                    if ($remainingNs > 0) {
+                        Coroutine::sleep(max(0.001, $remainingNs / 1_000_000_000));
+                    }
+
+                    if (!$this->active || !isset($this->members[$id]) || !$buffer->has($frameBytes)) {
+                        return;
+                    }
+                    $actualSendAtNs = hrtime(true);
+                    $lateNs = max(0, $actualSendAtNs - $nextSendAtNs);
+
+
+
+                    $frame = $buffer->pop($frameBytes);
+                    $this->recordRelayInterval($id, $actualSendAtNs, $channel->packetTimeMs);
+                    $this->sendPcmFrameForMember($id, $channel, $frame);
+
+                    $completedAtNs = hrtime(true);
+                    // Compensa apenas o jitter pequeno do scheduler. Um atraso
+                    // relevante, inclusive dentro do envio, reinicia a cadência.
+                    $this->relayNextSendAtNs[$id] = $lateNs <= intdiv($intervalNs, 2)
+                    && ($completedAtNs - $actualSendAtNs) <= intdiv($intervalNs, 2)
+                        ? $nextSendAtNs + $intervalNs
+                        : $completedAtNs + $intervalNs;
+                }
+            } catch (Throwable $e) {
+                if ($this->debugEnabled) {
+                    cli::pcl("{$this->callId} MediaChannel relay pacer {$id}: {$e->getMessage()}", 'red');
+                }
+            } finally {
+                unset($this->relayPacerRunning[$id]);
+                if ($this->active && isset($this->members[$id])) {
+                    $channel = $this->members[$id]['rtpChannel'] ?? null;
+                    if ($channel instanceof rtpChannel) {
+                        $format = $this->pcmFormatForMember($id);
+                        $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
+                        if ($frameBytes > 0 && $this->relayBufferForMember($id)->has($frameBytes)) {
+                            // Fecha a corrida: áudio pode entrar entre a leitura vazia
+                            // e a remoção do marcador do pacer.
+                            $this->startRelayPacerForMember($id);
+                        }
+                    }
+                }
+            }
+        });
     }
 
     public function isMember(string $id): bool
