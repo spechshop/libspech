@@ -92,6 +92,7 @@ class MediaChannel
                 $this->members[$id]['rtpChannel']->setPacketTime($ptimeMs);
                 $this->members[$id]['ptime'] = $ptimeMs;
                 $this->members[$id]['samplesPerPacket'] = $this->members[$id]['rtpChannel']->samplesPerPacket;
+                $this->members[$id]['relayFrameBytes'] = $this->members[$id]['samplesPerPacket'] * $this->members[$id]['channels'] * 2;
                 // Um residual criado com o frame anterior não pode ser reinterpretado
                 // com outro tamanho de packetização.
                 $this->members[$id]['pcmAccumulator'] = '';
@@ -138,6 +139,8 @@ class MediaChannel
      *     'samplesPerPacket' => int,
      *     'pcmAccumulator' => string,
      *     'relayPcmBuffer' => ByteBuffer,
+     *     'relayFrameBytes' => int,
+     *     'relayWake' => \Swoole\Coroutine\Channel,
      *     'config' => array,
      *     'opusEncoder' => ?opusChannel,
      *     'opusDecoder' => ?opusChannel,
@@ -255,6 +258,9 @@ class MediaChannel
     public function unblock(): void
     {
         $this->active = false;
+        foreach ($this->members as $member) {
+            $member['relayWake']->close();
+        }
         if ($this->blockChannel->length() === 0) {
             $this->blockChannel->push(true);
         }
@@ -931,6 +937,9 @@ class MediaChannel
                 }
             } finally {
                 $this->active = false;
+                foreach ($this->members as $member) {
+                    $member['relayWake']->close();
+                }
                 try {
                     if (method_exists($this->socket, 'destroy')) {
                         $this->socket->destroy();
@@ -958,10 +967,11 @@ class MediaChannel
      */
     private function queueRelayedPcmForMember(string $id, string $pcm): void
     {
-        if (!isset($this->members[$id]) || !is_array($this->members[$id])) {
-            throw new \RuntimeException('relay_rtp_channel_not_found');
+        if (!isset($this->members[$id])) {
+            return;
         }
-        $channel = $this->members[$id]['rtpChannel'] ?? null;
+        $member = &$this->members[$id];
+        $channel = $member['rtpChannel'] ?? null;
         if (!$channel instanceof rtpChannel) {
             throw new \RuntimeException('relay_rtp_channel_not_found');
         }
@@ -971,8 +981,12 @@ class MediaChannel
         if ($frameBytes <= 0) {
             throw new \RuntimeException('relay_frame_size_invalid');
         }
+        $member['relayFrameBytes'] = $frameBytes;
 
-        $buffer = $this->members[$id]['relayPcmBuffer'];
+        /** @var ByteBuffer $buffer */
+        $buffer = $member['relayPcmBuffer'];
+        /** @var \Swoole\Coroutine\Channel $wake */
+        $wake = $member['relayWake'];
         if ($pcm !== '') {
             $buffer->append($pcm);
         }
@@ -982,6 +996,10 @@ class MediaChannel
             $buffer->discard($frameBytes);
         }
         if (isset($this->relayPacerRunning[$id])) {
+            // Um único sinal pendente basta para retomar o consumo do buffer.
+            if (!$wake->isFull()) {
+                $wake->push(true, 0.0);
+            }
             return;
         }
 
@@ -990,23 +1008,23 @@ class MediaChannel
         }
 
         $this->relayPacerRunning[$id] = true;
-        Coroutine::create(function () use ($id): void {
+        Coroutine::create(function () use ($id, $channel, $buffer, $wake): void {
+            $nextSendAtNs = hrtime(true);
             try {
-                while ($this->active && isset($this->members[$id])) {
-                    $channel = $this->members[$id]['rtpChannel'] ?? null;
-                    if (!$channel instanceof rtpChannel) {
-                        return;
-                    }
-                    $format = $this->pcmFormatForMember($id);
-                    $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
-                    $buffer = $this->relayBufferForMember($id);
-                    if ($frameBytes <= 0 || !$buffer->has($frameBytes)) {
-                        return;
+                while ($this->active && ($this->members[$id]['relayWake'] ?? null) === $wake) {
+                    $frameBytes = $this->members[$id]['relayFrameBytes'];
+                    // Sem um frame completo, aguarda PCM sem encerrar o pacer.
+                    while (!$buffer->has($frameBytes)) {
+                        if ($wake->pop() === false
+                            || !$this->active
+                            || ($this->members[$id]['relayWake'] ?? null) !== $wake) {
+                            return;
+                        }
+                        $frameBytes = $this->members[$id]['relayFrameBytes'];
                     }
 
                     $intervalNs = $channel->packetTimeMs * 1_000_000;
                     $nowNs = hrtime(true);
-                    $nextSendAtNs = $this->relayNextSendAtNs[$id] ?? $nowNs;
                     if ($nextSendAtNs < ($nowNs - $intervalNs)) {
                         $nextSendAtNs = $nowNs;
                     }
@@ -1015,41 +1033,74 @@ class MediaChannel
                         Coroutine::sleep(max(0.001, $remainingNs / 1_000_000_000));
                     }
 
-                    if (!$this->active || !isset($this->members[$id]) || !$buffer->has($frameBytes)) {
+                    if (!$this->active || ($this->members[$id]['relayWake'] ?? null) !== $wake) {
                         return;
                     }
-
-
-
-
-
+                    if ($frameBytes !== $this->members[$id]['relayFrameBytes'] || !$buffer->has($frameBytes)) {
+                        continue;
+                    }
                     $frame = $buffer->pop($frameBytes);
                     $this->sendPcmFrameForMember($id, $channel, $frame);
-
-
-
+                    $nextSendAtNs += $intervalNs;
                 }
             } catch (Throwable $e) {
                 if ($this->debugEnabled) {
                     cli::pcl("{$this->callId} MediaChannel relay pacer {$id}: {$e->getMessage()}", 'red');
                 }
             } finally {
-                unset($this->relayPacerRunning[$id]);
-                if ($this->active && isset($this->members[$id])) {
-                    $channel = $this->members[$id]['rtpChannel'] ?? null;
-                    if ($channel instanceof rtpChannel) {
-                        $format = $this->pcmFormatForMember($id);
-                        $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
-                        if ($frameBytes > 0 && $this->relayBufferForMember($id)->has($frameBytes)) {
-                            // Fecha a corrida: áudio pode entrar entre a leitura vazia
-                            // e a remoção do marcador do pacer.
-                            $this->startRelayPacerForMember($id);
-                        }
-                    }
+                if (!isset($this->members[$id]) || $this->members[$id]['relayWake'] === $wake) {
+                    unset($this->relayPacerRunning[$id]);
                 }
             }
         });
     }
+    /**
+     * @return array{codec:string,payload_type:int,frequency:int,sequence:int,timestamp:int,ssrc:int}
+     */
+    private function sendPcmFrameForMember(string $id, rtpChannel $channel, string $frame): array
+    {
+        $payload = $this->encodePcmFrameForMember($id, $frame);
+        if ($payload === '') {
+            throw new \RuntimeException('playback_encode_failed');
+        }
+
+        $sequence = (int)$channel->sequenceNumber;
+        $timestamp = (int)$channel->timestamp;
+        $packet = $channel->buildAudioPacket($payload);
+        $this->socket->sendto((string)$this->members[$id]['address'], (int)$this->members[$id]['port'], $packet);
+
+        return [
+            'codec' => strtoupper((string)($this->members[$id]['codec'] ?? '')),
+            'payload_type' => (int)$channel->payloadType,
+            'frequency' => (int)$channel->sampleRate,
+            'sequence' => $sequence,
+            'timestamp' => $timestamp,
+            'ssrc' => (int)$channel->ssrc,
+        ];
+    }
+
+    private function encodePcmFrameForMember(string $id, string $pcmFrame): string
+    {
+        $codec = strtoupper((string)($this->members[$id]['codec'] ?? ''));
+
+        return match ($codec) {
+            'PCMA' => encodePcmToPcma($pcmFrame),
+            'PCMU' => encodePcmToPcmu($pcmFrame),
+            'L16' => encodePcmToL16($pcmFrame),
+            'PCM' => $pcmFrame,
+            'OPUS' => $this->encodeOpusFrameForMember($id, $pcmFrame),
+            'G729' => $this->encodeG729FrameForMember($id, $pcmFrame),
+            'GSM' => $this->encodeGsmFrameForMember($id, $pcmFrame),
+            default => throw new \RuntimeException('playback_codec_not_supported'),
+        };
+    }
+
+
+
+
+
+
+
 
     public function isMember(string $id): bool
     {
@@ -1093,49 +1144,28 @@ class MediaChannel
             ? $peer['rxCodecMapper']
             : ($this->rxCodecMapper !== [] ? $this->rxCodecMapper : [$rxPt => $mapping]);
 
-        // Encoder e decoder Opus separados evitam compartilhar estado entre as duas
-        // direções do mesmo membro. `opus` permanece como alias legado do decoder.
-        $peer['opusEncoder'] = new opusChannel(48000, $nc);
-        $peer['opusDecoder'] = new opusChannel(48000, $nc);
-        $peer['opus'] = $peer['opusDecoder'];
+        if ($codec === 'OPUS') {
+            // Encoder e decoder Opus separados evitam compartilhar estado entre as duas
+            // direções do mesmo membro. `opus` permanece como alias legado do decoder.
+            $peer['opusEncoder'] = new opusChannel(48000, $nc);
+            $peer['opusDecoder'] = new opusChannel(48000, $nc);
+            $peer['opus'] = $peer['opusDecoder'];
+        }
         if ($codec === 'GSM') {
             $peer['gsmEncoder'] = new gsmChannel();
             $peer['gsmDecoder'] = new gsmChannel();
         }
         $id = "{$peer['address']}:{$peer['port']}";
 
-        if (!empty($peer['config'])) {
-            if (!empty($peer['config'][(int)$peer['pt']])) {
-                if (!empty($peer['config']['maxaveragebitrate'])) {
-                    foreach ([$peer['opusEncoder'], $peer['opusDecoder']] as $opus) {
-                        $opus->setBitrate((int)$peer['config']['maxaveragebitrate']);
-                    }
-                } elseif (!empty($peer['config']['maxplaybackrate'])) {
-                    foreach ([$peer['opusEncoder'], $peer['opusDecoder']] as $opus) {
-                        $opus->setBitrate((int)$peer['config']['maxplaybackrate']);
-                    }
-                }
-
-                $config = $peer['config'];
-                foreach ([$peer['opusEncoder'], $peer['opusDecoder']] as $opus) {
-                    if (!empty($config['userdtx'])) $opus->setDTX(true);
-                    if (!empty($config['cbr'])) $opus->setVBR(true);
-                    $opus->setComplexity(8);
-                    $opus->setSignalVoice(true);
-                    $opus->setDTX(true);
-                    $opus->setVBR(true);
-                }
+        if ($codec === 'OPUS') {
+            /** @var opusChannel $opus */
+            foreach ([$peer['opusEncoder'], $peer['opusDecoder']] as $opus) {
+                $opus->setComplexity(8);
+                $opus->setSignalVoice(true);
+                $opus->setDTX(true);
+                $opus->setVBR(true);
+                $opus->setBitrate(24000);
             }
-        }
-        /** @var opusChannel $opus */
-        foreach ([$peer['opusEncoder'], $peer['opusDecoder']] as $opus) {
-
-
-            $opus->setComplexity(8);
-            $opus->setSignalVoice(true);
-            $opus->setDTX(false);
-            $opus->setVBR(false);
-            $opus->setBitrate(24000);
         }
 
 
@@ -1146,12 +1176,19 @@ class MediaChannel
         $peer['samplesPerPacket'] = $peer['rtpChannel']->samplesPerPacket;
         $peer['pcmAccumulator'] = '';
         $peer['relayPcmBuffer'] = new ByteBuffer(4096);
+        $peer['relayFrameBytes'] = $peer['rtpChannel']->samplesPerPacket * $nc * 2;
+        $peer['relayWake'] = new \Swoole\Coroutine\Channel(1);
         $peer['channels'] = $nc;
         if ($codec === 'G729') {
             $peer['bcg729Channel'] = new bcg729Channel();
         }
         $this->ptCodecsChannels[$txPt] = $nc;
         $this->ptFrequencies[$txPt] = (int)$peer['frequency'];
+        if (isset($this->members[$id])) {
+            $wake = $this->members[$id]['relayWake'];
+            unset($this->members[$id], $this->relayPacerRunning[$id]);
+            $wake->close();
+        }
         $this->members[$id] = $peer;
         if (in_array((string)($peer['leg'] ?? ''), ['a', 'b'], true)) {
             $this->legMemberIds[(string)$peer['leg']] = $id;
@@ -1665,18 +1702,6 @@ class MediaChannel
                 }
             } finally {
                 unset($this->relayPacerRunning[$id]);
-                if ($this->active && isset($this->members[$id])) {
-                    $channel = $this->members[$id]['rtpChannel'] ?? null;
-                    if ($channel instanceof rtpChannel) {
-                        $format = $this->pcmFormatForMember($id);
-                        $frameBytes = $channel->samplesPerPacket * $format['channels'] * 2;
-                        if ($frameBytes > 0 && $this->relayBufferForMember($id)->has($frameBytes)) {
-                            // Fecha a corrida: áudio pode entrar entre a leitura vazia
-                            // e a remoção do marcador do pacer.
-                            $this->startRelayPacerForMember($id);
-                        }
-                    }
-                }
             }
         });
     }
@@ -1765,46 +1790,6 @@ class MediaChannel
         return $result;
     }
 
-    /**
-     * @return array{codec:string,payload_type:int,frequency:int,sequence:int,timestamp:int,ssrc:int}
-     */
-    private function sendPcmFrameForMember(string $id, rtpChannel $channel, string $frame): array
-    {
-        $payload = $this->encodePcmFrameForMember($id, $frame);
-        if ($payload === '') {
-            throw new \RuntimeException('playback_encode_failed');
-        }
-
-        $sequence = (int)$channel->sequenceNumber;
-        $timestamp = (int)$channel->timestamp;
-        $packet = $channel->buildAudioPacket($payload);
-        $this->socket->sendto((string)$this->members[$id]['address'], (int)$this->members[$id]['port'], $packet);
-
-        return [
-            'codec' => strtoupper((string)($this->members[$id]['codec'] ?? '')),
-            'payload_type' => (int)$channel->payloadType,
-            'frequency' => (int)$channel->sampleRate,
-            'sequence' => $sequence,
-            'timestamp' => $timestamp,
-            'ssrc' => (int)$channel->ssrc,
-        ];
-    }
-
-    private function encodePcmFrameForMember(string $id, string $pcmFrame): string
-    {
-        $codec = strtoupper((string)($this->members[$id]['codec'] ?? ''));
-
-        return match ($codec) {
-            'PCMA' => encodePcmToPcma($pcmFrame),
-            'PCMU' => encodePcmToPcmu($pcmFrame),
-            'L16' => encodePcmToL16($pcmFrame),
-            'PCM' => $pcmFrame,
-            'OPUS' => $this->encodeOpusFrameForMember($id, $pcmFrame),
-            'G729' => $this->encodeG729FrameForMember($id, $pcmFrame),
-            'GSM' => $this->encodeGsmFrameForMember($id, $pcmFrame),
-            default => throw new \RuntimeException('playback_codec_not_supported'),
-        };
-    }
 
     private function encodeGsmFrameForMember(string $id, string $pcmFrame): string
     {
@@ -1913,7 +1898,9 @@ class MediaChannel
 
         if ($currentId !== '' && isset($this->members[$currentId])) {
             unset($this->members[$currentId]);
+            $current['relayWake']->close();
         }
+        $current['relayWake'] = new \Swoole\Coroutine\Channel(1);
         $this->members[$newId] = $current;
         $this->legMemberIds[$leg] = $newId;
         foreach ($this->rtpChanMemberIds as $ssrc => $memberId) {
@@ -2011,6 +1998,9 @@ class MediaChannel
     public function close(): void
     {
         $this->active = false;
+        foreach ($this->members as $member) {
+            $member['relayWake']->close();
+        }
         // Teardown discards DSP history and residual PCM; it must never emit a FIR tail.
         $this->relayPcmStreams = [];
         $this->injectionPcmStreams = [];
