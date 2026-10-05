@@ -972,7 +972,7 @@ class MediaChannel
             throw new \RuntimeException('relay_frame_size_invalid');
         }
 
-        $buffer = $this->relayBufferForMember($id);
+        $buffer = $this->members[$id]['relayPcmBuffer'];
         if ($pcm !== '') {
             $buffer->append($pcm);
         }
@@ -981,13 +981,10 @@ class MediaChannel
         $maxFrames = max(2, (int)ceil(self::MAX_RELAY_BACKLOG_MS / $channel->packetTimeMs));
         while ($buffer->length() > ($frameBytes * $maxFrames)) {
             $buffer->discard($frameBytes);
-            $this->relayMetrics[$id]['dropped_frames']++;
         }
-        $queuedFrames = intdiv($buffer->length(), $frameBytes);
-        $this->relayMetrics[$id]['max_queue_frames'] = max(
-            (int)$this->relayMetrics[$id]['max_queue_frames'],
-            $queuedFrames,
-        );
+
+
+
 
         if (isset($this->relayPacerRunning[$id])) {
             return;
