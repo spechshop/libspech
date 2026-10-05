@@ -268,13 +268,16 @@ class MediaChannel
     public Socket $eventSock;
     public int $listenPort = 0;
 
-    public function onDestruct(callable $callback):void {
-        $this->onDestructCallable=$callback;
+    public function onDestruct(callable $callback): void
+    {
+        $this->onDestructCallable = $callback;
     }
+
     public function __destruct()
     {
         ($this->onDestructCallable)(...)();
     }
+
     private Closure $onDestructCallable;
 
     public function __construct(Socket|\SocketMutable &$socket, string $callId)
@@ -282,7 +285,8 @@ class MediaChannel
         // A non-static closure created here is bound to $this and makes the
         // MediaChannel retain itself. That delays destruction of closed RTP
         // sockets until cyclic GC happens to run.
-        $this->onDestructCallable = static function (): void {};
+        $this->onDestructCallable = static function (): void {
+        };
 
         $this->settings = [
             'sendSilenceProbeToMembers' => true,
@@ -424,7 +428,7 @@ class MediaChannel
 
 
         // Hash SHA-1 da string IP:porta (gera 40 caracteres hex)
-        $hash = sha1($ipPort.cache::get('local_ip'));
+        $hash = sha1($ipPort . cache::get('local_ip'));
 
         // Pegar os primeiros 8 caracteres hex (32 bits)
         $hex = substr($hash, 0, 8);
@@ -497,7 +501,6 @@ class MediaChannel
             $this->members[$targetId]['rtpChannel']->setNewPtDTMF($telephoneEventPt);
 
 
-
             // Construir e enviar pacote DTMF mantendo a timeline própria do canal de destino.
             // Usar o timestamp do remetente quebra a continuidade RTP no destino, gerando
             // "Jitter buffer empty / lost frames". Aqui o timestamp do evento é congelado na
@@ -516,13 +519,14 @@ class MediaChannel
 
     private function relayDtmfPayloadForMember(
         string $targetId,
-        rtpc $sourcePacket,
-        int $event,
-        int $volume,
-        int $duration,
-        bool $isFirstPacket,
-        bool $isEnd
-    ): void {
+        rtpc   $sourcePacket,
+        int    $event,
+        int    $volume,
+        int    $duration,
+        bool   $isFirstPacket,
+        bool   $isEnd
+    ): void
+    {
         $member = $this->members[$targetId] ?? null;
         $channel = $member['rtpChannel'] ?? null;
         if (!is_array($member) || !$channel instanceof rtpChannel) {
@@ -594,77 +598,75 @@ class MediaChannel
     {
         Coroutine::create(function () {
             try {
-            $maxFrequency = 8000;
-            $this->active = true;
+                $maxFrequency = 8000;
+                $this->active = true;
 
-            foreach ($this->ptCodecsFrequency as $codec => $frequency) {
-                if ($frequency > $maxFrequency) {
-                    $maxFrequency = $frequency;
-                }
-            }
-
-
-            if (is_callable($this->onStartCallable)) go($this->onStartCallable, $this->callId);
-
-
-            $lastPacketTime = microtime(true);
-            $lastDebug = microtime(true);
-
-            while (true) {
-                if (!$this->active) {
-                    // close() is normally called by the RTP control coroutine
-                    // while recvfrom() belongs to this coroutine. Swoole may
-                    // reject a cross-coroutine close, so the owner performs the
-                    // definitive close after the 200 ms receive timeout wakes.
-                    try {
-                        if (method_exists($this->socket, 'destroy')) {
-                            $this->socket->destroy();
-                        } elseif (!$this->socket->isClosed()) {
-                            $this->socket->close();
-                        }
-                    } catch (\Throwable) {
+                foreach ($this->ptCodecsFrequency as $codec => $frequency) {
+                    if ($frequency > $maxFrequency) {
+                        $maxFrequency = $frequency;
                     }
-                    try {
-                        if (method_exists($this->eventSock, 'destroy')) {
-                            $this->eventSock->destroy();
-                        } elseif (!$this->eventSock->isClosed()) {
-                            $this->eventSock->close();
-                        }
-                    } catch (\Throwable) {
-                    }
-                    return;
                 }
-                $peer = ['address' => '0.0.0.0', 'port' => 0];
-                $packet = $this->socket->recvfrom($peer, 0.2);
-                $currentTime = microtime(true);
 
 
-                if (!$packet) {
-                    $now = $currentTime;
-                    $elapsed = round($now - $lastPacketTime, 3);
+                if (is_callable($this->onStartCallable)) go($this->onStartCallable, $this->callId);
 
 
+                $lastPacketTime = microtime(true);
+                $lastDebug = microtime(true);
 
-
-                    $errCode = (int)($this->socket->errCode ?? 0);
-
-                    if ($errCode !== 0 && !in_array($errCode, [110, 11, 35], true)) {
-                        $this->unblock();
-                        $this->socket->close();
-                        $this->eventSock->close();
-
-                        if ($this->active)
-                            if (is_callable($this->packetOnTimeoutCallable)) {
-                                call_user_func($this->packetOnTimeoutCallable, $this->callId);
+                while (true) {
+                    if (!$this->active) {
+                        // close() is normally called by the RTP control coroutine
+                        // while recvfrom() belongs to this coroutine. Swoole may
+                        // reject a cross-coroutine close, so the owner performs the
+                        // definitive close after the 200 ms receive timeout wakes.
+                        try {
+                            if (method_exists($this->socket, 'destroy')) {
+                                $this->socket->destroy();
+                            } elseif (!$this->socket->isClosed()) {
+                                $this->socket->close();
                             }
+                        } catch (\Throwable) {
+                        }
+                        try {
+                            if (method_exists($this->eventSock, 'destroy')) {
+                                $this->eventSock->destroy();
+                            } elseif (!$this->eventSock->isClosed()) {
+                                $this->eventSock->close();
+                            }
+                        } catch (\Throwable) {
+                        }
                         return;
                     }
+                    $peer = ['address' => '0.0.0.0', 'port' => 0];
+                    $packet = $this->socket->recvfrom($peer, 0.2);
+                    $currentTime = microtime(true);
 
-                    // Enquanto ainda não passou o timeout final, tenta acordar os members.
-                    if ($elapsed <= $this->connectTimeout) {
+
+                    if (!$packet) {
+                        $now = $currentTime;
+                        $elapsed = round($now - $lastPacketTime, 3);
 
 
-                        // disabled
+                        $errCode = (int)($this->socket->errCode ?? 0);
+
+                        if ($errCode !== 0 && !in_array($errCode, [110, 11, 35], true)) {
+                            $this->unblock();
+                            $this->socket->close();
+                            $this->eventSock->close();
+
+                            if ($this->active)
+                                if (is_callable($this->packetOnTimeoutCallable)) {
+                                    call_user_func($this->packetOnTimeoutCallable, $this->callId);
+                                }
+                            return;
+                        }
+
+                        // Enquanto ainda não passou o timeout final, tenta acordar os members.
+                        if ($elapsed <= $this->connectTimeout) {
+
+
+                            // disabled
 
 //                        if ($this->socket->getsockname()['port'] == $this->listenPort) {
 //                            $try = $this->socket->getsockname()['port']-1;
@@ -682,287 +684,232 @@ class MediaChannel
 //                            }
 //                        }
 
-                        if ($this->settings['sendSilenceProbeToMembers']) $this->sendSilenceProbeToMembers($now);
+                            if ($this->settings['sendSilenceProbeToMembers']) $this->sendSilenceProbeToMembers($now);
+                            continue;
+                        }
+                        if ($elapsed > $this->connectTimeout) {
+                            // Agora sim: timeout real da chamada.
+                            cli::pcl(
+                                "TIMEOUT: no packets received for {$elapsed} seconds, exceed: {$this->connectTimeout}",
+                                'bold_red'
+                            );
+                        }
+
+
+                        $this->unblock();
+                        $this->socket->close();
+                        $this->eventSock->close();
+
+                        if (is_callable($this->packetOnTimeoutCallable)) {
+                            call_user_func($this->packetOnTimeoutCallable, $this->callId);
+                        }
+
+                        return;
+                    } else {
+                        if ($peer['port'] === 5060) continue;
+                        $lastPacketTime = microtime(true);
+                    }
+
+
+                    $idFrom = "{$peer['address']}:{$peer['port']}";
+                    if ($this->audioMetricsEnabled) {
+                        $this->audioMetrics['total_packets']++;
+                        $this->audioMetrics['bytes_received'] += strlen($packet);
+                        if ($this->audioMetrics['first_arrival'] === 0.0) {
+                            $this->audioMetrics['first_arrival'] = $currentTime;
+                        }
+                        $this->audioMetrics['last_arrival'] = $currentTime;
+                    }
+                    if ($this->isRtcpPacket($packet)) {
+                        if ($this->audioMetricsEnabled) {
+                            $this->audioMetrics['rtcp_packets']++;
+                        }
                         continue;
                     }
-                    if ($elapsed > $this->connectTimeout) {
-                        // Agora sim: timeout real da chamada.
-                        cli::pcl(
-                            "TIMEOUT: no packets received for {$elapsed} seconds, exceed: {$this->connectTimeout}",
-                            'bold_red'
-                        );
+                    $this->packetsProcessed++;
+
+
+                    $rtpc = new rtpc($packet);
+
+
+                    $pt = $rtpc->getCodec();
+
+
+                    $ssrcOrigin = $this->generateDeterministicSsrc($idFrom);
+                    $ssrc = $ssrcOrigin;
+
+
+                    $sourceMember = $this->members[$idFrom] ?? null;
+                    $codec = $this->resolveRxCodecNameForMember($pt, $sourceMember);
+                    if ($codec === null) {
+                        // PT sem rtpmap explícito e sem binding RTP/AVP conhecido.
+                        continue;
                     }
 
 
-                    $this->unblock();
-                    $this->socket->close();
-                    $this->eventSock->close();
-
-                    if (is_callable($this->packetOnTimeoutCallable)) {
-                        call_user_func($this->packetOnTimeoutCallable, $this->callId);
-                    }
-
-                    return;
-                } else {
-                    if ($peer['port'] === 5060) continue;
-                    $lastPacketTime = microtime(true);
-                }
-
-
-                $idFrom = "{$peer['address']}:{$peer['port']}";
-                if ($this->audioMetricsEnabled) {
-                    $this->audioMetrics['total_packets']++;
-                    $this->audioMetrics['bytes_received'] += strlen($packet);
-                    if ($this->audioMetrics['first_arrival'] === 0.0) {
-                        $this->audioMetrics['first_arrival'] = $currentTime;
-                    }
-                    $this->audioMetrics['last_arrival'] = $currentTime;
-                }
-                if ($this->isRtcpPacket($packet)) {
                     if ($this->audioMetricsEnabled) {
-                        $this->audioMetrics['rtcp_packets']++;
+                        // Contagem por codec, perda e jitter (RFC 3550).
+                        $this->audioMetrics['codecs'][$codec] = ($this->audioMetrics['codecs'][$codec] ?? 0) + 1;
+
+                        $freqStat = $this->resolveRxFrequencyForMember($pt, $sourceMember);
+                        $arrivalTs = $currentTime * $freqStat;
+                        if (isset($this->rtpStats[$ssrc])) {
+                            $prev = $this->rtpStats[$ssrc];
+
+                            // Perda estimada via lacuna no sequence number (wrap de 16 bits)
+                            $expectedSeq = ($prev['seq'] + 1) & 0xFFFF;
+                            $seqGap = ($rtpc->sequence - $expectedSeq) & 0xFFFF;
+                            if ($seqGap > 0 && $seqGap < 1000) {
+                                $this->audioMetrics['lost_packets'] += $seqGap;
+                                if ($seqGap > $this->audioMetrics['max_seq_gap']) {
+                                    $this->audioMetrics['max_seq_gap'] = $seqGap;
+                                }
+                            }
+
+                            // Jitter interarrival (RFC 3550): J += (|D| - J) / 16
+                            $transit = $arrivalTs - $rtpc->timestamp;
+                            $d = $transit - $prev['transit'];
+                            if ($d < 0) $d = -$d;
+                            $this->audioMetrics['jitter'] += ($d - $this->audioMetrics['jitter']) / 16;
+
+                            $this->rtpStats[$ssrc]['seq'] = $rtpc->sequence;
+                            $this->rtpStats[$ssrc]['transit'] = $transit;
+                        } else {
+                            $this->rtpStats[$ssrc] = [
+                                'seq' => $rtpc->sequence,
+                                'transit' => $arrivalTs - $rtpc->timestamp,
+                            ];
+                        }
                     }
-                    continue;
-                }
-                $this->packetsProcessed++;
 
 
-                $rtpc = new rtpc($packet);
+                    if (!array_key_exists($ssrc, $this->rtpChans)) {
+                        $sourceMember = $this->members[$idFrom] ?? null;
+                        $sourcePtime = ($sourceMember['rtpChannel'] ?? null) instanceof rtpChannel
+                            ? $sourceMember['rtpChannel']->packetTimeMs
+                            : (int)($sourceMember['ptime'] ?? $this->packetTimeMs);
+                        $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->resolveRxFrequencyForMember($pt, $sourceMember), $sourcePtime, $ssrc);
+                        $this->rtpChanMemberIds[$ssrc] = $idFrom;
+                        $this->rtpChans[$ssrc]->sequenceNumber = $rtpc->sequence++;
+                        $this->rtpChans[$ssrc]->timestamp = $rtpc->timestamp;
+                        $this->rtpChans[$ssrc]->bcg729Channel = new bcg729Channel();
+                    }
+
+                    if (!$this->isMember($idFrom)) {
+                        $this->addMember([
+                            'address' => $peer['address'],
+                            'port' => $peer['port'],
+                            'codec' => $codec,
+                            'pt' => $pt,
+                            'txPt' => $pt,
+                            'rxPt' => $pt,
+                            'ssrc' => $ssrcOrigin,
+                            'ssrcReceived' => $rtpc->ssrc,
+                            'timestamp' => $rtpc->timestamp,
+                            'config' => $this->options['config'] ?? [],
+                            'opus' => $this->members[$idFrom]['opus'] ?? null,
+                            'frequency' => $this->resolveRxFrequencyForMember($pt, $sourceMember),
+                        ]);
+                    }
 
 
-                $pt = $rtpc->getCodec();
+                    $pt = $rtpc->getCodec();
 
 
-                $ssrcOrigin = $this->generateDeterministicSsrc($idFrom);
-                $ssrc = $ssrcOrigin;
+                    if (strtolower($codec) === 'telephone-event') {
+                        //cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
+                        if ($this->audioMetricsEnabled) {
+                            $this->audioMetrics['dtmf_events']++;
+                        }
+                        $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
 
 
-                $sourceMember = $this->members[$idFrom] ?? null;
-                $codec = $this->resolveRxCodecNameForMember($pt, $sourceMember);
-                if ($codec === null) {
-                    // PT sem rtpmap explícito e sem binding RTP/AVP conhecido.
-                    continue;
-                }
+                        $this->processDtmf($rtpc, $peer, function () {
+
+                        });
+
+                        continue;
+                    }
 
 
-                if ($this->audioMetricsEnabled) {
-                    // Contagem por codec, perda e jitter (RFC 3550).
-                    $this->audioMetrics['codecs'][$codec] = ($this->audioMetrics['codecs'][$codec] ?? 0) + 1;
+                    if ($this->onReceiveCallable) {
+                        // This callback only updates in-memory session state and may
+                        // enqueue a coalesced maintenance mark. Spawning one
+                        // coroutine for every RTP packet adds scheduler pressure and
+                        // keeps MediaChannel/RtpSession references alive during
+                        // teardown. Run it inline with the receive coroutine.
+                        ($this->onReceiveCallable)($rtpc, $peer, $this, $this->rtpChans[$ssrc]);
+                    }
 
-                    $freqStat = $this->resolveRxFrequencyForMember($pt, $sourceMember);
-                    $arrivalTs = $currentTime * $freqStat;
-                    if (isset($this->rtpStats[$ssrc])) {
-                        $prev = $this->rtpStats[$ssrc];
 
-                        // Perda estimada via lacuna no sequence number (wrap de 16 bits)
-                        $expectedSeq = ($prev['seq'] + 1) & 0xFFFF;
-                        $seqGap = ($rtpc->sequence - $expectedSeq) & 0xFFFF;
-                        if ($seqGap > 0 && $seqGap < 1000) {
-                            $this->audioMetrics['lost_packets'] += $seqGap;
-                            if ($seqGap > $this->audioMetrics['max_seq_gap']) {
-                                $this->audioMetrics['max_seq_gap'] = $seqGap;
+                    $sourceCodec = strtoupper((string)$codec);
+                    $sourceMember = $this->members[$idFrom] ?? [];
+                    $sourceFrequency = $this->resolveRxFrequencyForMember($pt, $sourceMember);
+                    if ($sourceFrequency <= 0) $sourceFrequency = 8000;
+
+                    $sourceChannels = (int)($sourceMember['channels'] ?? $this->ptCodecsChannels[$pt] ?? 1);
+                    if ($sourceChannels <= 0) $sourceChannels = 1;
+
+
+                    $pcmData = false;
+
+                    foreach (array_keys($this->members) as $targetId) {
+                        if ($targetId === $idFrom) continue;
+                        if ($this->dtmfInUse) continue;
+                        if (!$pcmData) {
+                            try {
+                                $pcmData = match (strtoupper($codec)) {
+                                    'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
+                                    'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
+                                    'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
+                                    'OPUS' => ($this->members[$idFrom]['opusDecoder'] ?? $this->members[$idFrom]['opus'])->decode($rtpc->payloadRaw),
+                                    'L16' => decodeL16ToPcm($rtpc->payloadRaw),
+                                    'GSM' => $this->decodeGsmPayloadForMember($idFrom, $rtpc->payloadRaw),
+                                    default => false
+                                };
+                            } catch (Throwable $e) {
+                                continue;
                             }
                         }
+                        if (!$pcmData) continue;
 
-                        // Jitter interarrival (RFC 3550): J += (|D| - J) / 16
-                        $transit = $arrivalTs - $rtpc->timestamp;
-                        $d = $transit - $prev['transit'];
-                        if ($d < 0) $d = -$d;
-                        $this->audioMetrics['jitter'] += ($d - $this->audioMetrics['jitter']) / 16;
 
-                        $this->rtpStats[$ssrc]['seq'] = $rtpc->sequence;
-                        $this->rtpStats[$ssrc]['transit'] = $transit;
-                    } else {
-                        $this->rtpStats[$ssrc] = [
-                            'seq' => $rtpc->sequence,
-                            'transit' => $arrivalTs - $rtpc->timestamp,
-                        ];
+                        try {
+                            // A repacketização sempre ocorre em PCM16LE, depois da
+                            // conversão de frequência/canais e antes do encoder do destino.
+                            $pcmForTarget = $this->convertPcmForMember(
+                                $targetId,
+                                $pcmData,
+                                $sourceFrequency,
+                                $sourceChannels,
+                                $this->logicalMemberKey($idFrom),
+                                false,
+                            );
+                            $this->queueRelayedPcmForMember($targetId, $pcmForTarget);
+                        } catch (Throwable $e) {
+                            if ($this->debugEnabled) {
+                                $targetCodec = strtoupper((string)($this->members[$targetId]['codec'] ?? ''));
+                                cli::pcl("{$this->callId} MediaChannel transcode {$sourceCodec}->{$targetCodec}: {$e->getMessage()}", 'red');
+                            }
+                        }
                     }
-                }
-
-
-                if (!array_key_exists($ssrc, $this->rtpChans)) {
-                    $sourceMember = $this->members[$idFrom] ?? null;
-                    $sourcePtime = ($sourceMember['rtpChannel'] ?? null) instanceof rtpChannel
-                        ? $sourceMember['rtpChannel']->packetTimeMs
-                        : (int)($sourceMember['ptime'] ?? $this->packetTimeMs);
-                    $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->resolveRxFrequencyForMember($pt, $sourceMember), $sourcePtime, $ssrc);
-                    $this->rtpChanMemberIds[$ssrc] = $idFrom;
-                    $this->rtpChans[$ssrc]->sequenceNumber = $rtpc->sequence++;
-                    $this->rtpChans[$ssrc]->timestamp = $rtpc->timestamp;
-                    $this->rtpChans[$ssrc]->bcg729Channel = new bcg729Channel();
-                }
-
-                if (!$this->isMember($idFrom)) {
-                    $this->addMember([
-                        'address' => $peer['address'],
-                        'port' => $peer['port'],
-                        'codec' => $codec,
-                        'pt' => $pt,
-                        'txPt' => $pt,
-                        'rxPt' => $pt,
-                        'ssrc' => $ssrcOrigin,
-                        'ssrcReceived' => $rtpc->ssrc,
-                        'timestamp' => $rtpc->timestamp,
-                        'config' => $this->options['config'] ?? [],
-                        'opus' => $this->members[$idFrom]['opus'] ?? null,
-                        'frequency' => $this->resolveRxFrequencyForMember($pt, $sourceMember),
-                    ]);
-                }
-
-
-                $pcmData = false;
-
-
-
-
-                $pt = $rtpc->getCodec();
-
-
-                if (strtolower($codec) === 'telephone-event') {
-                    //cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
-                    if ($this->audioMetricsEnabled) {
-                        $this->audioMetrics['dtmf_events']++;
+                    if ($sourceCodec === 'GSM') {
+                        unset($this->members[$idFrom]['gsmDecodedPcm']);
                     }
-                    $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
+                    if ($this->debugEnabled) {
+                        if (empty($lastDebug)) $lastDebug = microtime(true);
+                        if (microtime(true) - $lastDebug >= 0.160) {
 
 
-                    $this->processDtmf($rtpc, $peer, function ()   {
+                            $timeMS = round((microtime(true) - $lastPacketTime) * 1000, 2);
+                            cli::pcl("$this->callId MediaChannel: " . $timeMS . "ms com " . count($this->members) . " membros",
+                                !empty($packet) ? 'bold_green' : 'bold_red'
+                            );
+                            $lastDebug = microtime(true);
 
-                    });
-
-                    continue;
-                }
-
-                // GSM is decoded once because its decoder is stateful. The trunk
-                // callback consumes the transient PCM copy instead of advancing
-                // the same decoder a second time.
-                if (strtoupper($codec) === 'GSM') {
-                    try {
-                        $pcmData = $this->decodeGsmPayloadForMember($idFrom, $rtpc->payloadRaw);
-                    } catch (Throwable) {
-                        $pcmData = false;
-                    }
-                    if ($pcmData === false) {
-                        continue;
-                    }
-                    $this->members[$idFrom]['gsmDecodedPcm'] = $pcmData;
-                }
-
-                if ($this->onReceiveCallable) {
-                    // This callback only updates in-memory session state and may
-                    // enqueue a coalesced maintenance mark. Spawning one
-                    // coroutine for every RTP packet adds scheduler pressure and
-                    // keeps MediaChannel/RtpSession references alive during
-                    // teardown. Run it inline with the receive coroutine.
-                    ($this->onReceiveCallable)($rtpc, $peer, $this, $this->rtpChans[$ssrc]);
-                }
-
-                if (strtoupper($codec) !== 'GSM') {
-                    try {
-                        $pcmData = match (strtoupper($codec)) {
-                            'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
-                            'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
-                            'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
-                            'OPUS' => ($this->members[$idFrom]['opusDecoder'] ?? $this->members[$idFrom]['opus'])->decode($rtpc->payloadRaw),
-                            'L16' => decodeL16ToPcm($rtpc->payloadRaw),
-                            default => false
-                        };
-                    } catch (Throwable $e) {
-                        continue;
-                    }
-                }
-                if ($pcmData === false) continue;
-                if ($this->vadEnabled) {
-                    $currentTime = microtime(true);
-
-                    if (empty($this->lastVoiceActivity)) {
-                        $this->lastVoiceActivity = $currentTime;
-                    }
-
-                    $frequency = $this->members[$idFrom]['frequency'] ?? 8000;
-                    $volume = volumeAverage($pcmData, $frequency);
-
-                    if ($volume > 1) {
-                        $this->lastVoiceActivity = $currentTime;
-                    }
-
-                    $diff = round($currentTime - $this->lastVoiceActivity, 2);
-
-
-                    if ($diff >= $this->vadTimeoutSeconds) {
-                        cli::pcl(
-                            "VAD: {$idFrom} desativado por timeout de {$this->vadTimeoutSeconds}s após {$diff}s de silêncio",
-                            'red'
-                        );
-
-                        $this->close();
-                        return;
-                    }
-                }
-
-
-                $sourceCodec = strtoupper((string)$codec);
-                $sourceMember = $this->members[$idFrom] ?? [];
-                $sourceFrequency = $this->resolveRxFrequencyForMember($pt, $sourceMember);
-                if ($sourceFrequency <= 0) $sourceFrequency = 8000;
-
-                $sourceChannels = (int)($sourceMember['channels'] ?? $this->ptCodecsChannels[$pt] ?? 1);
-                if ($sourceChannels <= 0) $sourceChannels = 1;
-
-                $sourcePcmData = $pcmData;
-                if ($this->vadEnabled) {
-                    $this->processVAD($sourcePcmData, $idFrom, $sourceFrequency, $sourceChannels);
-                }
-
-                // Itera somente IDs: carregar o array do membro no valor do
-                // foreach o mantém compartilhado durante a mutação do destino.
-                foreach (array_keys($this->members) as $targetId) {
-                    if ($targetId === $idFrom) continue;
-
-                    // Durante o envio de DTMF (RFC 4733) o relay de áudio é suspenso
-                    // para não sobrepor pacotes de áudio aos pacotes telephone-event
-                    // na mesma SSRC, o que causava chiado, cortes e perda de pacotes.
-                    if ($this->dtmfInUse) {
-                        continue;
-                    }
-
-                    try {
-                        // A repacketização sempre ocorre em PCM16LE, depois da
-                        // conversão de frequência/canais e antes do encoder do destino.
-                        $pcmForTarget = $this->convertPcmForMember(
-                            $targetId,
-                            $sourcePcmData,
-                            $sourceFrequency,
-                            $sourceChannels,
-                            $this->logicalMemberKey($idFrom),
-                            false,
-                        );
-                        $this->queueRelayedPcmForMember($targetId, $pcmForTarget);
-                    } catch (Throwable $e) {
-                        if ($this->debugEnabled) {
-                            $targetCodec = strtoupper((string)($this->members[$targetId]['codec'] ?? ''));
-                            cli::pcl("{$this->callId} MediaChannel transcode {$sourceCodec}->{$targetCodec}: {$e->getMessage()}", 'red');
                         }
                     }
                 }
-                if ($sourceCodec === 'GSM') {
-                    unset($this->members[$idFrom]['gsmDecodedPcm']);
-                }
-                if ($this->debugEnabled) {
-                    if (empty($lastDebug)) $lastDebug = microtime(true);
-                    if (microtime(true) - $lastDebug >= 0.160) {
-
-
-                        $timeMS = round((microtime(true) - $lastPacketTime) * 1000, 2);
-                        cli::pcl("$this->callId MediaChannel: " . $timeMS . "ms com " . count($this->members) . " membros",
-                            !empty($packet) ? 'bold_green' : 'bold_red'
-                        );
-                        $lastDebug = microtime(true);
-
-                    }
-                }
-            }
             } finally {
                 $this->active = false;
                 try {
@@ -1457,7 +1404,7 @@ class MediaChannel
     }
 
     private function convertPcmForMember(string $id, string $pcm, int $sourceFrequency, int $sourceChannels,
-        string $sourceKey, bool $injection): string
+                                         string $sourceKey, bool $injection): string
     {
         if ($sourceFrequency <= 0 || $sourceChannels <= 0) {
             throw new \RuntimeException('playback_pcm_invalid');
@@ -1629,7 +1576,7 @@ class MediaChannel
                     // Compensa apenas o jitter pequeno do scheduler. Um atraso
                     // relevante, inclusive dentro do envio, reinicia a cadência.
                     $this->relayNextSendAtNs[$id] = $lateNs <= intdiv($intervalNs, 2)
-                        && ($completedAtNs - $actualSendAtNs) <= intdiv($intervalNs, 2)
+                    && ($completedAtNs - $actualSendAtNs) <= intdiv($intervalNs, 2)
                         ? $nextSendAtNs + $intervalNs
                         : $completedAtNs + $intervalNs;
                 }
@@ -2337,7 +2284,6 @@ class MediaChannel
                 return;
             }
             $this->dtmfFiredGuard[$ssrc] = ['event' => $event, 'time' => $nowMs];
-
 
 
             // Limpar cache antigo (> 5 segundos)
