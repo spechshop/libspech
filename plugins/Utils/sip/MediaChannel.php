@@ -646,7 +646,7 @@ class MediaChannel
                         return;
                     }
                     $peer = ['address' => '0.0.0.0', 'port' => 0];
-                    $packet = $this->socket->recvfrom($peer, 0.2);
+                    $packet = $this->socket->recvfrom($peer, 1.0);
                     $currentTime = microtime(true);
 
 
@@ -748,6 +748,7 @@ class MediaChannel
 
                     $sourceMember = $this->members[$idFrom] ?? null;
                     $codec = $this->resolveRxCodecNameForMember($pt, $sourceMember);
+                    $sourceCodec = strtoupper((string)$codec);
                     if ($codec === null) {
                         // PT sem rtpmap explícito e sem binding RTP/AVP conhecido.
                         continue;
@@ -797,9 +798,8 @@ class MediaChannel
                             : (int)($sourceMember['ptime'] ?? $this->packetTimeMs);
                         $this->rtpChans[$ssrc] = new rtpChannel($rtpc->getCodec(), $this->resolveRxFrequencyForMember($pt, $sourceMember), $sourcePtime, $ssrc);
                         $this->rtpChanMemberIds[$ssrc] = $idFrom;
-                        $this->rtpChans[$ssrc]->sequenceNumber = $rtpc->sequence++;
+                        $this->rtpChans[$ssrc]->sequenceNumber = $rtpc->sequence;
                         $this->rtpChans[$ssrc]->timestamp = $rtpc->timestamp;
-                        $this->rtpChans[$ssrc]->bcg729Channel = new bcg729Channel();
                     }
 
                     if (!$this->isMember($idFrom)) {
@@ -823,18 +823,12 @@ class MediaChannel
                     $pt = $rtpc->getCodec();
 
 
-                    if (strtolower($codec) === 'telephone-event') {
-                        //cli::pcl("$idFrom TELEPHONE-EVENT  " . time(), 'yellow');
+                    if ($sourceCodec === 'TELEPHONE-EVENT') {
                         if ($this->audioMetricsEnabled) {
                             $this->audioMetrics['dtmf_events']++;
                         }
                         $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
-
-
-                        $this->processDtmf($rtpc, $peer, function () {
-
-                        });
-
+                        $this->processDtmf($rtpc, $peer, function () {});
                         continue;
                     }
 
@@ -849,7 +843,7 @@ class MediaChannel
                     }
 
 
-                    $sourceCodec = strtoupper((string)$codec);
+
                     $sourceMember = $this->members[$idFrom] ?? [];
                     $sourceFrequency = $this->resolveRxFrequencyForMember($pt, $sourceMember);
                     if ($sourceFrequency <= 0) $sourceFrequency = 8000;
@@ -863,6 +857,15 @@ class MediaChannel
                     foreach (array_keys($this->members) as $targetId) {
                         if ($targetId === $idFrom) continue;
                         if ($this->dtmfInUse) continue;
+
+                        // pass direct
+                        if ($sourceCodec == $this->members[$targetId]['codec']) {
+                            $packet = $this->members[$targetId]['rtpChannel']->buildAudioPacket($rtpc->payloadRaw);
+                            $this->socket->sendto((string)$this->members[$targetId]['address'], (int)$this->members[$targetId]['port'], $packet);
+                            continue;
+                        }
+
+
                         $targetIdChannels = (int)($this->members[$targetId]['channels'] ?? $this->ptCodecsChannels[$pt] ?? 1);
                         if ($targetIdChannels <= 0) $targetIdChannels = 1;
                         $targetIdFrequency = (int)($this->members[$targetId]['frequency'] ?? $this->ptCodecsFrequency[$pt] ?? 8000);
@@ -870,7 +873,7 @@ class MediaChannel
 
                         if (!$pcmData) {
                             try {
-                                $pcmData = match (strtoupper($codec)) {
+                                $pcmData = match ($sourceCodec) {
                                     'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
                                     'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
                                     'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
@@ -896,19 +899,6 @@ class MediaChannel
                             if ($sourceFrequency !== $targetIdFrequency) {
                                 $pcmForTarget=resampler($pcmForTarget, $sourceFrequency, $targetIdFrequency);
                             }
-
-                            // eliminado
-                           //$pcmForTarget = $this->|c|onvertPcmForMember(
-                           //    $targetId,
-                           //    $pcmData,
-                           //    $sourceFrequency,
-                           //    $sourceChannels,
-                           //    $this->logicalMemberKey($idFrom),
-                           //    false,
-                           //);
-
-
-
 
                             $this->queueRelayedPcmForMember($targetId, $pcmForTarget);
                         } catch (Throwable $e) {
@@ -1156,7 +1146,6 @@ class MediaChannel
             $peer['gsmDecoder'] = new gsmChannel();
         }
         $id = "{$peer['address']}:{$peer['port']}";
-
         if ($codec === 'OPUS') {
             /** @var opusChannel $opus */
             foreach ([$peer['opusEncoder'], $peer['opusDecoder']] as $opus) {

@@ -57,10 +57,9 @@ class rtpChannel
         $this->validatePayloadType($payloadType);
         $this->validateSampleRate($sampleRate);
         $this->validatePacketTime($packetTimeMs);
-        $this->bcg729Channel = new bcg729Channel;
-
-
-
+        if ($payloadType == self::PAYLOAD_G729) {
+            $this->bcg729Channel = new bcg729Channel;
+        }
 
         $this->payloadType = $payloadType;
         $this->sampleRate = $sampleRate;
