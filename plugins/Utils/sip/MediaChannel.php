@@ -874,15 +874,16 @@ class MediaChannel
                         }
                         if (!$pcmData) continue;
                         try {
+                            $pcmForTarget = $pcmData;
                             if ($sourceChannels !== $this->members[$targetId]['channels']) {
                                 if ($sourceChannels > $this->members[$targetId]['channels']) {
-                                    $pcmData=stereoToMono($pcmData);
+                                    $pcmForTarget=stereoToMono($pcmForTarget);
                                 } else {
-                                    $pcmData=monoToStereo($pcmData);
+                                    $pcmForTarget=monoToStereo($pcmForTarget);
                                 }
                             }
                             if ($sourceFrequency !== $this->members[$targetId]['frequency']) {
-                                $pcmData=resampler($pcmData, $sourceFrequency, $this->members[$targetId]['frequency']);
+                                $pcmForTarget=resampler($pcmForTarget, $sourceFrequency, $this->members[$targetId]['frequency']);
                             }
 
                             // eliminado
@@ -898,7 +899,7 @@ class MediaChannel
 
 
 
-                            $this->queueRelayedPcmForMember($targetId, $pcmData);
+                            $this->queueRelayedPcmForMember($targetId, $pcmForTarget);
                         } catch (Throwable $e) {
                             if ($this->debugEnabled) {
                                 $targetCodec = strtoupper((string)($this->members[$targetId]['codec'] ?? ''));
