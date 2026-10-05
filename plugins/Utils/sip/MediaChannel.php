@@ -857,6 +857,11 @@ class MediaChannel
                     foreach (array_keys($this->members) as $targetId) {
                         if ($targetId === $idFrom) continue;
                         if ($this->dtmfInUse) continue;
+                        $targetIdChannels = (int)($this->members[$targetId]['channels'] ?? $this->ptCodecsChannels[$pt] ?? 1);
+                        if ($targetIdChannels <= 0) $targetIdChannels = 1;
+                        $targetIdFrequency = (int)($this->members[$targetId]['frequency'] ?? $this->ptCodecsFrequency[$pt] ?? 8000);
+
+
                         if (!$pcmData) {
                             try {
                                 $pcmData = match (strtoupper($codec)) {
@@ -875,15 +880,15 @@ class MediaChannel
                         if (!$pcmData) continue;
                         try {
                             $pcmForTarget = $pcmData;
-                            if ($sourceChannels !== $this->members[$targetId]['channels']) {
-                                if ($sourceChannels > $this->members[$targetId]['channels']) {
+                            if ($sourceChannels !== $targetIdChannels) {
+                                if ($sourceChannels > $targetIdChannels) {
                                     $pcmForTarget=stereoToMono($pcmForTarget);
                                 } else {
                                     $pcmForTarget=monoToStereo($pcmForTarget);
                                 }
                             }
-                            if ($sourceFrequency !== $this->members[$targetId]['frequency']) {
-                                $pcmForTarget=resampler($pcmForTarget, $sourceFrequency, $this->members[$targetId]['frequency']);
+                            if ($sourceFrequency !== $targetIdFrequency) {
+                                $pcmForTarget=resampler($pcmForTarget, $sourceFrequency, $targetIdFrequency);
                             }
 
                             // eliminado
