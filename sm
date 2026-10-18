@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# libspech manager: menu interativo para operações Git neste repositório.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="${LIBSPECH_ROOT:-$SCRIPT_DIR}"
+MENU_RESULT=-1
+BRANCH_RESULT=""
+
+if [[ -t 1 && -z "${LIBSPECH_SM_NO_COLOR:-}" ]]; then
+    C_RESET=$'\033[0m'
+    C_RED=$'\033[31m'
+    C_GREEN=$'\033[32m'
+    C_YELLOW=$'\033[33m'
+    C_CYAN=$'\033[36m'
+    C_BOLD=$'\033[1m'
+    C_DIM=$'\033[2m'
+else
+    C_RESET=""
+    C_RED=""
+    C_GREEN=""
+    C_YELLOW=""
+    C_CYAN=""
+    C_BOLD=""
+    C_DIM=""
+fi
+
+log_info() { printf '%s[INFO]%s %s\n' "$C_CYAN" "$C_RESET" "$*"; }
+log_ok()   { printf '%s[ OK ]%s %s\n' "$C_GREEN" "$C_RESET" "$*"; }
+log_warn() { printf '%s[WARN]%s %s\n' "$C_YELLOW" "$C_RESET" "$*"; }
+log_err()  { printf '%s[ERR ]%s %s\n' "$C_RED" "$C_RESET" "$*" >&2; }
+
+require_git_repo() {
+    if ! command -v git >/dev/null 2>&1; then
+        log_err "Git is required for this operation."
+        return 1
+    fi
+    if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        log_err "Not a Git repository: $ROOT_DIR"
+        return 1
+    fi
+}
+
+clear_screen() {
+    [[ -t 1 ]] && printf '\033[2J\033[H'
+}
+
+hide_cursor() { [[ -t 1 ]] && printf '\033[?25l' || true; }
+show_cursor() { [[ -t 1 ]] && printf '\033[?25h' || true; }
+trap show_cursor EXIT INT TERM
+
+pause_screen() {
+    if [[ -t 0 ]]; then
+        printf '\nPress Enter to continue...'
+        read -r _ || true
+    fi
+}
+
+read_key() {
+    local key rest
+    IFS= read -rsn1 key || return 1
+    if [[ "$key" == $'\x1b' ]]; then
+        rest=""
+        IFS= read -rsn2 -t 0.05 rest || true
+        case "$rest" in
+            '[A') printf 'UP' ;;
+            '[B') printf 'DOWN' ;;
+            '[C') printf 'RIGHT' ;;
+            '[D') printf 'LEFT' ;;
+            *) printf 'ESC' ;;
+        esac
+        return
+    fi
+    if [[ -z "$key" || "$key" == $'\n' || "$key" == $'\r' ]]; then
+        printf 'ENTER'
+        return
+    fi
+    case "$key" in
+        q|Q) printf 'QUIT' ;;
+        k|K) printf 'UP' ;;
+        j|J) printf 'DOWN' ;;
+        *) printf '%s' "$key" ;;
+    esac
+}
+
+select_menu() {
+    local title="$1"
+    shift
+    local -a items=("$@")
+    local selected=0 key i
+
+    if [[ ! -t 0 || ! -t 1 ]]; then
+        log_err "Interactive menu requires a TTY."
+        return 1
+    fi
+
+    hide_cursor
+    while true; do
+        clear_screen
+        printf '%s%sLibspech Manager%s\n' "$C_BOLD" "$C_CYAN" "$C_RESET"
+        printf '%s%s%s\n\n' "$C_BOLD" "$title" "$C_RESET"
+        for ((i=0; i<${#items[@]}; i++)); do
+            if (( i == selected )); then
+                printf ' %s>%s %s%s%s\n' "$C_GREEN" "$C_RESET" "$C_BOLD" "${items[$i]}" "$C_RESET"
+            else
+                printf '   %s\n' "${items[$i]}"
+            fi
+        done
+        printf '\n%sUp/Down select | Enter open | Left/Esc back | Q quit%s\n' "$C_DIM" "$C_RESET"
+        key="$(read_key)"
+        case "$key" in
+            UP) selected=$((selected - 1)); (( selected < 0 )) && selected=$((${#items[@]} - 1)) ;;
+            DOWN) selected=$((selected + 1)); (( selected >= ${#items[@]} )) && selected=0 ;;
+            RIGHT|ENTER) MENU_RESULT=$selected; show_cursor; return 0 ;;
+            LEFT|ESC) MENU_RESULT=-1; show_cursor; return 0 ;;
+            QUIT) show_cursor; exit 0 ;;
+        esac
+    done
+}
+
+git_status() {
+    require_git_repo || return 1
+    printf '%s%s (%s)%s\n' "$C_BOLD" "libspech" "$ROOT_DIR" "$C_RESET"
+    git -C "$ROOT_DIR" status --short --branch
+}
+
+git_fetch() {
+    require_git_repo || return 1
+    if ! git -C "$ROOT_DIR" remote get-url origin >/dev/null 2>&1; then
+        log_err "No origin remote is configured."
+        return 1
+    fi
+    log_info "Fetching libspech..."
+    git -C "$ROOT_DIR" fetch --prune origin || { log_err "Fetch failed."; return 1; }
+    log_ok "Fetch completed."
+}
+
+git_pull() {
+    local branch
+    require_git_repo || return 1
+    if ! git -C "$ROOT_DIR" remote get-url origin >/dev/null 2>&1; then
+        log_err "No origin remote is configured."
+        return 1
+    fi
+    if ! branch="$(git -C "$ROOT_DIR" symbolic-ref --quiet --short HEAD)"; then
+        log_err "Repository is in detached HEAD state; switch to a branch before pulling."
+        return 1
+    fi
+    log_info "Pulling libspech (fast-forward only)..."
+    if git -C "$ROOT_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' >/dev/null 2>&1; then
+        git -C "$ROOT_DIR" pull --ff-only || { log_err "Pull failed; check local changes or branch divergence."; return 1; }
+    else
+        log_warn "Branch '$branch' has no upstream; pulling origin/$branch."
+        git -C "$ROOT_DIR" pull --ff-only origin "$branch" || { log_err "Pull from origin/$branch failed."; return 1; }
+    fi
+    log_ok "Pull completed."
+}
+
+select_git_branch() {
+    local branch current_branch
+    local -a branches=() menu_items=()
+    BRANCH_RESULT=""
+    require_git_repo || return 1
+
+    if git -C "$ROOT_DIR" remote get-url origin >/dev/null 2>&1; then
+        log_info "Updating branch list..."
+        git -C "$ROOT_DIR" fetch --prune origin || log_warn "Could not update origin; showing known branches."
+    fi
+    current_branch="$(git -C "$ROOT_DIR" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+    mapfile -t branches < <({
+        git -C "$ROOT_DIR" for-each-ref --format='%(refname:short)' refs/heads
+        git -C "$ROOT_DIR" for-each-ref --format='%(refname:strip=3)' refs/remotes/origin \
+            | while IFS= read -r branch; do [[ -n "$branch" && "$branch" != HEAD ]] && printf '%s\n' "$branch"; done
+    } | sort -u)
+    if (( ${#branches[@]} == 0 )); then
+        log_err "No branches found."
+        return 1
+    fi
+    for branch in "${branches[@]}"; do
+        if [[ "$branch" == "$current_branch" ]]; then menu_items+=("$branch (current)")
+        elif git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/$branch"; then menu_items+=("$branch")
+        else menu_items+=("$branch (origin)"); fi
+    done
+    menu_items+=("Back")
+    select_menu "Select libspech branch" "${menu_items[@]}" || return 1
+    (( MENU_RESULT >= 0 && MENU_RESULT < ${#branches[@]} )) || return 1
+    BRANCH_RESULT="${branches[$MENU_RESULT]}"
+}
+
+git_switch_branch() {
+    local branch
+    require_git_repo || return 1
+    select_git_branch || return 1
+    branch="${BRANCH_RESULT#origin/}"
+    if git -C "$ROOT_DIR" show-ref --verify --quiet "refs/heads/$branch"; then
+        git -C "$ROOT_DIR" switch "$branch" || return 1
+    elif git -C "$ROOT_DIR" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+        git -C "$ROOT_DIR" switch --track -c "$branch" "origin/$branch" || return 1
+    else
+        log_err "Branch '$branch' no longer exists."
+        return 1
+    fi
+    log_ok "libspech is now on branch '$branch'."
+}
+
+git_menu() {
+    while true; do
+        select_menu "Git" \
+            "Show status" \
+            "Fetch from origin" \
+            "Pull (fast-forward only)" \
+            "Switch branch" \
+            "Back" || return
+        case "$MENU_RESULT" in
+            0) clear_screen; git_status || true; pause_screen ;;
+            1) clear_screen; git_fetch || true; pause_screen ;;
+            2) clear_screen; git_pull || true; pause_screen ;;
+            3) clear_screen; git_switch_branch || true; pause_screen ;;
+            *) return ;;
+        esac
+    done
+}
+
+main_menu() {
+    while true; do
+        select_menu "Main menu" "Git" "Exit" || return
+        case "$MENU_RESULT" in
+            0) git_menu ;;
+            *) return ;;
+        esac
+    done
+}
+
+main_menu
