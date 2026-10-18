@@ -46,6 +46,8 @@ class MediaChannel
     private int $packetTimeMs = self::DEFAULT_PACKET_TIME_MS;
     public bool $debugEnabled = false;
     private array $settings = [];
+    /** @var array<string,true> Explicitly replaced transports cannot autojoin. */
+    private array $retiredMemberEndpoints = [];
     private $lastVoiceActivity = 0;
 
     public function setSettings(array $settings): void
@@ -719,6 +721,9 @@ class MediaChannel
 
 
                     $idFrom = "{$peer['address']}:{$peer['port']}";
+                    if ($this->retiredMemberEndpoints !== [] && isset($this->retiredMemberEndpoints[$idFrom])) {
+                        continue;
+                    }
                     if ($this->audioMetricsEnabled) {
                         $this->audioMetrics['total_packets']++;
                         $this->audioMetrics['bytes_received'] += strlen($packet);
@@ -858,10 +863,18 @@ class MediaChannel
                         if ($targetId === $idFrom) continue;
                         if ($this->dtmfInUse) continue;
 
-                        // pass direct
-                        if ($sourceCodec == $this->members[$targetId]['codec']) {
+                        // Encoded relay is safe only when both negotiated
+                        // formats and packet durations match. Otherwise the
+                        // existing PCM queue must repacketize for the target.
+                        if ($sourceCodec === $this->members[$targetId]['codec']
+                            && $sourceFrequency === (int)$this->members[$targetId]['frequency']
+                            && $sourceChannels === (int)($this->members[$targetId]['channels'] ?? 1)
+                            && $this->rtpChans[$ssrc]->packetTimeMs === $this->members[$targetId]['rtpChannel']->packetTimeMs) {
                             $packet = $this->members[$targetId]['rtpChannel']->buildAudioPacket($rtpc->payloadRaw);
-                            $this->socket->sendto((string)$this->members[$targetId]['address'], (int)$this->members[$targetId]['port'], $packet);
+                            if ($this->socket->sendto((string)$this->members[$targetId]['address'], (int)$this->members[$targetId]['port'], $packet)) {
+                                $this->relayMetrics[$targetId]['packets_sent']++;
+                                if ($this->audioMetricsEnabled) $this->recordRelayInterval($targetId, hrtime(true), $this->members[$targetId]['rtpChannel']->packetTimeMs);
+                            }
                             continue;
                         }
 
@@ -984,7 +997,9 @@ class MediaChannel
         $maxFrames = max(2, (int)ceil(self::MAX_RELAY_BACKLOG_MS / $channel->packetTimeMs));
         while ($buffer->length() > ($frameBytes * $maxFrames)) {
             $buffer->discard($frameBytes);
+            $this->relayMetrics[$id]['dropped_frames']++;
         }
+        $this->relayMetrics[$id]['max_queue_frames'] = max($this->relayMetrics[$id]['max_queue_frames'], intdiv($buffer->length(), $frameBytes));
         if (isset($this->relayPacerRunning[$id])) {
             // Um único sinal pendente basta para retomar o consumo do buffer.
             if (!$wake->isFull()) {
@@ -1030,7 +1045,13 @@ class MediaChannel
                         continue;
                     }
                     $frame = $buffer->pop($frameBytes);
+                    $sentAtNs = hrtime(true);
+                    $lateNs = max(0, $sentAtNs - $nextSendAtNs);
+                    if ($lateNs >= 2_000_000) $this->relayMetrics[$id]['late_packets']++;
+                    $this->relayMetrics[$id]['max_late_ms'] = max($this->relayMetrics[$id]['max_late_ms'], $lateNs / 1_000_000);
+                    $this->recordRelayInterval($id, $sentAtNs, $channel->packetTimeMs);
                     $this->sendPcmFrameForMember($id, $channel, $frame);
+                    $this->relayMetrics[$id]['packets_sent']++;
                     $nextSendAtNs += $intervalNs;
                 }
             } catch (Throwable $e) {
@@ -1179,6 +1200,7 @@ class MediaChannel
             $wake->close();
         }
         $this->members[$id] = $peer;
+        $this->initializeRelayMetrics($id, $peer['rtpChannel']);
         if (in_array((string)($peer['leg'] ?? ''), ['a', 'b'], true)) {
             $this->legMemberIds[(string)$peer['leg']] = $id;
         }
@@ -1739,6 +1761,8 @@ class MediaChannel
             'last_send_at_ns' => 0,
         ];
         $this->relayMetrics[$id]['ptime_ms'] = $channel->packetTimeMs;
+        $this->relayMetrics[$id]['leg'] = strtolower((string)($this->members[$id]['leg'] ?? ''));
+        $this->relayMetrics[$id]['codec'] = strtoupper((string)($this->members[$id]['codec'] ?? ''));
     }
 
     private function recordRelayInterval(string $id, int $sentAtNs, int $ptimeMs): void
@@ -1886,11 +1910,17 @@ class MediaChannel
         $current['leg'] = $leg;
 
         if ($currentId !== '' && isset($this->members[$currentId])) {
+            $this->retiredMemberEndpoints[$currentId] = true;
             unset($this->members[$currentId]);
             $current['relayWake']->close();
         }
         $current['relayWake'] = new \Swoole\Coroutine\Channel(1);
         $this->members[$newId] = $current;
+        unset($this->retiredMemberEndpoints[$newId]);
+        if ($currentId !== '' && isset($this->relayMetrics[$currentId])) {
+            $this->relayMetrics[$newId] = $this->relayMetrics[$currentId];
+            unset($this->relayMetrics[$currentId]);
+        }
         $this->legMemberIds[$leg] = $newId;
         foreach ($this->rtpChanMemberIds as $ssrc => $memberId) {
             if ($memberId === $currentId) {
@@ -1987,6 +2017,9 @@ class MediaChannel
     public function close(): void
     {
         $this->active = false;
+        // Wake the coroutine that owns recvfrom so it can close its socket.
+        // This keeps the longer idle timeout without delaying port release.
+        $this->socket->cancel(SWOOLE_EVENT_READ);
         foreach ($this->members as $member) {
             $member['relayWake']->close();
         }
