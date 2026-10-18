@@ -1,0 +1,70 @@
+Validação da regularidade RTP — libspech, branch spech
+Base: 5e545e60afc932a8e0e56860f1937e472fb74bbc. Alterações mantidas sem commit.
+
+Diagnóstico e implementação
+1. O callback de transmissão consultava/statava o arquivo e lia/atualizava cache global a cada frame. Com compartilhamento ativo, G729/GSM/Opus podiam codificar todo o arquivo no reactor antes do primeiro envio. Uma segunda chamada fria bloqueava a chamada já em andamento.
+2. O ramo de deadline vencido também permitia enviar o próximo frame imediatamente após um envio atrasado: foram observados mínimos de 0,048–0,061 ms nos cenários concorrentes.
+3. MediaChannel::setReceiveOnlyMode(bool) é opt-in, false por padrão. Somente trunkController::receiveMedia() o ativa. RTP, membros, mapeamentos e callbacks são processados antes do desvio. DTMF local permanece ativo; relay de DTMF e probes de silêncio são suprimidos nesse modo. O foreach de relay é byte a byte idêntico ao HEAD.
+4. trunkController::receiveMedia() decodifica GSM no decoder do membro (gsmDecodedPcm não era preenchido no fluxo original), aciona o VAD existente e usa o decoder G729 do membro, inclusive com PTs dinâmicos distintos de RX/TX.
+5. AudioFilePlayback mantém no máximo oito frames de antecipação (capacidade reduzida para aproximadamente 256 KiB em formatos maiores; mais um frame em processamento). Cache completo stateless limitado a 256 frames e 1 MiB de payloads. Cache aquecido completo dispensa fila/produtor no envio. Arquivos longos não são inteiramente pré-codificados.
+6. DefineAudioFile captura uma identidade de arquivo com hash uma vez por definição, inclusive para substituição com mesmo mtime/tamanho. Consulta/touch/publicação global ocorrem no preparador e somente por contexto/arquivo completo, nunca por pacote. Codec, ptime, canais, frequência, config, modo de resample e troca explícita de arquivo invalidam a preparação. Mudanças de ptime preservam o cursor PCM.
+7. Codecs stateful recebem PCM convertido pelo preparador e usam encoder exclusivo no consumo. Não se reutiliza uma sequência stateful codificada em outro contexto/loop. Isso evita avançar o encoder sobre frames que precisariam ser invalidados após ptime/DTMF. A sequência foi comparada byte a byte com encoders nativos independentes.
+8. runAudioTransmissionLoop preserva hrtime/deadlines monotônicos. Após overrun completo aguarda um ptime, sem catch-up, descarte de frames ou saltos na timeline RTP. Stop, substituição e finally encerram o preparador, inclusive bloqueado na fila. buildAudioPacket e o código de rtpChannel permanecem inalterados.
+9. A conversão padrão separa canais da frequência e reamostra estéreo por canal, evitando o buffering nativo do FIR no caminho rápido. Resample que retorne PCM vazio gera erro explícito e encerra a reprodução; não é preenchido com silêncio.
+
+Medição comparável
+20 cenários idênticos antes/depois, 2.020 pacotes RTP em cada execução. Sockets UDP reais em localhost; receptor em processo separado. Capturas PCAP conferidas por SHA-256 de cada pacote. Tempos de aplicação, recvfrom e interface são reportados separadamente. A captura final filtrou também SSRC 100–102 para excluir tráfego DNS local.
+PCMA 10/20/40 ms; G729/GSM/Opus 20 ms; cache frio/aquecido; arquivos de 0,5 s em loop e de 120 s (80 pacotes/chamada, cerca de 1,6 s transmitidos neste cenário); até três chamadas simultâneas; segunda chamada longa iniciada 300 ms após a primeira, com contexto próprio.
+Simulados atrasos de 5/15/30/50/100 ms no pacote 20. O teste 04 também injeta 55 ms antes do envio. Atraso cooperativo de callback e bloqueio real por codificação fria foram medidos; não se simula aqui a pilha de rede de um cliente WSL.
+
+Detalhe: duas chamadas Opus, ptime 20 ms, arquivo longo/frio, 160 pacotes:
+Métrica | Antes | Depois
+Intervalo médio ms | 24.173 | 19.988
+Mediana ms | 20.215 | 20.003
+P95 ms | 20.903 | 21.167
+P99 ms | 21.766 | 21.537
+Maior intervalo ms | 740.049 | 21.668
+Menor intervalo ms | 0.061 | 18.610
+Maior intervalo na interface ms | 740.024 | 21.653
+Intervalos > ptime+1ms | 5 | 15
+Slots completos excedentes de atraso | 35 | 0
+CPU % de um núcleo no cenário | 44.30 | 9.35
+Pico PHP acumulado do processo, MiB | 12 | 10
+RSS máximo acumulado, KiB | 38740 | 35836
+Perdas/corrupção UDP ou rupturas seq/ts | 0 | 0
+
+Os deadlines são inferidos dos intervalos observados: conta-se gap > ptime+1 ms e, separadamente, max(0, floor((gap_ms-1)/ptime_ms)-1) slots completos extras. Não foi coletado um contador interno de deadlines absolutos do pacer. Nenhuma dessas contagens representa frames descartados. CPU é getrusage do processo emissor dividido pelo tempo de parede; memória inclui harness/cache e é pico acumulado, não alocação isolada da biblioteca.
+
+Resultados e custos que permanecem
+G729 concorrente/frio: maior intervalo 157.688 -> 21.298 ms; menor intervalo 0.052 -> 18.169 ms.
+GSM concorrente/frio: maior intervalo 77.382 -> 21.713 ms; menor intervalo 0.048 -> 18.467 ms.
+OPUS concorrente/frio: maior intervalo 740.049 -> 21.668 ms; menor intervalo 0.061 -> 18.610 ms.
+Opus curto/aquecido: CPU 1.50% -> 5.51% de um núcleo. Custo esperado de codificar sequencialmente cada frame em vez de repetir payloads stateful antigos. Resample/encode nativo ainda pode causar latência em hardware lento.
+P95/P99 não melhoraram de maneira uniforme. Há regressões pequenas em vários cenários, inclusive PCMA com três chamadas; comparação completa em comparison.txt/JSON. Repetições apresentaram variação residual de aproximadamente 1–2 ms. Os resultados demonstram remoção dos grandes stalls frios e das rajadas observadas, não uma redução universal de jitter nem uma garantia de desempenho no cliente.
+A política conservadora de recuperação aumenta a lacuna nos atrasos pós-envio:
+Atraso 30 ms: maior gap 30.377 -> 50.418 ms. O ptime extra evita uma rajada se o UDP/callback só tiver enviado ao terminar o atraso; a timeline avança apenas pelo áudio efetivamente consumido.
+Atraso 50 ms: maior gap 51.204 -> 70.352 ms. O ptime extra evita uma rajada se o UDP/callback só tiver enviado ao terminar o atraso; a timeline avança apenas pelo áudio efetivamente consumido.
+Atraso 100 ms: maior gap 100.488 -> 120.603 ms. O ptime extra evita uma rajada se o UDP/callback só tiver enviado ao terminar o atraso; a timeline avança apenas pelo áudio efetivamente consumido.
+
+Testes
+PASS: extra/validation/01_packet_validation.php, 02_dynamic_ptime.php, 03_trunk_ptime.php, 04_trunk_rtp_pacing.php; test_pcm_stream_converter.php; testAudioCache.php (13 verificações); 06_trunk_rtp_udp.php; 07_media_receive_only.php; 08_audio_preparation.php; 09_trunk_udp_lifecycle.php.
+07: PCMA/PCMU/G729/GSM/Opus nos dois modos, G729 com RX 96/TX 110, PCM gravado idêntico ao callback, VAD, waitSilence, DTMF único, relay normal, nenhum RTP encaminhado/probe indevido no modo novo, sockets e corotinas encerrados.
+08: encoders sequenciais independentes, múltiplos loops, EOF sem loop e retomada de loop, canais/config/ptime, suspensão, cursor não alinhado com cache aquecido, fila limitada, fechamento durante conversão/fila cheia, erro explícito de preparação, substituição de arquivo com mesmo mtime/tamanho.
+09: UDP real com ptime dinâmico, DTMF de verdade via send2833, pausa/retomada, wrap de sequência/timestamp, SSRC/PT, substituição em andamento e encerramento.
+FAIL preexistente: test_media_channel_member_ptime.php usa socket fake sem cancel() nativo e falha também no HEAD. Ao acrescentar somente em memória um cancel() fake, o HEAD também falha esperando gsmDecodedPcm (320 bytes) que o fluxo padrão não preenche (0). O arquivo do teste e o relay padrão não foram alterados. Evidência em existing-regression.txt.
+
+Limitações
+Não foi feita chamada SIP ao SipLabProvider. Há credenciais SIP genéricas no ambiente, mas o host configurado não foi identificado como o SipLab e não há ramal de teste confirmado. Nenhuma chamada foi feita a outro destino; SipSwoole não foi modificado.
+Linux nativo, PHP 8.5.10/Swoole; loopback não mede jitter da Internet/NIC física, perdas de rede remota, NAT nem o escalonamento do WSL. UDP e o SO podem introduzir atrasos e perdas independentemente do pacing da aplicação.
+A leitura/hash inicial do arquivo ainda são síncronos, fora do callback por frame; PCM bruto continua carregado inteiro como antes. O limite é da preparação adicional/cache de payloads, não do tamanho do WAV. O arquivo em reprodução é um snapshot; alterações no disco entram ao chamar defineAudioFile novamente. Padding de último frame parcial foi preservado, inclusive em loop; não se implementou nova política de emenda de arquivo.
+O modo opcional de alta qualidade resample depende da extensão nativa: no diagnóstico local retornou blocos vazios para conversão de frames curtos. Essa condição agora é explícita e interrompe a reprodução, sem trocar áudio por silêncio. O caminho padrão resampler e conversão estéreo foram validados. Não foi validado um fluxo FIR contínuo de alta qualidade para todas as taxas.
+
+Reprodução dos dados
+php extra/validation/06_trunk_rtp_udp.php resultados.json
+Para esta instalação com os três codecs adicionais, a captura termina automaticamente com 2.020 RTPs. Iniciar antes do benchmark:
+tcpdump -Z lotus -i lo -U -c 2020 -w capture.pcap 'udp and src host 127.0.0.1 and (udp[8] & 0xc0 == 0x80) and udp[16:4] >= 100 and udp[16:4] <= 102'
+python3 extra/validation/compare_rtp_udp.py extra/validation/rtp-results/before.json extra/validation/rtp-results/after.json extra/validation/rtp-results extra/validation/rtp-results
+Os arquivos before/after-wire.pcap contêm somente os 2.020 pacotes conferidos de cada versão. Os resultados brutos preservam tempos monotônicos e hashes para auditoria.
+
+Pendência de ambiente: o processo auxiliar da primeira captura tcpdump, PID 1162913, não pôde ser encerrado por SIGINT/SIGTERM a partir do perfil AppArmor do IDE (Permission denied). O arquivo não filtrado foi excluído; o descritor permanece no processo. Encerrar em terminal fora do IDE: kill -INT 1162913. As capturas finais com -c 2020 terminaram normalmente; os testes não deixaram sessões RTP/corotinas pendentes.
+git diff --check e git status --short: resultado completo em verification.txt. Nenhum commit, push ou publicação.

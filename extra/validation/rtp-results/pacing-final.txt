@@ -1,0 +1,11 @@
+PCMA 20 ms (custo 0 ms): média 19.985 ms, min 18.335, max 21.409, drift -0.526 ms, payload 160 B, ts +160
+PCMA 10 ms (custo 0 ms): média 9.989 ms, min 9.191, max 11.327, drift -0.541 ms, payload 80 B, ts +80
+PCMA 40 ms (custo 0 ms): média 39.983 ms, min 38.274, max 41.211, drift -0.390 ms, payload 320 B, ts +320
+G729 20 ms (custo 0 ms): média 19.979 ms, min 19.302, max 20.655, drift -0.739 ms, payload 20 B, ts +160
+PCMA 20 ms (custo 3 ms): média 19.975 ms, min 17.862, max 21.881, drift -2.452 ms, payload 160 B, ts +160
+OPUS 20 ms (custo 0 ms): média 19.979 ms, min 18.475, max 20.915, drift -0.618 ms, payload 80 B, ts +960
+PCMA ptime dinâmico 10→40 ms: intervalo da transição 39.566 ms
+PCMA overrun 55 ms: atraso 75.399 ms, próximo intervalo 19.406 ms (sem rajada)
+PCMA preparação atrasada 55 ms: lacuna 75.457 ms, recuperação 20.387 ms (sem descarte/rajada)
+DTMF 20 ms: timeline de áudio retomada em +1280 samples, depois +160.
+OK: pacing RTP monotônico validado no emissor do trunkController.

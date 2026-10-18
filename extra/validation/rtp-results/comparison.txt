@@ -1,0 +1,243 @@
+Comparativo RTP local — tempos em ms; CPU em % de um núcleo.
+Cada linha corresponde ao mesmo cenário antes/depois; valores sem arredondamento em comparison.json.
+Wire = captura no loopback Linux; não equivale a uma medição de Internet/WSL/provedor SIP.
+
+01: PCMA/10ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=100
+send_intervals_ms (antes -> depois): mean 10.007 -> 9.994, median 10.206 -> 10.266, p95 11.361 -> 10.542, p99 11.442 -> 11.470, min 8.286 -> 8.296, max 11.442 -> 11.470
+receiver_intervals_ms (antes -> depois): mean 10.008 -> 9.993, median 10.212 -> 10.266, p95 11.360 -> 10.515, p99 11.486 -> 11.482, min 8.270 -> 8.203, max 11.486 -> 11.482
+wire_intervals_ms (antes -> depois): mean 10.008 -> 9.993, median 10.211 -> 10.272, p95 11.359 -> 10.515, p99 11.407 -> 11.491, min 8.279 -> 8.301, max 11.407 -> 11.491
+callback_ms (antes -> depois): mean 0.156 -> 0.142, median 0.169 -> 0.142, p95 0.237 -> 0.213, p99 0.300 -> 0.331, min 0.049 -> 0.028, max 0.437 -> 0.354
+late_intervals_over_1ms: 19.000 -> 3.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 2.791 -> 3.460
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 34448.000 -> 34552.000
+incorrect_or_lost: 0.000 -> 0.000
+
+02: PCMA/20ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=100
+send_intervals_ms (antes -> depois): mean 20.004 -> 19.999, median 20.319 -> 20.186, p95 20.457 -> 21.337, p99 20.486 -> 21.422, min 19.204 -> 18.281, max 20.486 -> 21.422
+receiver_intervals_ms (antes -> depois): mean 20.005 -> 19.999, median 20.310 -> 20.189, p95 20.458 -> 21.331, p99 20.527 -> 21.388, min 19.168 -> 18.281, max 20.527 -> 21.388
+wire_intervals_ms (antes -> depois): mean 20.004 -> 20.000, median 20.319 -> 20.192, p95 20.461 -> 21.344, p99 20.505 -> 21.396, min 19.206 -> 18.284, max 20.505 -> 21.396
+callback_ms (antes -> depois): mean 0.196 -> 0.138, median 0.199 -> 0.147, p95 0.261 -> 0.197, p99 0.291 -> 0.222, min 0.078 -> 0.053, max 0.364 -> 0.246
+late_intervals_over_1ms: 0.000 -> 18.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.475 -> 1.470
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 34448.000 -> 34552.000
+incorrect_or_lost: 0.000 -> 0.000
+
+03: PCMA/40ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=60
+send_intervals_ms (antes -> depois): mean 40.003 -> 39.989, median 40.253 -> 40.285, p95 40.579 -> 40.428, p99 41.181 -> 41.409, min 38.412 -> 38.291, max 41.181 -> 41.409
+receiver_intervals_ms (antes -> depois): mean 40.003 -> 39.987, median 40.259 -> 40.282, p95 40.572 -> 40.481, p99 41.172 -> 41.405, min 38.417 -> 38.285, max 41.172 -> 41.405
+wire_intervals_ms (antes -> depois): mean 40.003 -> 39.988, median 40.247 -> 40.280, p95 40.581 -> 40.432, p99 41.179 -> 41.411, min 38.413 -> 38.289, max 41.179 -> 41.411
+callback_ms (antes -> depois): mean 0.194 -> 0.157, median 0.201 -> 0.158, p95 0.305 -> 0.203, p99 0.445 -> 0.457, min 0.086 -> 0.067, max 0.445 -> 0.457
+late_intervals_over_1ms: 1.000 -> 2.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 0.758 -> 0.957
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 34448.000 -> 34552.000
+incorrect_or_lost: 0.000 -> 0.000
+
+04: PCMA/20ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=100
+send_intervals_ms (antes -> depois): mean 20.007 -> 19.997, median 19.440 -> 20.217, p95 21.355 -> 20.386, p99 21.499 -> 21.219, min 18.293 -> 18.284, max 21.499 -> 21.219
+receiver_intervals_ms (antes -> depois): mean 20.008 -> 19.998, median 19.474 -> 20.206, p95 21.403 -> 20.428, p99 21.523 -> 21.254, min 18.237 -> 18.274, max 21.523 -> 21.254
+wire_intervals_ms (antes -> depois): mean 20.007 -> 19.997, median 19.430 -> 20.216, p95 21.357 -> 20.391, p99 21.517 -> 21.246, min 18.255 -> 18.287, max 21.517 -> 21.246
+callback_ms (antes -> depois): mean 0.177 -> 0.128, median 0.186 -> 0.140, p95 0.249 -> 0.182, p99 0.290 -> 0.203, min 0.071 -> 0.062, max 0.317 -> 0.267
+late_intervals_over_1ms: 22.000 -> 1.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.349 -> 1.287
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 34448.000 -> 34552.000
+incorrect_or_lost: 0.000 -> 0.000
+
+05: PCMA/20ms, atraso=0ms, chamadas=1, arquivo=120s, compartilhamento=False, pacotes=100
+send_intervals_ms (antes -> depois): mean 19.996 -> 19.996, median 20.274 -> 20.320, p95 20.430 -> 21.467, p99 21.519 -> 21.611, min 18.405 -> 18.402, max 21.519 -> 21.611
+receiver_intervals_ms (antes -> depois): mean 19.996 -> 19.995, median 20.265 -> 20.286, p95 20.448 -> 21.512, p99 22.373 -> 21.881, min 17.580 -> 18.347, max 22.373 -> 21.881
+wire_intervals_ms (antes -> depois): mean 19.996 -> 19.996, median 20.265 -> 20.331, p95 20.436 -> 21.472, p99 21.549 -> 21.789, min 18.393 -> 18.410, max 21.549 -> 21.789
+callback_ms (antes -> depois): mean 0.154 -> 0.174, median 0.155 -> 0.174, p95 0.225 -> 0.231, p99 0.333 -> 0.290, min 0.051 -> 0.078, max 0.353 -> 0.431
+late_intervals_over_1ms: 1.000 -> 14.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 2.766 -> 4.758
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35124.000 -> 34976.000
+incorrect_or_lost: 0.000 -> 0.000
+
+06: PCMA/20ms, atraso=0ms, chamadas=3, arquivo=0.5s, compartilhamento=True, pacotes=300
+send_intervals_ms (antes -> depois): mean 19.998 -> 19.996, median 20.223 -> 19.783, p95 20.764 -> 20.954, p99 20.953 -> 21.757, min 19.122 -> 18.248, max 21.177 -> 22.109
+receiver_intervals_ms (antes -> depois): mean 19.989 -> 19.996, median 20.222 -> 19.751, p95 20.778 -> 20.945, p99 20.915 -> 21.816, min 19.138 -> 18.228, max 21.182 -> 22.286
+wire_intervals_ms (antes -> depois): mean 19.998 -> 19.996, median 20.235 -> 19.763, p95 20.746 -> 20.943, p99 20.926 -> 21.757, min 19.124 -> 18.251, max 21.157 -> 22.154
+callback_ms (antes -> depois): mean 0.089 -> 0.109, median 0.055 -> 0.115, p95 0.224 -> 0.193, p99 0.255 -> 0.219, min 0.010 -> 0.012, max 0.298 -> 0.312
+late_intervals_over_1ms: 2.000 -> 11.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.954 -> 2.789
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35124.000 -> 34976.000
+incorrect_or_lost: 0.000 -> 0.000
+
+07: PCMA/20ms, atraso=5ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=60
+send_intervals_ms (antes -> depois): mean 20.006 -> 20.007, median 20.303 -> 20.152, p95 20.482 -> 21.389, p99 21.409 -> 21.439, min 18.330 -> 19.132, max 21.409 -> 21.439
+receiver_intervals_ms (antes -> depois): mean 20.008 -> 20.007, median 20.299 -> 20.114, p95 20.463 -> 21.365, p99 21.421 -> 21.445, min 18.243 -> 19.113, max 21.421 -> 21.445
+wire_intervals_ms (antes -> depois): mean 20.006 -> 20.007, median 20.293 -> 20.149, p95 20.487 -> 21.362, p99 21.411 -> 21.414, min 18.307 -> 19.139, max 21.411 -> 21.414
+callback_ms (antes -> depois): mean 0.278 -> 0.226, median 0.197 -> 0.151, p95 0.291 -> 0.222, p99 5.249 -> 5.232, min 0.086 -> 0.048, max 5.249 -> 5.232
+late_intervals_over_1ms: 1.000 -> 12.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.534 -> 1.511
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35124.000 -> 34976.000
+incorrect_or_lost: 0.000 -> 0.000
+
+08: PCMA/20ms, atraso=15ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=60
+send_intervals_ms (antes -> depois): mean 19.986 -> 19.986, median 20.263 -> 20.260, p95 20.443 -> 21.196, p99 20.468 -> 21.336, min 19.188 -> 19.150, max 20.468 -> 21.336
+receiver_intervals_ms (antes -> depois): mean 19.986 -> 19.986, median 20.223 -> 20.243, p95 20.437 -> 21.140, p99 20.534 -> 21.375, min 19.129 -> 19.114, max 20.534 -> 21.375
+wire_intervals_ms (antes -> depois): mean 19.986 -> 19.986, median 20.254 -> 20.255, p95 20.442 -> 21.181, p99 20.476 -> 21.339, min 19.181 -> 19.152, max 20.476 -> 21.339
+callback_ms (antes -> depois): mean 0.420 -> 0.419, median 0.180 -> 0.173, p95 0.252 -> 0.277, p99 15.259 -> 15.392, min 0.069 -> 0.048, max 15.259 -> 15.392
+late_intervals_over_1ms: 0.000 -> 4.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.351 -> 1.742
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35124.000 -> 34976.000
+incorrect_or_lost: 0.000 -> 0.000
+
+09: PCMA/20ms, atraso=30ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=60
+send_intervals_ms (antes -> depois): mean 20.157 -> 20.501, median 20.202 -> 20.250, p95 21.363 -> 21.279, p99 30.377 -> 50.418, min 18.419 -> 19.189, max 30.377 -> 50.418
+receiver_intervals_ms (antes -> depois): mean 20.156 -> 20.502, median 20.194 -> 20.239, p95 21.418 -> 21.300, p99 30.303 -> 50.440, min 18.404 -> 19.173, max 30.303 -> 50.440
+wire_intervals_ms (antes -> depois): mean 20.157 -> 20.501, median 20.204 -> 20.241, p95 21.384 -> 21.290, p99 30.368 -> 50.418, min 18.407 -> 19.173, max 30.368 -> 50.418
+callback_ms (antes -> depois): mean 0.656 -> 0.640, median 0.145 -> 0.141, p95 0.238 -> 0.183, p99 30.384 -> 30.279, min 0.076 -> 0.051, max 30.384 -> 30.279
+late_intervals_over_1ms: 9.000 -> 6.000
+missed_full_slots: 0.000 -> 1.000
+cpu_one_core_percent: 1.193 -> 1.545
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35124.000 -> 34976.000
+incorrect_or_lost: 0.000 -> 0.000
+
+10: PCMA/20ms, atraso=50ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=60
+send_intervals_ms (antes -> depois): mean 20.515 -> 20.842, median 20.244 -> 20.211, p95 21.436 -> 21.343, p99 51.204 -> 70.352, min 18.241 -> 18.412, max 51.204 -> 70.352
+receiver_intervals_ms (antes -> depois): mean 20.517 -> 20.843, median 20.255 -> 20.200, p95 21.395 -> 21.316, p99 51.129 -> 70.493, min 18.195 -> 18.381, max 51.129 -> 70.493
+wire_intervals_ms (antes -> depois): mean 20.516 -> 20.842, median 20.250 -> 20.204, p95 21.456 -> 21.294, p99 51.194 -> 70.374, min 18.240 -> 18.394, max 51.194 -> 70.374
+callback_ms (antes -> depois): mean 1.005 -> 0.973, median 0.136 -> 0.137, p95 0.268 -> 0.233, p99 51.253 -> 50.218, min 0.082 -> 0.060, max 51.253 -> 50.218
+late_intervals_over_1ms: 11.000 -> 9.000
+missed_full_slots: 1.000 -> 2.000
+cpu_one_core_percent: 1.190 -> 1.487
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35124.000 -> 34976.000
+incorrect_or_lost: 0.000 -> 0.000
+
+11: PCMA/20ms, atraso=100ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=60
+send_intervals_ms (antes -> depois): mean 21.353 -> 21.698, median 20.335 -> 20.267, p95 21.431 -> 21.345, p99 100.488 -> 120.603, min 18.289 -> 19.182, max 100.488 -> 120.603
+receiver_intervals_ms (antes -> depois): mean 21.354 -> 21.700, median 20.338 -> 20.305, p95 21.426 -> 21.366, p99 100.647 -> 120.621, min 18.251 -> 19.056, max 100.647 -> 120.621
+wire_intervals_ms (antes -> depois): mean 21.353 -> 21.698, median 20.341 -> 20.272, p95 21.411 -> 21.366, p99 100.595 -> 120.611, min 18.260 -> 19.189, max 100.595 -> 120.611
+callback_ms (antes -> depois): mean 1.878 -> 1.838, median 0.209 -> 0.166, p95 0.312 -> 0.224, p99 100.390 -> 100.446, min 0.060 -> 0.079, max 100.390 -> 100.446
+late_intervals_over_1ms: 11.000 -> 6.000
+missed_full_slots: 3.000 -> 4.000
+cpu_one_core_percent: 1.530 -> 1.651
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35124.000 -> 34976.000
+incorrect_or_lost: 0.000 -> 0.000
+
+12: G729/20ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=80
+send_intervals_ms (antes -> depois): mean 19.976 -> 20.002, median 20.207 -> 19.870, p95 21.338 -> 20.769, p99 21.406 -> 21.360, min 18.423 -> 18.386, max 21.406 -> 21.360
+receiver_intervals_ms (antes -> depois): mean 19.976 -> 20.004, median 20.194 -> 19.924, p95 21.350 -> 20.827, p99 21.430 -> 21.363, min 18.341 -> 18.343, max 21.430 -> 21.363
+wire_intervals_ms (antes -> depois): mean 19.976 -> 20.002, median 20.202 -> 19.893, p95 21.331 -> 20.791, p99 21.415 -> 21.367, min 18.409 -> 18.360, max 21.415 -> 21.367
+callback_ms (antes -> depois): mean 0.193 -> 0.311, median 0.177 -> 0.310, p95 0.238 -> 0.428, p99 2.125 -> 0.569, min 0.093 -> 0.139, max 2.125 -> 0.569
+late_intervals_over_1ms: 12.000 -> 2.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.439 -> 2.791
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35124.000 -> 34976.000
+incorrect_or_lost: 0.000 -> 0.000
+
+13: G729/20ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=80
+send_intervals_ms (antes -> depois): mean 19.991 -> 19.992, median 19.482 -> 19.670, p95 21.381 -> 21.525, p99 21.431 -> 21.844, min 18.300 -> 18.594, max 21.431 -> 21.844
+receiver_intervals_ms (antes -> depois): mean 19.991 -> 19.993, median 19.562 -> 19.690, p95 21.402 -> 21.581, p99 21.489 -> 21.878, min 18.236 -> 18.573, max 21.489 -> 21.878
+wire_intervals_ms (antes -> depois): mean 19.991 -> 19.992, median 19.486 -> 19.667, p95 21.376 -> 21.566, p99 21.461 -> 21.845, min 18.282 -> 18.583, max 21.461 -> 21.845
+callback_ms (antes -> depois): mean 0.191 -> 0.291, median 0.194 -> 0.293, p95 0.272 -> 0.379, p99 0.378 -> 0.484, min 0.079 -> 0.151, max 0.378 -> 0.484
+late_intervals_over_1ms: 18.000 -> 4.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.468 -> 2.559
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35124.000 -> 34976.000
+incorrect_or_lost: 0.000 -> 0.000
+
+14: G729/20ms, atraso=0ms, chamadas=2, arquivo=120s, compartilhamento=True, pacotes=160
+send_intervals_ms (antes -> depois): mean 20.498 -> 19.994, median 20.215 -> 20.074, p95 20.838 -> 21.055, p99 21.439 -> 21.246, min 0.052 -> 18.169, max 157.688 -> 21.298
+receiver_intervals_ms (antes -> depois): mean 20.498 -> 19.994, median 20.263 -> 20.085, p95 20.794 -> 21.065, p99 21.437 -> 21.301, min 0.014 -> 18.112, max 157.569 -> 21.328
+wire_intervals_ms (antes -> depois): mean 20.498 -> 19.994, median 20.234 -> 20.079, p95 20.801 -> 21.051, p99 21.452 -> 21.270, min 0.028 -> 18.147, max 157.664 -> 21.280
+callback_ms (antes -> depois): mean 1.800 -> 0.283, median 0.129 -> 0.279, p95 0.240 -> 0.402, p99 130.189 -> 0.503, min 0.010 -> 0.061, max 137.861 -> 0.615
+late_intervals_over_1ms: 6.000 -> 9.000
+missed_full_slots: 6.000 -> 0.000
+cpu_one_core_percent: 16.381 -> 6.688
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35728.000 -> 35836.000
+incorrect_or_lost: 0.000 -> 0.000
+
+15: GSM/20ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=80
+send_intervals_ms (antes -> depois): mean 19.981 -> 19.990, median 20.313 -> 19.781, p95 21.411 -> 20.624, p99 21.472 -> 20.681, min 18.252 -> 19.007, max 21.472 -> 20.681
+receiver_intervals_ms (antes -> depois): mean 19.981 -> 19.991, median 20.304 -> 19.860, p95 21.438 -> 20.596, p99 21.495 -> 20.729, min 18.240 -> 19.070, max 21.495 -> 20.729
+wire_intervals_ms (antes -> depois): mean 19.981 -> 19.991, median 20.313 -> 19.791, p95 21.391 -> 20.609, p99 21.471 -> 20.677, min 18.251 -> 19.033, max 21.471 -> 20.677
+callback_ms (antes -> depois): mean 0.210 -> 0.218, median 0.198 -> 0.217, p95 0.268 -> 0.286, p99 1.084 -> 0.349, min 0.102 -> 0.078, max 1.084 -> 0.349
+late_intervals_over_1ms: 19.000 -> 0.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.599 -> 2.253
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35728.000 -> 35836.000
+incorrect_or_lost: 0.000 -> 0.000
+
+16: GSM/20ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=80
+send_intervals_ms (antes -> depois): mean 19.992 -> 19.994, median 20.322 -> 19.680, p95 21.414 -> 20.658, p99 21.460 -> 20.685, min 18.241 -> 19.170, max 21.460 -> 20.685
+receiver_intervals_ms (antes -> depois): mean 19.992 -> 19.995, median 20.335 -> 19.690, p95 21.425 -> 20.673, p99 21.482 -> 20.695, min 18.211 -> 19.127, max 21.482 -> 20.695
+wire_intervals_ms (antes -> depois): mean 19.992 -> 19.994, median 20.327 -> 19.702, p95 21.421 -> 20.670, p99 21.465 -> 20.679, min 18.227 -> 19.172, max 21.465 -> 20.679
+callback_ms (antes -> depois): mean 0.200 -> 0.222, median 0.205 -> 0.220, p95 0.267 -> 0.286, p99 0.298 -> 0.367, min 0.083 -> 0.147, max 0.298 -> 0.367
+late_intervals_over_1ms: 20.000 -> 0.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.573 -> 2.402
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35728.000 -> 35836.000
+incorrect_or_lost: 0.000 -> 0.000
+
+17: GSM/20ms, atraso=0ms, chamadas=2, arquivo=120s, compartilhamento=True, pacotes=160
+send_intervals_ms (antes -> depois): mean 19.993 -> 20.001, median 19.806 -> 19.930, p95 21.500 -> 21.080, p99 21.805 -> 21.705, min 0.048 -> 18.467, max 77.382 -> 21.713
+receiver_intervals_ms (antes -> depois): mean 19.993 -> 20.001, median 19.837 -> 19.908, p95 21.574 -> 21.115, p99 21.791 -> 21.803, min 0.009 -> 18.353, max 77.372 -> 21.817
+wire_intervals_ms (antes -> depois): mean 19.993 -> 20.001, median 19.801 -> 19.922, p95 21.510 -> 21.096, p99 21.799 -> 21.723, min 0.026 -> 18.425, max 77.348 -> 21.765
+callback_ms (antes -> depois): mean 0.841 -> 0.183, median 0.160 -> 0.188, p95 0.265 -> 0.284, p99 52.428 -> 0.384, min 0.012 -> 0.049, max 58.634 -> 0.416
+late_intervals_over_1ms: 16.000 -> 13.000
+missed_full_slots: 2.000 -> 0.000
+cpu_one_core_percent: 7.439 -> 4.346
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 35728.000 -> 35836.000
+incorrect_or_lost: 0.000 -> 0.000
+
+18: OPUS/20ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=80
+send_intervals_ms (antes -> depois): mean 19.892 -> 20.006, median 20.276 -> 20.124, p95 21.270 -> 21.172, p99 21.350 -> 21.401, min 12.507 -> 18.119, max 21.350 -> 21.401
+receiver_intervals_ms (antes -> depois): mean 19.892 -> 20.007, median 20.250 -> 20.125, p95 21.247 -> 21.151, p99 21.328 -> 21.359, min 12.495 -> 18.201, max 21.328 -> 21.359
+wire_intervals_ms (antes -> depois): mean 19.892 -> 20.006, median 20.276 -> 20.127, p95 21.267 -> 21.154, p99 21.351 -> 21.405, min 12.511 -> 18.224, max 21.351 -> 21.405
+callback_ms (antes -> depois): mean 0.283 -> 0.746, median 0.181 -> 0.772, p95 0.247 -> 1.036, p99 8.182 -> 1.131, min 0.081 -> 0.274, max 8.182 -> 1.131
+late_intervals_over_1ms: 5.000 -> 7.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.974 -> 5.193
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 36564.000 -> 35836.000
+incorrect_or_lost: 0.000 -> 0.000
+
+19: OPUS/20ms, atraso=0ms, chamadas=1, arquivo=0.5s, compartilhamento=True, pacotes=80
+send_intervals_ms (antes -> depois): mean 20.000 -> 19.996, median 19.495 -> 20.024, p95 21.385 -> 21.189, p99 21.513 -> 21.351, min 18.374 -> 18.251, max 21.513 -> 21.351
+receiver_intervals_ms (antes -> depois): mean 20.001 -> 19.996, median 19.494 -> 20.037, p95 21.418 -> 21.216, p99 21.542 -> 21.453, min 18.336 -> 18.194, max 21.542 -> 21.453
+wire_intervals_ms (antes -> depois): mean 20.001 -> 19.996, median 19.502 -> 20.021, p95 21.376 -> 21.206, p99 21.519 -> 21.386, min 18.375 -> 18.235, max 21.519 -> 21.386
+callback_ms (antes -> depois): mean 0.191 -> 0.768, median 0.194 -> 0.752, p95 0.257 -> 1.071, p99 0.320 -> 1.427, min 0.086 -> 0.396, max 0.320 -> 1.427
+late_intervals_over_1ms: 17.000 -> 8.000
+missed_full_slots: 0.000 -> 0.000
+cpu_one_core_percent: 1.498 -> 5.514
+memory_peak_bytes: 10485760.000 -> 10485760.000
+max_rss_kib: 36820.000 -> 35836.000
+incorrect_or_lost: 0.000 -> 0.000
+
+20: OPUS/20ms, atraso=0ms, chamadas=2, arquivo=120s, compartilhamento=True, pacotes=160
+send_intervals_ms (antes -> depois): mean 24.173 -> 19.988, median 20.215 -> 20.003, p95 20.903 -> 21.167, p99 21.766 -> 21.537, min 0.061 -> 18.610, max 740.049 -> 21.668
+receiver_intervals_ms (antes -> depois): mean 24.174 -> 19.988, median 20.241 -> 20.000, p95 20.831 -> 21.134, p99 21.692 -> 21.590, min 0.012 -> 18.594, max 739.922 -> 21.660
+wire_intervals_ms (antes -> depois): mean 24.174 -> 19.988, median 20.234 -> 20.027, p95 20.859 -> 21.136, p99 21.731 -> 21.535, min 0.033 -> 18.631, max 740.024 -> 21.653
+callback_ms (antes -> depois): mean 9.031 -> 0.718, median 0.139 -> 0.726, p95 0.227 -> 0.989, p99 705.497 -> 1.240, min 0.013 -> 0.164, max 718.742 -> 1.336
+late_intervals_over_1ms: 5.000 -> 15.000
+missed_full_slots: 35.000 -> 0.000
+cpu_one_core_percent: 44.300 -> 9.348
+memory_peak_bytes: 12582912.000 -> 10485760.000
+max_rss_kib: 38740.000 -> 35836.000
+incorrect_or_lost: 0.000 -> 0.000

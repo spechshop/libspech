@@ -1,0 +1,24 @@
+Proxy de áudio iniciado na porta 127.0.0.1:50878
+PCMA receiveOnly=0 rxPt=8 txPt=8: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:37378
+PCMA receiveOnly=1 rxPt=8 txPt=8: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:44024
+PCMU receiveOnly=0 rxPt=0 txPt=0: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:47008
+PCMU receiveOnly=1 rxPt=0 txPt=0: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:38489
+G729 receiveOnly=0 rxPt=18 txPt=18: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:51625
+G729 receiveOnly=1 rxPt=18 txPt=18: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:41760
+G729 receiveOnly=0 rxPt=96 txPt=110: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:47419
+G729 receiveOnly=1 rxPt=96 txPt=110: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:53291
+GSM receiveOnly=0 rxPt=3 txPt=3: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:56390
+GSM receiveOnly=1 rxPt=3 txPt=3: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:49770
+OPUS receiveOnly=0 rxPt=111 txPt=111: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:42519
+OPUS receiveOnly=1 rxPt=111 txPt=111: PCM, recording, VAD, silence, DTMF, relay and teardown OK

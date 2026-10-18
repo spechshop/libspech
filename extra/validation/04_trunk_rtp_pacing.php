@@ -305,6 +305,34 @@ try {
         sprintf('overrun: pacer tentou recuperar com rajada (próximo delta %.3f ms)', $afterOverrunGapMs)
     );
 
+    // Different from a sleep inside sendto(): preparation can stall BEFORE
+    // the delayed packet is emitted. The next frame still needs a full ptime.
+    $beforeSend = pacingRunCodec(
+        $wavPath, 'PCMA', 20, 9, 0,
+        static function (trunkController $trunk): Closure {
+            $property = new ReflectionProperty($trunk, 'audioFileHandle');
+            $original = $property->getValue($trunk);
+            return static function (int $packetNumber) use ($trunk, $property, $original): void {
+                if ($packetNumber === 3) {
+                    $property->setValue($trunk, static function ($peer, $phone) use ($trunk, $property, $original): void {
+                        $property->setValue($trunk, $original);
+                        Swoole\Coroutine::sleep(.055);
+                        $original($peer, $phone);
+                    });
+                }
+            };
+        }, false
+    );
+    $beforeGap = ($beforeSend['times'][3] - $beforeSend['times'][2]) / 1e6;
+    $recoveryGap = ($beforeSend['times'][4] - $beforeSend['times'][3]) / 1e6;
+    pacingAssert($beforeGap >= 50, 'Atraso anterior ao envio não foi observado');
+    pacingAssert($recoveryGap >= 15 && $recoveryGap <= 25, sprintf('Preparação atrasada gerou rajada: %.3f ms', $recoveryGap));
+    $beforeDecoded = array_map('pacingDecodeRtp', $beforeSend['packets']);
+    for ($i = 1; $i < count($beforeDecoded); $i++) {
+        pacingAssertSame(1, ($beforeDecoded[$i]['sequence'] - $beforeDecoded[$i - 1]['sequence']) & 0xffff, 'Preparação atrasada: sequence');
+        pacingAssertSame(160, ($beforeDecoded[$i]['timestamp'] - $beforeDecoded[$i - 1]['timestamp']) & 0xffffffff, 'Preparação atrasada: timestamp');
+    }
+
     // O evento usa timestamp fixo, avança a timeline uma única vez ao final e
     // o primeiro áudio posterior começa exatamente após os 160 ms do DTMF.
     $dtmfMedia = pacingMediaWithoutConstructor();
@@ -346,6 +374,7 @@ try {
     }
     printf("PCMA ptime dinâmico 10→40 ms: intervalo da transição %.3f ms\n", $transitionDeltaMs);
     printf("PCMA overrun 55 ms: atraso %.3f ms, próximo intervalo %.3f ms (sem rajada)\n", $overrunGapMs, $afterOverrunGapMs);
+    printf("PCMA preparação atrasada 55 ms: lacuna %.3f ms, recuperação %.3f ms (sem descarte/rajada)\n", $beforeGap, $recoveryGap);
     echo "DTMF 20 ms: timeline de áudio retomada em +1280 samples, depois +160.\n";
     echo "OK: pacing RTP monotônico validado no emissor do trunkController.\n";
 } finally {

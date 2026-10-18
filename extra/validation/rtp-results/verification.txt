@@ -1,0 +1,23 @@
+branch: spech
+origin: https://github.com/spechshop/libspech.git
+relay foreach unchanged: true
+No syntax errors detected in plugins/Utils/audio/AudioFilePlayback.php
+No syntax errors detected in plugins/Utils/libspech/trunkController.php
+No syntax errors detected in plugins/Utils/sip/MediaChannel.php
+No syntax errors detected in extra/validation/04_trunk_rtp_pacing.php
+No syntax errors detected in extra/validation/06_trunk_rtp_udp.php
+No syntax errors detected in extra/validation/07_media_receive_only.php
+No syntax errors detected in extra/validation/08_audio_preparation.php
+No syntax errors detected in extra/validation/09_trunk_udp_lifecycle.php
+git diff --check: exit 0, no output
+git status --short:
+ M extra/validation/04_trunk_rtp_pacing.php
+ M plugins/Utils/libspech/trunkController.php
+ M plugins/Utils/sip/MediaChannel.php
+?? extra/validation/06_trunk_rtp_udp.php
+?? extra/validation/07_media_receive_only.php
+?? extra/validation/08_audio_preparation.php
+?? extra/validation/09_trunk_udp_lifecycle.php
+?? extra/validation/compare_rtp_udp.py
+?? extra/validation/rtp-results/
+?? plugins/Utils/audio/AudioFilePlayback.php

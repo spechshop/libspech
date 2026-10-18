@@ -1,0 +1,221 @@
+extra/validation/01_packet_validation.php
+--- Iniciando Validação de Pacotes RTP ---
+
+Teste 1: Validação de Pacotes de Áudio (PCM)
+ [OK] Versão RTP deve ser 2
+ [OK] Payload type deve ser PCMA (8)
+ [OK] Sequence number deve ser o inicial
+ [OK] Timestamp deve ser o inicial
+ [OK] SSRC deve ser 0x12345678
+ [OK] Payload de áudio deve ser preservado
+ [OK] Sequence number incrementado
+ [OK] Timestamp incrementado pelas amostras
+
+RESULTADO: Validação de Áudio PCM passou.
+
+Teste 2: Validação de Pacotes G.729
+ [OK] Payload type deve ser G729 (18)
+ [OK] Timestamp deve ser o inicial
+ [OK] Payload G.729 deve ser preservado
+
+RESULTADO: Validação de G.729 passou.
+
+Teste 3: Validação de Pacotes DTMF (RFC 2833)
+Gerados 8 pacotes para DTMF '1' (100 ms).
+ [OK] P0: Marker Bit deve ser 1
+ [OK] P0: Payload type deve ser 101
+ [OK] P0: Evento DTMF deve ser 1
+ [OK] P0: Bit 'End' deve ser 0 (pacote inicial/intermediário)
+ [OK] P1: Marker Bit deve ser 0
+ [OK] P1: Timestamp deve ser constante (4268805303)
+ [OK] P1: Sequence number deve ser contíguo
+ [OK] P1: Payload type deve ser 101
+ [OK] P1: Evento DTMF deve ser 1
+ [OK] P1: Bit 'End' deve ser 0 (pacote inicial/intermediário)
+ [OK] P2: Marker Bit deve ser 0
+ [OK] P2: Timestamp deve ser constante (4268805303)
+ [OK] P2: Sequence number deve ser contíguo
+ [OK] P2: Payload type deve ser 101
+ [OK] P2: Evento DTMF deve ser 1
+ [OK] P2: Bit 'End' deve ser 0 (pacote inicial/intermediário)
+ [OK] P3: Marker Bit deve ser 0
+ [OK] P3: Timestamp deve ser constante (4268805303)
+ [OK] P3: Sequence number deve ser contíguo
+ [OK] P3: Payload type deve ser 101
+ [OK] P3: Evento DTMF deve ser 1
+ [OK] P3: Bit 'End' deve ser 0 (pacote inicial/intermediário)
+ [OK] P4: Marker Bit deve ser 0
+ [OK] P4: Timestamp deve ser constante (4268805303)
+ [OK] P4: Sequence number deve ser contíguo
+ [OK] P4: Payload type deve ser 101
+ [OK] P4: Evento DTMF deve ser 1
+ [OK] P4: Bit 'End' deve ser 0 (pacote inicial/intermediário)
+ [OK] P5: Marker Bit deve ser 0
+ [OK] P5: Timestamp deve ser constante (4268805303)
+ [OK] P5: Sequence number deve ser contíguo
+ [OK] P5: Payload type deve ser 101
+ [OK] P5: Evento DTMF deve ser 1
+ [OK] P5: Bit 'End' deve ser 1 (pacote final)
+ [OK] P6: Marker Bit deve ser 0
+ [OK] P6: Timestamp deve ser constante (4268805303)
+ [OK] P6: Sequence number deve ser contíguo
+ [OK] P6: Payload type deve ser 101
+ [OK] P6: Evento DTMF deve ser 1
+ [OK] P6: Bit 'End' deve ser 1 (pacote final)
+ [OK] P7: Marker Bit deve ser 0
+ [OK] P7: Timestamp deve ser constante (4268805303)
+ [OK] P7: Sequence number deve ser contíguo
+ [OK] P7: Payload type deve ser 101
+ [OK] P7: Evento DTMF deve ser 1
+ [OK] P7: Bit 'End' deve ser 1 (pacote final)
+
+RESULTADO: Validação de DTMF passou.
+
+--- Validação Concluída ---
+
+extra/validation/02_dynamic_ptime.php
+
+Warning: Undefined array key "channels" in /home/lotus/projetos/libspech/plugins/Utils/sip/MediaChannel.php on line 98
+OK: ptime dinâmico validado para 10, 20, 30, 40 e 60 ms em PCMA/8000 e PCMU/8000.
+
+extra/validation/03_trunk_ptime.php
+audio 20000 RTP/AVP 8 101
+audio 20000 RTP/AVP 8 101 3 102
+OK: trunkController validado com ptime 10, 20, 30, 40, 60 e 120 ms.
+
+extra/validation/04_trunk_rtp_pacing.php
+PCMA 20 ms (custo 0 ms): média 19.989 ms, min 19.035, max 21.341, drift -0.378 ms, payload 160 B, ts +160
+PCMA 10 ms (custo 0 ms): média 9.990 ms, min 8.684, max 11.371, drift -0.488 ms, payload 80 B, ts +80
+PCMA 40 ms (custo 0 ms): média 39.972 ms, min 38.403, max 41.273, drift -0.644 ms, payload 320 B, ts +320
+G729 20 ms (custo 0 ms): média 20.000 ms, min 18.463, max 21.473, drift +0.006 ms, payload 20 B, ts +160
+PCMA 20 ms (custo 3 ms): média 19.982 ms, min 17.852, max 21.642, drift -1.769 ms, payload 160 B, ts +160
+OPUS 20 ms (custo 0 ms): média 19.981 ms, min 18.406, max 21.665, drift -0.565 ms, payload 80 B, ts +960
+PCMA ptime dinâmico 10→40 ms: intervalo da transição 39.387 ms
+PCMA overrun 55 ms: atraso 75.606 ms, próximo intervalo 19.403 ms (sem rajada)
+PCMA preparação atrasada 55 ms: lacuna 75.686 ms, recuperação 20.509 ms (sem descarte/rajada)
+DTMF 20 ms: timeline de áudio retomada em +1280 samples, depois +160.
+OK: pacing RTP monotônico validado no emissor do trunkController.
+
+test_pcm_stream_converter.php
+PASS 48000/2 -> 8000/1
+PASS 44100/2 -> 8000/1
+PASS 32000/2 -> 8000/1
+PASS 16000/1 -> 8000/1
+PASS 8000/1 -> 16000/1
+PASS 8000/1 -> 32000/1
+PASS 8000/1 -> 44100/1
+PASS 8000/1 -> 48000/1
+PASS 44100/1 -> 48000/1
+PASS 48000/1 -> 44100/1
+PASS 60s 48000/2 -> 8000/1
+PASS 60s 44100/2 -> 8000/1
+PASS 60s 8000/1 -> 48000/1
+
+testAudioCache.php
+[OK]   Chaves iguais p/ mesmos parâmetros
+[OK]   Chave muda quando codec muda
+[OK]   Chave muda quando freq/channels mudam
+[OK]   markBuilding inicial
+[OK]   markBuilding bloqueia segunda tentativa
+[OK]   isBuilding true durante build
+[OK]   isBuilding false após unmark
+[OK]   setEncoded/getEncoded preservam payload
+[OK]   setEncoded grava timestamps
+[OK]   touchEncoded mantém/atualiza lastUsed
+[OK]   hasEncoded true após set
+[OK]   cleanup TTL=0 remove item
+[OK]   cleanup respeita marca building
+
+--- Resumo: 13 OK, 0 FAIL ---
+
+extra/validation/07_media_receive_only.php
+Proxy de áudio iniciado na porta 127.0.0.1:50455
+PCMA receiveOnly=0: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:50075
+PCMA receiveOnly=1: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:42193
+PCMU receiveOnly=0: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:58366
+PCMU receiveOnly=1: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:58776
+G729 receiveOnly=0: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:52009
+G729 receiveOnly=1: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:47330
+GSM receiveOnly=0: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:51098
+GSM receiveOnly=1: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:60507
+OPUS receiveOnly=0: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+Proxy de áudio iniciado na porta 127.0.0.1:45715
+OPUS receiveOnly=1: PCM, recording, VAD, silence, DTMF, relay and teardown OK
+
+extra/validation/08_audio_preparation.php
+PCMA sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+PCMA sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+PCMU sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+PCMU sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+G729 sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+G729 sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+GSM sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+GSM sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+OPUS sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+OPUS sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+Bounded long-file queue and teardown during preparation: OK
+Same-mtime file replacement invalidates raw/prepared caches: OK
+
+extra/validation/09_trunk_udp_lifecycle.php
+PCMA: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+PCMU: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+G729: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+GSM: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+OPUS: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+
+
+Final checks after conversion/error-path fixes:
+extra/validation/03_trunk_ptime.php
+audio 20000 RTP/AVP 8 101
+audio 20000 RTP/AVP 8 101 3 102
+OK: trunkController validado com ptime 10, 20, 30, 40, 60 e 120 ms.
+
+extra/validation/04_trunk_rtp_pacing.php
+PCMA 20 ms (custo 0 ms): média 19.991 ms, min 18.468, max 21.371, drift -0.299 ms, payload 160 B, ts +160
+PCMA 10 ms (custo 0 ms): média 9.987 ms, min 9.178, max 11.226, drift -0.657 ms, payload 80 B, ts +80
+PCMA 40 ms (custo 0 ms): média 39.991 ms, min 39.296, max 40.461, drift -0.206 ms, payload 320 B, ts +320
+G729 20 ms (custo 0 ms): média 19.977 ms, min 18.907, max 21.415, drift -0.791 ms, payload 20 B, ts +160
+PCMA 20 ms (custo 3 ms): média 19.980 ms, min 18.043, max 21.736, drift -1.947 ms, payload 160 B, ts +160
+OPUS 20 ms (custo 0 ms): média 19.961 ms, min 18.729, max 20.970, drift -1.127 ms, payload 80 B, ts +960
+PCMA ptime dinâmico 10→40 ms: intervalo da transição 38.687 ms
+PCMA overrun 55 ms: atraso 75.498 ms, próximo intervalo 19.339 ms (sem rajada)
+PCMA preparação atrasada 55 ms: lacuna 74.551 ms, recuperação 20.506 ms (sem descarte/rajada)
+DTMF 20 ms: timeline de áudio retomada em +1280 samples, depois +160.
+OK: pacing RTP monotônico validado no emissor do trunkController.
+
+extra/validation/08_audio_preparation.php
+PCMA sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+PCMA sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+PCMU sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+PCMU sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+G729 sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+G729 sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+GSM sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+GSM sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+OPUS sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+OPUS sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+Bounded long-file queue and teardown during preparation: OK
+Conversion failure is explicit, without silent frame loss or pending producer: OK
+Same-mtime file replacement invalidates raw/prepared caches: OK
+
+extra/validation/09_trunk_udp_lifecycle.php
+PCMA: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+PCMU: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+G729: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+GSM: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+OPUS: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+
+
+Final cache-bypass/unaligned-cursor/EOF tests: PASS (preparation-final.txt).
+Final before-send overrun: PASS (pacing-final.txt).
+Final UDP lifecycle: PASS (lifecycle-final.txt).
+Final receive modes with dynamic G729 mappings: PASS (receive-final.txt).
+Final wire comparison: 20 scenarios, 2020 verified RTP packets before and after.

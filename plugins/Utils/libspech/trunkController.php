@@ -168,8 +168,7 @@ class trunkController
     public $socketInUse;
     public $waitingEnd = 0;
     private $audioFileHandle;
-    private array $preEncodedAudio = [];
-    private array $preEncodedInfo = [];
+    private ?\libspech\Audio\AudioFilePlayback $audioPlayback = null;
     public int $speakStartThreshold = 2;
     public int $speakEndThreshold = 3;
     public $prefix = '';
@@ -2104,6 +2103,7 @@ class trunkController
 
             $this->socketInUse = 'yes';
             $this->mediaChannel->setPacketTime($this->packetTime);
+            $this->mediaChannel->setReceiveOnlyMode(true);
 
 
             $this->remoteIp = $this->audioRemoteIp;
@@ -2237,18 +2237,23 @@ class trunkController
                         break;
 
                     case 'G729':
-                        if (!isset($this->mediaChannel->members[$targetId]['rtpChannel']->bcg729Channel)) {
-                            return;
+                        if (!isset($channel->members[$targetId]['bcg729Channel'])) {
+                            $memberRtp = $channel->members[$targetId]['rtpChannel'];
+                            // Dynamic TX PTs do not initialize rtpChannel's
+                            // legacy PT=18 codec property. Cache the decoder in
+                            // the member slot already handled by close().
+                            $channel->members[$targetId]['bcg729Channel'] = $memberRtp->payloadType === rtpChannel::PAYLOAD_G729
+                                ? $memberRtp->bcg729Channel
+                                : new \bcg729Channel();
                         }
-
-                        $pcmData = $this->mediaChannel
-                            ->members[$targetId]['rtpChannel']
-                            ->bcg729Channel
-                            ->decode($rtpc->payloadRaw);
+                        $pcmData = $channel->members[$targetId]['bcg729Channel']->decode($rtpc->payloadRaw);
                         break;
 
                     case 'GSM':
-                        $pcmData = $this->mediaChannel->members[$targetId]['gsmDecodedPcm'] ?? null;
+                        $decoder = $channel->members[$targetId]['gsmDecoder'] ?? null;
+                        if ($decoder instanceof \gsmChannel && strlen($rtpc->payloadRaw) % 33 === 0) {
+                            $pcmData = $decoder->decode($rtpc->payloadRaw);
+                        }
                         break;
 
                     case 'OPUS':
@@ -2282,6 +2287,9 @@ class trunkController
                 }
 
                 $channelsPacket = max(1, (int)($this->mediaChannel->members[$targetId]['channels'] ?? 1));
+                if ($this->vadEnabled) {
+                    $this->processVAD($pcmData, $targetId);
+                }
                 if ($this->waitingSilence) {
                     $frequencyPacket ??= $channel->getFrequencyFromPtCodec($rtpc->payloadType);
 
@@ -2340,63 +2348,73 @@ class trunkController
         $nextDeadlineNs = hrtime(true);
         $audioWasSuspended = false;
 
-        while ($this->mediaChannel->active) {
-            $currentPacketTime = $this->packetTime;
-            if ($currentPacketTime !== $pacedPacketTime) {
-                $pacedPacketTime = $currentPacketTime;
-                $nextDeadlineNs = hrtime(true);
-            }
-
-            $canSendAudio =
-                !$this->mediaChannel->dtmfInUse &&
-                $this->audioFileHandle instanceof \Closure &&
-                !empty($this->audioRemoteIp) &&
-                !empty($this->audioRemotePort);
-
-            if ($canSendAudio) {
-                if ($audioWasSuspended) {
-                    // DTMF (ou ausência temporária do peer) não vira débito do
-                    // áudio e, portanto, não deve gerar uma rajada ao retornar.
+        try {
+            while ($this->mediaChannel->active) {
+                $currentPacketTime = $this->packetTime;
+                if ($currentPacketTime !== $pacedPacketTime) {
+                    $pacedPacketTime = $currentPacketTime;
                     $nextDeadlineNs = hrtime(true);
-                    $audioWasSuspended = false;
                 }
 
-                try {
-                    ($this->audioFileHandle)([
-                        'address' => $this->audioRemoteIp,
-                        'port' => $this->audioRemotePort,
-                    ], $this);
-                } catch (\Throwable $e) {
-                    cli::pcl("[AUDIO-LOOP-ERROR] " . $e->getMessage(), 'red');
+                $canSendAudio =
+                    !$this->mediaChannel->dtmfInUse &&
+                    $this->audioFileHandle instanceof \Closure &&
+                    !empty($this->audioRemoteIp) &&
+                    !empty($this->audioRemotePort);
+
+                if ($canSendAudio) {
+                    if ($audioWasSuspended) {
+                        // DTMF (ou ausência temporária do peer) não vira débito do
+                        // áudio e, portanto, não deve gerar uma rajada ao retornar.
+                        $nextDeadlineNs = hrtime(true);
+                        $audioWasSuspended = false;
+                    }
+
+                    try {
+                        ($this->audioFileHandle)([
+                            'address' => $this->audioRemoteIp,
+                            'port' => $this->audioRemotePort,
+                        ], $this);
+                    } catch (\Throwable $e) {
+                        cli::pcl("[AUDIO-LOOP-ERROR] " . $e->getMessage(), 'red');
+                        $this->stopAudioFile();
+                    }
+                } else {
+                    $nextDeadlineNs = hrtime(true);
+                    $audioWasSuspended = true;
                 }
-            } else {
-                $nextDeadlineNs = hrtime(true);
-                $audioWasSuspended = true;
-            }
 
-            if (!$this->mediaChannel->active) {
-                break;
-            }
+                if (!$this->mediaChannel->active) {
+                    break;
+                }
 
-            // setPacketTime() pode ter sido chamado enquanto o callback cedia
-            // a coroutine em I/O. A nova cadência começa a partir de agora.
-            $currentPacketTime = $this->packetTime;
-            if ($currentPacketTime !== $pacedPacketTime) {
-                $pacedPacketTime = $currentPacketTime;
-                $nextDeadlineNs = hrtime(true);
-            }
+                // setPacketTime() pode ter sido chamado enquanto o callback cedia
+                // a coroutine em I/O. A nova cadência começa a partir de agora.
+                $currentPacketTime = $this->packetTime;
+                if ($currentPacketTime !== $pacedPacketTime) {
+                    $pacedPacketTime = $currentPacketTime;
+                    $nextDeadlineNs = hrtime(true);
+                }
 
-            $nextDeadlineNs += $pacedPacketTime * 1_000_000;
-            $remainingNs = $nextDeadlineNs - hrtime(true);
+                $nextDeadlineNs += $pacedPacketTime * 1_000_000;
+                $remainingNs = $nextDeadlineNs - hrtime(true);
 
-            if ($remainingNs > 0) {
-                // Swoole exige pelo menos 1 ms. Arredondar para esse piso evita
-                // busy-loop; eventual overshoot é absorvido pelo próximo deadline.
-                \Swoole\Coroutine::sleep(max(0.001, $remainingNs / 1_000_000_000));
-            } else {
-                // Não tenta recuperar tempo emitindo vários RTPs em sequência.
-                $nextDeadlineNs = hrtime(true);
+                if ($remainingNs > 0) {
+                    // Swoole exige pelo menos 1 ms. Arredondar para esse piso evita
+                    // busy-loop; eventual overshoot é absorvido pelo próximo deadline.
+                    \Swoole\Coroutine::sleep(max(0.001, $remainingNs / 1_000_000_000));
+                } else {
+                    // A preparação/UDP pode ter enviado o frame só depois do
+                    // deadline. Reiniciar imediatamente enviaria o seguinte em
+                    // rajada. Preserve todo o áudio e retome após um ptime;
+                    // a lacuna real não remove samples da timeline RTP.
+                    $nextDeadlineNs = hrtime(true);
+                    \Swoole\Coroutine::sleep($pacedPacketTime / 1000);
+                    $nextDeadlineNs += $pacedPacketTime * 1_000_000;
+                }
             }
+        } finally {
+            $this->stopAudioFile();
         }
     }
 
@@ -2798,6 +2816,7 @@ class trunkController
         $this->receiveBye = true;
         $this->callActive = false;
         $this->blockSpeak = false;
+        $this->stopAudioFile();
 
 
         foreach ($this->idTimers as $id => $timer) {
@@ -3547,7 +3566,9 @@ class trunkController
 
     public function stopAudioFile(): void
     {
-        $this->registerAudioEvent(function () {
+        $this->audioPlayback?->close();
+        $this->audioPlayback = null;
+        $this->registerAudioEvent(static function () {
         });
     }
 
@@ -3641,9 +3662,23 @@ class trunkController
      * Em modo 'resample' aplica filtro de alta qualidade; em 'resampler' usa o caminho rápido.
      * `options` aceita ao menos: input_channels, output_channels.
      */
-    private function doResample(string $pcm, int $srcRate, int $dstRate, array $options = []): string
+    private function doResample(string $pcm, int $srcRate, int $dstRate, array $options = [], ?string $mode = null): string
     {
-        if ($this->resampleMode === 'resample') {
+        $inCh = (int)($options['input_channels'] ?? 1);
+        $outCh = (int)($options['output_channels'] ?? $inCh);
+        if ($inCh === 1 && $outCh === 2) {
+            $pcm = monoToStereo($pcm);
+            $inCh = 2;
+        } elseif ($inCh === 2 && $outCh === 1) {
+            $pcm = stereoToMono($pcm);
+            $inCh = 1;
+        }
+        if ($srcRate === $dstRate && $inCh === $outCh) {
+            return $pcm;
+        }
+        $options['input_channels'] = $inCh;
+        $options['output_channels'] = $outCh;
+        if (($mode ?? $this->resampleMode) === 'resample') {
             $opts = $options + [
                 'resample_filter'  => 'kaiser_best',
                 'resample_quality' => 10,
@@ -3651,15 +3686,28 @@ class trunkController
             return resample($pcm, $srcRate, $dstRate, $opts);
         }
 
-        // Modo padrão: resampler()
-        // Se for downmix de canais, resampler() não cobre — cai no resample() básico (sem filtro pesado).
-        $inCh  = (int)($options['input_channels']  ?? 1);
-        $outCh = (int)($options['output_channels'] ?? $inCh);
-        if ($inCh !== $outCh || $inCh > 1) {
+        // Keep channel conversion separate from rate conversion. The native
+        // resample() FIR can buffer short frames and return an empty string;
+        // padding that result would replace actual stereo audio with silence.
+        if ($inCh !== $outCh) {
             return resample($pcm, $srcRate, $dstRate, [
                 'input_channels'  => $inCh,
                 'output_channels' => $outCh,
             ]);
+        }
+        if ($outCh === 2) {
+            $left = $right = '';
+            for ($offset = 0, $length = strlen($pcm); $offset + 4 <= $length; $offset += 4) {
+                $left .= substr($pcm, $offset, 2);
+                $right .= substr($pcm, $offset + 2, 2);
+            }
+            $left = resampler($left, $srcRate, $dstRate);
+            $right = resampler($right, $srcRate, $dstRate);
+            $output = '';
+            for ($offset = 0, $length = min(strlen($left), strlen($right)); $offset + 2 <= $length; $offset += 2) {
+                $output .= substr($left, $offset, 2) . substr($right, $offset, 2);
+            }
+            return $output;
         }
         return resampler($pcm, $srcRate, $dstRate);
     }
@@ -3699,8 +3747,12 @@ class trunkController
 
     public function defineAudioFile(string $audioFile): void
     {
+        clearstatcache(true, $audioFile);
         $fileMTime = file_exists($audioFile) ? filemtime($audioFile) : 0;
-        $cacheKey = md5($audioFile . '_' . $fileMTime);
+        // One file identity per definition, including same-size replacements
+        // within the filesystem's mtime resolution. Never stat/hash per RTP.
+        $cacheKey = hash('sha256', (realpath($audioFile) ?: $audioFile) . '_' . $fileMTime
+            . '_' . (is_file($audioFile) ? hash_file('sha256', $audioFile) : ''));
         $fromCache = false;
 
         if ($this->audioMemorySharingEnabled && isset(self::$sharedAudioCache[$cacheKey])) {
@@ -3752,464 +3804,98 @@ class trunkController
             }
         }
 
-        // O cache compartilhado contém somente o PCM bruto. O tamanho do frame
-        // sempre pertence ao trunkController atual e ao seu ptime.
         $chunkSize = \libspech\Sip\calculateChunkSize(
-            $infoFile['rate'],
-            $infoFile['numChannels'],
-            $infoFile['bitDepth'],
-            $this->packetTime
+            $infoFile['rate'], $infoFile['numChannels'], $infoFile['bitDepth'], $this->packetTime
         );
         $configuredPacketTime = $this->packetTime;
-        $currentPosition = 0;
-
-        // Cache local (fallback) — somente para preservar compat. quando audioMemorySharing está desligado
-        $this->preEncodedAudio = [];
-        $this->preEncodedInfo = [];
-
-        $this->registerAudioEvent(function ($peer, trunkController $phone) use (&$currentPosition, $audioData, $audioLen, &$chunkSize, &$configuredPacketTime, $infoFile, $audioFile) {
+        $this->audioPlayback?->close();
+        $playback = new \libspech\Audio\AudioFilePlayback(
+            $audioData, $infoFile, $cacheKey,
+            fn(string $pcm, array $info, array $context): string => $this->prepareAudioFileFrame($pcm, $info, $context)
+        );
+        $this->audioPlayback = $playback;
+        $canConsume = function (array $context, \libspech\Audio\AudioFilePlayback $source): bool {
+            $member = $this->mediaChannel->members[$context['endpoint']] ?? [];
+            return $this->audioPlayback === $source && $this->callActive && $this->mediaChannel->active
+                && !$this->mediaChannel->dtmfInUse && $this->packetTime === $context['ptime']
+                && strtoupper($this->codecName) === $context['codec'] && $this->frequencyCall === $context['frequency']
+                && (int)($member['channels'] ?? 1) === $context['channels']
+                && ($member['config'] ?? []) === $context['config'] && $this->resampleMode === $context['resampleMode']
+                && $this->loopAudioFile === $context['loop'] && $this->audioMemorySharingEnabled === $context['sharing'];
+        };
+        $this->registerAudioEvent(function ($peer, trunkController $phone) use ($playback, $canConsume, $infoFile, &$chunkSize, &$configuredPacketTime) {
             if (empty($this->callActive)) {
                 $this->stopAudioFile();
                 return;
             }
-
             if ($configuredPacketTime !== $phone->getPacketTime()) {
                 $configuredPacketTime = $phone->getPacketTime();
                 $chunkSize = \libspech\Sip\calculateChunkSize(
-                    $infoFile['rate'],
-                    $infoFile['numChannels'],
-                    $infoFile['bitDepth'],
-                    $configuredPacketTime
+                    $infoFile['rate'], $infoFile['numChannels'], $infoFile['bitDepth'], $configuredPacketTime
                 );
-                $currentPosition = 0;
-                $this->preEncodedAudio = [];
-                $this->preEncodedInfo = [];
             }
-
-            $idFrom = $peer['address'] . ':' . $peer['port'];
-
-            if (!$this->mediaChannel->isMember($idFrom)) {
-                cli::pcl("Member {$idFrom} not found in media channel, stopping audio playback.");
+            $id = $peer['address'] . ':' . $peer['port'];
+            $member = $this->mediaChannel->members[$id] ?? null;
+            if (!(($member['rtpChannel'] ?? null) instanceof rtpChannel)) {
                 return;
             }
-
-            $member          = $this->mediaChannel->members[$idFrom];
-            $codec           = strtoupper($phone->codecName);
-            $frequencyMember = $phone->frequencyCall;
-            $channelsMember  = $member['channels'] ?? 1;
-
-            $encode     = null;
-            $chunkIndex = (int)($currentPosition / $chunkSize);
-
-            // Reinicializa cache local quando contexto muda (correção da invalidação)
-            if (empty($this->preEncodedInfo)
-                || $this->preEncodedInfo['codec']     !== $codec
-                || $this->preEncodedInfo['frequency'] !== $frequencyMember
-                || $this->preEncodedInfo['chunkSize'] !== $chunkSize
-                || $this->preEncodedInfo['channels']  !== $channelsMember
-            ) {
-                $this->preEncodedAudio = [];
-                $this->preEncodedInfo = [
-                    'codec'       => $codec,
-                    'frequency'   => $frequencyMember,
-                    'chunkSize'   => $chunkSize,
-                    'channels'    => $channelsMember,
-                    'fileEncoder' => null,
-                ];
-
-                // Encoder dedicado p/ build de cache global (stateful). Não compartilhar com encoder da chamada.
-                if ($codec === 'G729') {
-                    $this->preEncodedInfo['fileEncoder'] = new \bcg729Channel();
-                } elseif ($codec === 'GSM') {
-                    $this->preEncodedInfo['fileEncoder'] = new \gsmChannel();
-                } elseif ($codec === 'OPUS') {
-                    $this->preEncodedInfo['fileEncoder'] = new \opusChannel(48000, $channelsMember);
-                }
-            }
-
-            // Codecs stateless são seguros p/ cache por chunk; stateful exige sequência inteira.
-            $stateful = in_array($codec, ['G729', 'GSM', 'OPUS'], true);
-
-            $encodedKey = null;
-            if ($this->audioMemorySharingEnabled) {
-                try {
-                    $encodedKey = \libspech\Audio\AudioCache::makeEncodedKey(
-                        $audioFile,
-                        $codec,
-                        (int)$frequencyMember,
-                        (int)$channelsMember,
-                        (int)$chunkSize,
-                        $infoFile['rate'] ?? null,
-                        $infoFile['numChannels'] ?? null,
-                        $infoFile['bitDepth'] ?? null,
-                        $member['config'] ?? null
-                    );
-                } catch (\Throwable $e) {
-                    $encodedKey = null;
-                }
-            }
-
-            // ── 1) Tentar cache global encoded ────────────────────────────────
-            if ($encodedKey !== null) {
-                try {
-                    $globalCache = \libspech\Audio\AudioCache::getEncoded($encodedKey);
-                } catch (\Throwable $e) {
-                    $globalCache = null;
-                }
-
-                if ($globalCache && isset($globalCache['chunks'][$chunkIndex])) {
-                    // Para stateful, só servimos do cache se a sequência inteira (até o último chunk útil) está pronta.
-                    $expectedFrames = $globalCache['frameCount'] ?? 0;
-                    if (!$stateful || (!empty($globalCache['complete']) && $expectedFrames > 0)) {
-                        $encode = $globalCache['chunks'][$chunkIndex];
-                        try { \libspech\Audio\AudioCache::touchEncoded($encodedKey); } catch (\Throwable $e) {}
-                    }
-                }
-            }
-
-            // ── 2) Fallback cache local ───────────────────────────────────────
-            if ($encode === null && isset($this->preEncodedAudio[$chunkIndex])) {
-                $encode = $this->preEncodedAudio[$chunkIndex];
-            }
-
-            if ($encode !== null) {
-                $currentPosition += $chunkSize;
-                if ($currentPosition >= $audioLen) {
-                    $currentPosition = $this->loopAudioFile ? 0 : $audioLen;
-                }
-            } else {
-                // ── 3) Stateful: tentar pré-construir sequência inteira no cache global ──
-                if ($stateful && $encodedKey !== null && $this->audioMemorySharingEnabled) {
-                    try {
-                        $built = $this->buildEncodedSequenceForFile(
-                            $audioData, $audioLen, $chunkSize, $infoFile,
-                            $codec, $frequencyMember, $channelsMember, $phone,
-                            $encodedKey
-                        );
-                    } catch (\Throwable $e) {
-                        $built = null;
-                    }
-
-                    if ($built && isset($built['chunks'][$chunkIndex])) {
-                        $encode = $built['chunks'][$chunkIndex];
-                        $currentPosition += $chunkSize;
-                        if ($currentPosition >= $audioLen) {
-                            $currentPosition = $this->loopAudioFile ? 0 : $audioLen;
-                        }
-                    }
-                }
-
-                // ── 4) Lazy encoding (caminho original — não corromper estado) ──
-                if ($encode === null) {
-                    $frequencyPacket = $infoFile['rate'];
-
-                    $pcmChunk = substr($audioData, $currentPosition, $chunkSize);
-                    $len = strlen($pcmChunk);
-                    if ($len === 0 && $currentPosition >= $audioLen) {
-                        $pcmChunk = str_repeat("\x00", $chunkSize);
-                    } elseif ($len < $chunkSize) {
-                        $pcmChunk .= str_repeat("\x00", $chunkSize - $len);
-                    }
-
-                    $channelsFile = $infoFile['numChannels'] ?? 1;
-
-                    if ($channelsFile !== $channelsMember) {
-                        // Converte canais sem alterar a taxa aqui; o resample por codec
-                        // ajusta a frequência em seguida.
-                        $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, $frequencyPacket, [
-                            'input_channels'  => $channelsFile,
-                            'output_channels' => $channelsMember,
-                        ]);
-                    }
-
-                    switch ($codec) {
-                        case 'PCMU':
-                            if ($frequencyPacket !== 8000) {
-                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000, [
-                                    'input_channels' => $channelsMember,
-                                    'output_channels' => $channelsMember,
-                                ]);
-                            }
-                            $pcmChunk = $phone->fitPcmToPacketTime($pcmChunk, 8000, $channelsMember);
-                            $encode = encodePcmToPcmu($pcmChunk);
-                            break;
-
-                        case 'PCMA':
-                            if ($frequencyPacket !== 8000) {
-                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000, [
-                                    'input_channels' => $channelsMember,
-                                    'output_channels' => $channelsMember,
-                                ]);
-                            }
-                            $pcmChunk = $phone->fitPcmToPacketTime($pcmChunk, 8000, $channelsMember);
-                            $encode = encodePcmToPcma($pcmChunk);
-                            break;
-
-                        case 'G729':
-                            if ($frequencyPacket !== 8000) {
-                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000, [
-                                    'input_channels' => $channelsMember,
-                                    'output_channels' => $channelsMember,
-                                ]);
-                            }
-                            $pcmChunk = $phone->fitPcmToPacketTime($pcmChunk, 8000, $channelsMember);
-                            // Para evitar chiado, usamos o fileEncoder dedicado (não o da chamada).
-                            if (isset($this->preEncodedInfo['fileEncoder'])) {
-                                $encode = $this->preEncodedInfo['fileEncoder']->encode($pcmChunk);
-                            }
-                            break;
-
-                        case 'GSM':
-                            if ($frequencyPacket !== 8000) {
-                                $pcmChunk = $phone->doResample($pcmChunk, $frequencyPacket, 8000, [
-                                    'input_channels' => $channelsMember,
-                                    'output_channels' => 1,
-                                ]);
-                            }
-                            $pcmChunk = $phone->fitPcmToPacketTime($pcmChunk, 8000, 1);
-                            if (isset($this->preEncodedInfo['fileEncoder']) && strlen($pcmChunk) % 320 === 0) {
-                                $gsmPayload = $this->preEncodedInfo['fileEncoder']->encode($pcmChunk);
-                                $expectedGsmBytes = intdiv(strlen($pcmChunk), 320) * 33;
-                                $encode = $gsmPayload !== false && strlen($gsmPayload) === $expectedGsmBytes
-                                    ? $gsmPayload
-                                    : null;
-                            }
-                            break;
-
-                        case 'OPUS':
-                            if ($frequencyPacket !== 48000) {
-                                $pcm48 = $phone->doResample($pcmChunk, $frequencyPacket, 48000, [
-                                    'input_channels' => $channelsMember,
-                                    'output_channels' => $channelsMember,
-                                ]);
-                            } else {
-                                $pcm48 = $pcmChunk;
-                            }
-                            $pcm48 = $phone->fitPcmToPacketTime($pcm48, 48000, $channelsMember);
-                            if (strlen($pcm48) >= 2 && isset($this->preEncodedInfo['fileEncoder'])) {
-                                $encode = $this->preEncodedInfo['fileEncoder']->encode($pcm48);
-                            }
-                            break;
-
-                        case 'L16':
-                            $pcmChunk = pcmLeToBe($pcmChunk);
-                            if ($frequencyPacket !== $frequencyMember) {
-                                $encode = $phone->doResample($pcmChunk, $frequencyPacket, $frequencyMember);
-                            } else {
-                                $encode = $pcmChunk;
-                            }
-                            break;
-
-                        default:
-                            return;
-                    }
-
-                    if ($encode !== null && $encode !== '') {
-                        // Cache local sempre (mantém compat antiga p/ sessão atual)
-                        $this->preEncodedAudio[$chunkIndex] = $encode;
-
-                        // Publica chunk-a-chunk no cache global APENAS para stateless
-                        if (!$stateful && $encodedKey !== null && $this->audioMemorySharingEnabled) {
-                            try {
-                                if (\libspech\Audio\AudioCache::markBuilding($encodedKey)) {
-                                    try {
-                                        $globalCache = \libspech\Audio\AudioCache::getEncoded($encodedKey) ?? [
-                                            'chunks'    => [],
-                                            'codec'     => $codec,
-                                            'frequency' => $frequencyMember,
-                                            'channels'  => $channelsMember,
-                                            'chunkSize' => $chunkSize,
-                                            'complete'  => false,
-                                        ];
-                                        $globalCache['chunks'][$chunkIndex] = $encode;
-                                        \libspech\Audio\AudioCache::setEncoded($encodedKey, $globalCache);
-                                    } finally {
-                                        \libspech\Audio\AudioCache::unmarkBuilding($encodedKey);
-                                    }
-                                }
-                            } catch (\Throwable $e) {
-                                // Falha no cache nunca derruba a chamada
-                            }
-                        }
-                    }
-
-                    $currentPosition += $chunkSize;
-                    if ($currentPosition >= $audioLen) {
-                        $currentPosition = $this->loopAudioFile ? 0 : $audioLen;
-                    }
-                }
-            }
-
-            if ($encode === null || $encode === '') {
+            $context = [
+                'endpoint' => $id,
+                'codec' => strtoupper($phone->codecName),
+                'frequency' => $phone->frequencyCall,
+                'channels' => (int)($member['channels'] ?? 1),
+                'chunkSize' => $chunkSize,
+                'ptime' => $configuredPacketTime,
+                'config' => $member['config'] ?? [],
+                'resampleMode' => $phone->resampleMode,
+                'sharing' => $phone->audioMemorySharingEnabled,
+                'loop' => $phone->loopAudioFile,
+            ];
+            $payload = $playback->nextPayload($context, $canConsume);
+            // pop() can yield during startup/underflow. Do not emit stale media
+            // after teardown, DTMF, replacement or reconfiguration during that wait.
+            if ($payload === null || !$this->mediaChannel->active || !$this->callActive
+                || $this->audioPlayback !== $playback || $this->mediaChannel->dtmfInUse) {
                 return;
             }
-
-            if (!isset($member['rtpChannel'])) {
-                return;
-            }
-
-            $packet = $member['rtpChannel']->buildAudioPacket($encode);
-
-            $this->mediaChannel->socket->sendto(
-                $peer['address'],
-                $peer['port'],
-                $packet
-            );
+            $packet = $this->mediaChannel->members[$id]['rtpChannel']->buildAudioPacket($payload);
+            $this->mediaChannel->socket->sendto($peer['address'], $peer['port'], $packet);
         });
     }
 
-    /**
-     * Pré-constrói a sequência inteira de frames encoded para codecs stateful
-     * (G729/GSM/OPUS), usando um encoder dedicado para não corromper o estado da chamada.
-     * Publica o payload completo no cache global apenas se ninguém estiver construindo.
-     *
-     * Retorna o payload (com 'chunks' e 'complete' => true) em caso de sucesso,
-     * ou null se outra chamada já está construindo / em caso de falha.
-     */
-    private function buildEncodedSequenceForFile(
-        string $audioData,
-        int $audioLen,
-        int $chunkSize,
-        array $infoFile,
-        string $codec,
-        int $frequencyMember,
-        int $channelsMember,
-        trunkController $phone,
-        string $encodedKey
-    ): ?array {
-        // Já completo?
-        try {
-            $existing = \libspech\Audio\AudioCache::getEncoded($encodedKey);
-        } catch (\Throwable $e) {
-            $existing = null;
-        }
-        if ($existing && !empty($existing['complete'])) {
-            return $existing;
-        }
-
-        // Outra chamada construindo — não duplica esforço; cai no lazy local.
-        if (!\libspech\Audio\AudioCache::markBuilding($encodedKey)) {
-            return null;
-        }
-
-        try {
-            // Encoder dedicado (estado isolado da chamada)
-            $fileEncoder = null;
-            if ($codec === 'G729') {
-                $fileEncoder = new \bcg729Channel();
-            } elseif ($codec === 'GSM') {
-                $fileEncoder = new \gsmChannel();
-            } elseif ($codec === 'OPUS') {
-                $fileEncoder = new \opusChannel(48000, $channelsMember);
-            } else {
-                return null;
-            }
-
-            $frequencyPacketBase = $infoFile['rate'] ?? $frequencyMember;
-            $channelsFile        = $infoFile['numChannels'] ?? 1;
-
-            $chunks = [];
-            $pos    = 0;
-            $idx    = 0;
-
-            while ($pos < $audioLen) {
-                $pcmChunk = substr($audioData, $pos, $chunkSize);
-                $len = strlen($pcmChunk);
-                if ($len < $chunkSize) {
-                    $pcmChunk .= str_repeat("\x00", $chunkSize - $len);
-                }
-
-                $frequencyPacket = $frequencyPacketBase;
-
-                if ($channelsFile !== $channelsMember) {
-                    // Converte canais sem alterar a taxa (resample por codec ajusta a frequência).
-                    $pcmChunk = $this->doResample($pcmChunk, $frequencyPacket, $frequencyPacket, [
-                        'input_channels'  => $channelsFile,
-                        'output_channels' => $channelsMember,
-                    ]);
-                }
-
-                if ($codec === 'G729' || $codec === 'GSM') {
-                    if ($frequencyPacket !== 8000) {
-                        $pcmChunk = $this->doResample($pcmChunk, $frequencyPacket, 8000, [
-                            'input_channels' => $channelsMember,
-                            'output_channels' => $codec === 'GSM' ? 1 : $channelsMember,
-                        ]);
-                    }
-                    $pcmChunk = $this->fitPcmToPacketTime($pcmChunk, 8000, $codec === 'GSM' ? 1 : $channelsMember);
-                    $enc = $fileEncoder->encode($pcmChunk);
-                    if ($codec === 'GSM') {
-                        $expectedGsmBytes = intdiv(strlen($pcmChunk), 320) * 33;
-                        if ($enc === false || strlen($enc) !== $expectedGsmBytes) {
-                            $enc = null;
-                        }
-                    }
-                } else { // OPUS
-                    if ($frequencyPacket !== 48000) {
-                        $pcm48 = $this->doResample($pcmChunk, $frequencyPacket, 48000, [
-                            'input_channels' => $channelsMember,
-                            'output_channels' => $channelsMember,
-                        ]);
-                    } else {
-                        $pcm48 = $pcmChunk;
-                    }
-                    $pcm48 = $this->fitPcmToPacketTime($pcm48, 48000, $channelsMember);
-                    $enc = (strlen($pcm48) >= 2) ? $fileEncoder->encode($pcm48) : null;
-                }
-
-                if ($enc !== null && $enc !== '') {
-                    $chunks[$idx] = $enc;
-                }
-
-                $pos += $chunkSize;
-                $idx++;
-            }
-
-            if (empty($chunks)) {
-                return null;
-            }
-
-            $payload = [
-                'chunks'     => $chunks,
-                'frameCount' => count($chunks),
-                'codec'      => $codec,
-                'frequency'  => $frequencyMember,
-                'channels'   => $channelsMember,
-                'chunkSize'  => $chunkSize,
-                'complete'   => true,
-                'createdAt'  => time(),
-            ];
-
-            try {
-                \libspech\Audio\AudioCache::setEncoded($encodedKey, $payload);
-            } catch (\Throwable $e) {
-                // se cache falhar, ainda devolvemos o payload p/ uso imediato
-            }
-
-            return $payload;
-        } catch (\Throwable $e) {
-            return null;
-        } finally {
-            \libspech\Audio\AudioCache::unmarkBuilding($encodedKey);
-        }
-    }
-
-    private function fitPcmToPacketTime(string $pcm, int $sampleRate, int $channels): string
+    /** Conversion runs in the bounded preparer; encoder state stays at consumption. */
+    private function prepareAudioFileFrame(string $pcm, array $info, array $context): string
     {
-        $channels = max(1, $channels);
-        $samplesPerChannel = max(1, (int)round($sampleRate * ($this->packetTime / 1000)));
-        $expectedBytes = $samplesPerChannel * $channels * 2;
-        $actualBytes = strlen($pcm);
-
-        if ($actualBytes > $expectedBytes) {
-            return substr($pcm, 0, $expectedBytes);
+        $codec = $context['codec'];
+        $channels = $codec === 'GSM' ? 1 : $context['channels'];
+        $rate = match ($codec) {
+            'PCMA', 'PCMU', 'G729', 'GSM' => 8000,
+            'OPUS' => 48000,
+            default => $context['frequency'],
+        };
+        if ($info['numChannels'] !== $channels) {
+            $pcm = $this->doResample($pcm, $info['rate'], $info['rate'], [
+                'input_channels' => $info['numChannels'], 'output_channels' => $channels,
+            ], $context['resampleMode']);
         }
-        if ($actualBytes < $expectedBytes) {
-            return str_pad($pcm, $expectedBytes, "\x00");
+        if ($info['rate'] !== $rate) {
+            $pcm = $this->doResample($pcm, $info['rate'], $rate, [
+                'input_channels' => $channels, 'output_channels' => $channels,
+            ], $context['resampleMode']);
+            if ($pcm === '') {
+                throw new \RuntimeException('Audio resampler returned no PCM frame; use resampler mode or a WAV at the codec sample rate');
+            }
         }
-        return $pcm;
+        $bytes = max(1, (int)round($rate * $context['ptime'] / 1000)) * $channels * 2;
+        $pcm = strlen($pcm) > $bytes ? substr($pcm, 0, $bytes) : str_pad($pcm, $bytes, "\x00");
+        return match ($codec) {
+            'PCMA' => encodePcmToPcma($pcm),
+            'PCMU' => encodePcmToPcmu($pcm),
+            'G729', 'GSM', 'OPUS' => $pcm,
+            'L16' => pcmLeToBe($pcm),
+            default => throw new \RuntimeException('Unsupported audio file codec: ' . $codec),
+        };
     }
-
 
     /**
      * Callback a ser executado ao receber uma SDP (Session Description Protocol).

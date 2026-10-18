@@ -1,0 +1,14 @@
+PCMA sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+PCMA sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+PCMU sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+PCMU sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+G729 sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+G729 sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+GSM sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+GSM sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+OPUS sharing=0: loops, PCM cursor, ptime, suspension and encoder sequence OK
+OPUS sharing=1: loops, PCM cursor, ptime, suspension and encoder sequence OK
+Bounded long-file queue and teardown during preparation: OK
+Conversion failure is explicit, without silent frame loss or pending producer: OK
+Warm-cache ptime change at an unaligned PCM cursor: OK
+Same-mtime file replacement invalidates raw/prepared caches: OK

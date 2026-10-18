@@ -1,0 +1,32 @@
+HEAD baseline, in-memory fake cancel workaround=False
+
+Fatal error: Uncaught Swoole\Error: must call constructor first in Standard input code(1) : eval()'d code:2024
+Stack trace:
+#0 Standard input code(1) : eval()'d code(2024): Swoole\Coroutine\Socket->cancel(512)
+#1 Standard input code(1) : eval()'d code(485): libspech\Rtp\OriginalMediaChannel->close()
+#2 Standard input code(1): eval()
+#3 {main}
+  thrown in Standard input code(1) : eval()'d code on line 2024
+
+
+HEAD baseline, in-memory fake cancel workaround=True
+
+Fatal error: Uncaught RuntimeException: callback do fluxo RTP reutiliza o único decode GSM
+Esperado: 320
+Obtido:  0 in Standard input code(1) : eval()'d code:40
+Stack trace:
+#0 Standard input code(1) : eval()'d code(547): memberPtimeAssertSame(320, 0, 'callback do flu...')
+#1 [internal function]: {closure:Standard input code(1) : eval()'d code:494}()
+#2 {main}
+  thrown in Standard input code(1) : eval()'d code on line 40
+[2026-10-18 10:05:55 %1174793.0]	WARNING	Channel::~Channel() (ERRNO 10003): channel is destroyed, 1 consumers will be discarded
+
+
+Current working tree, original test unchanged
+
+Fatal error: Uncaught Swoole\Error: must call constructor first in /home/lotus/projetos/libspech/plugins/Utils/sip/MediaChannel.php:2040
+Stack trace:
+#0 /home/lotus/projetos/libspech/plugins/Utils/sip/MediaChannel.php(2040): Swoole\Coroutine\Socket->cancel(512)
+#1 /home/lotus/projetos/libspech/test_media_channel_member_ptime.php(485): libspech\Rtp\MediaChannel->close()
+#2 {main}
+  thrown in /home/lotus/projetos/libspech/plugins/Utils/sip/MediaChannel.php on line 2040

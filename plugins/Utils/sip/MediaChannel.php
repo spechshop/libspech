@@ -44,6 +44,7 @@ class MediaChannel
 
 
     private int $packetTimeMs = self::DEFAULT_PACKET_TIME_MS;
+    private bool $receiveOnlyMode = false;
     public bool $debugEnabled = false;
     private array $settings = [];
     /** @var array<string,true> Explicitly replaced transports cannot autojoin. */
@@ -112,6 +113,12 @@ class MediaChannel
     public function onReceive(callable $callback): void
     {
         $this->onReceiveCallable = $callback;
+    }
+
+    /** Keep RTP/member bookkeeping and callbacks, without forwarding received media. */
+    public function setReceiveOnlyMode(bool $enabled): void
+    {
+        $this->receiveOnlyMode = $enabled;
     }
 
     public function onDtmf(callable $callback): void
@@ -695,7 +702,7 @@ class MediaChannel
 //                            }
 //                        }
 
-                            if ($this->settings['sendSilenceProbeToMembers']) $this->sendSilenceProbeToMembers($now);
+                            if (!$this->receiveOnlyMode && $this->settings['sendSilenceProbeToMembers']) $this->sendSilenceProbeToMembers($now);
                             continue;
                         }
                         if ($elapsed >= $this->connectTimeout) {
@@ -834,7 +841,9 @@ class MediaChannel
                         if ($this->audioMetricsEnabled) {
                             $this->audioMetrics['dtmf_events']++;
                         }
-                        $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
+                        if (!$this->receiveOnlyMode) {
+                            $this->forwardDtmfToMembers($rtpc, $peer, $idFrom);
+                        }
                         $this->processDtmf($rtpc, $peer, function () {});
                         continue;
                     }
@@ -847,6 +856,13 @@ class MediaChannel
                         // keeps MediaChannel/RtpSession references alive during
                         // teardown. Run it inline with the receive coroutine.
                         ($this->onReceiveCallable)($rtpc, $peer, $this, $this->rtpChans[$ssrc]);
+                    }
+
+                    // Member registration above creates the GSM/Opus decoders;
+                    // the trunk callback owns decoding, recording, VAD and PCM.
+                    // Nothing below this boundary is required by that callback.
+                    if ($this->receiveOnlyMode) {
+                        continue;
                     }
 
 

@@ -1,0 +1,2016 @@
+{
+  "definitions": {
+    "send_clock": "hrtime at entry to real SocketMutable::sendto",
+    "receiver_clock": "hrtime after recvfrom in a separate OS process",
+    "wire_clock": "tcpdump/libpcap kernel timestamps on Linux loopback, microsecond resolution",
+    "late_intervals_over_1ms": "inter-packet send gap > ptime + 1 ms; inferred missed relative deadlines, not an internal pacer counter",
+    "missed_full_slots": "max(0, floor((gap_ms - 1) / ptime_ms) - 1), summed over gaps; never a discarded media frame",
+    "cpu": "sender process getrusage user+system / scenario wall time, percent of one core",
+    "memory": "PHP peak / maximum RSS accumulated up to each scenario; includes harness and caches",
+    "integrity": "packet count, SHA-256 at receiver, sequence and timestamp continuity; audio encoder sequence additionally checked by 08_audio_preparation.php"
+  },
+  "before": [
+    {
+      "codec": "PCMA",
+      "ptime_ms": 10,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 100,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 10.007499323232327,
+        "median": 10.206429,
+        "p95": 11.361337,
+        "p99": 11.441755,
+        "max": 11.441755,
+        "min": 8.285887
+      },
+      "receiver_intervals_ms": {
+        "mean": 10.007523484848486,
+        "median": 10.211632,
+        "p95": 11.36042,
+        "p99": 11.486234,
+        "max": 11.486234,
+        "min": 8.270205
+      },
+      "callback_ms": {
+        "mean": 0.15639672,
+        "median": 0.16873,
+        "p95": 0.23689,
+        "p99": 0.299769,
+        "max": 0.436576,
+        "min": 0.048886
+      },
+      "late_intervals_over_1ms": 19,
+      "missed_full_slots": 0,
+      "wall_ms": 994.393329,
+      "cpu_ms": 27.753,
+      "cpu_one_core_percent": 2.790947926803721,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34448,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 10.007535568391434,
+        "median": 10.210990905761719,
+        "p95": 11.358976364135742,
+        "p99": 11.407136917114258,
+        "max": 11.407136917114258,
+        "min": 8.278846740722656
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 100,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.00393876767677,
+        "median": 20.319382,
+        "p95": 20.457415,
+        "p99": 20.486487,
+        "max": 20.486487,
+        "min": 19.203522
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.00458818181819,
+        "median": 20.309701,
+        "p95": 20.45782,
+        "p99": 20.526778,
+        "max": 20.526778,
+        "min": 19.168047
+      },
+      "callback_ms": {
+        "mean": 0.19580816,
+        "median": 0.199412,
+        "p95": 0.26123,
+        "p99": 0.290881,
+        "max": 0.363502,
+        "min": 0.07757
+      },
+      "late_intervals_over_1ms": 0,
+      "missed_full_slots": 0,
+      "wall_ms": 1981.416551,
+      "cpu_ms": 29.224,
+      "cpu_one_core_percent": 1.474904405398802,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34448,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.004111106949622,
+        "median": 20.318984985351562,
+        "p95": 20.461082458496094,
+        "p99": 20.50495147705078,
+        "max": 20.50495147705078,
+        "min": 19.20604705810547
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 40,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 40.00303266101697,
+        "median": 40.25267,
+        "p95": 40.579014,
+        "p99": 41.180594,
+        "max": 41.180594,
+        "min": 38.412455
+      },
+      "receiver_intervals_ms": {
+        "mean": 40.002769423728815,
+        "median": 40.258945,
+        "p95": 40.571646,
+        "p99": 41.172301,
+        "max": 41.172301,
+        "min": 38.417316
+      },
+      "callback_ms": {
+        "mean": 0.19444479999999992,
+        "median": 0.201,
+        "p95": 0.305059,
+        "p99": 0.445031,
+        "max": 0.445031,
+        "min": 0.086372
+      },
+      "late_intervals_over_1ms": 1,
+      "missed_full_slots": 0,
+      "wall_ms": 2361.154393,
+      "cpu_ms": 17.891,
+      "cpu_one_core_percent": 0.7577225806597223,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34448,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 40.00335628703489,
+        "median": 40.247201919555664,
+        "p95": 40.58122634887695,
+        "p99": 41.17918014526367,
+        "max": 41.17918014526367,
+        "min": 38.41280937194824
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 100,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.007065565656568,
+        "median": 19.439576,
+        "p95": 21.354557,
+        "p99": 21.49861,
+        "max": 21.49861,
+        "min": 18.293206
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.00810823232323,
+        "median": 19.473732,
+        "p95": 21.403259,
+        "p99": 21.522802,
+        "max": 21.522802,
+        "min": 18.237396
+      },
+      "callback_ms": {
+        "mean": 0.17731051999999994,
+        "median": 0.186026,
+        "p95": 0.249085,
+        "p99": 0.289594,
+        "max": 0.317306,
+        "min": 0.071044
+      },
+      "late_intervals_over_1ms": 22,
+      "missed_full_slots": 0,
+      "wall_ms": 1981.648332,
+      "cpu_ms": 26.728,
+      "cpu_one_core_percent": 1.3487761460190304,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34448,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.007220181551848,
+        "median": 19.429922103881836,
+        "p95": 21.356821060180664,
+        "p99": 21.517038345336914,
+        "max": 21.517038345336914,
+        "min": 18.254995346069336
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": false,
+      "packets": 100,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.995797969696966,
+        "median": 20.273521,
+        "p95": 20.42989,
+        "p99": 21.5192,
+        "max": 21.5192,
+        "min": 18.405472
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.99601185858586,
+        "median": 20.265339,
+        "p95": 20.447988,
+        "p99": 22.372545,
+        "max": 22.372545,
+        "min": 17.579699
+      },
+      "callback_ms": {
+        "mean": 0.15409773000000004,
+        "median": 0.155032,
+        "p95": 0.224528,
+        "p99": 0.33342,
+        "max": 0.353365,
+        "min": 0.050738
+      },
+      "late_intervals_over_1ms": 1,
+      "missed_full_slots": 0,
+      "wall_ms": 2007.874397,
+      "cpu_ms": 55.536,
+      "cpu_one_core_percent": 2.76591006304863,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35124,
+      "file_seconds": 120,
+      "wire_intervals_ms": {
+        "mean": 19.995898911447235,
+        "median": 20.26510238647461,
+        "p95": 20.435810089111328,
+        "p99": 21.548986434936523,
+        "max": 21.548986434936523,
+        "min": 18.39303970336914
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 3,
+      "sharing": true,
+      "packets": 300,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.99795518518519,
+        "median": 20.222738,
+        "p95": 20.763795,
+        "p99": 20.952675,
+        "max": 21.177394,
+        "min": 19.122414
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.98910815151514,
+        "median": 20.221977,
+        "p95": 20.777665,
+        "p99": 20.914695,
+        "max": 21.182474,
+        "min": 19.138001
+      },
+      "callback_ms": {
+        "mean": 0.08853892000000003,
+        "median": 0.05541,
+        "p95": 0.224257,
+        "p99": 0.255492,
+        "max": 0.2982,
+        "min": 0.009593
+      },
+      "late_intervals_over_1ms": 2,
+      "missed_full_slots": 0,
+      "wall_ms": 1980.955234,
+      "cpu_ms": 38.706,
+      "cpu_one_core_percent": 1.953905839752056,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35124,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.998063142050796,
+        "median": 20.235061645507812,
+        "p95": 20.746231079101562,
+        "p99": 20.92599868774414,
+        "max": 21.157026290893555,
+        "min": 19.12403106689453
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 5,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.006010474576275,
+        "median": 20.302627,
+        "p95": 20.481637,
+        "p99": 21.409166,
+        "max": 21.409166,
+        "min": 18.330056
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.00768586440677,
+        "median": 20.298628,
+        "p95": 20.462782,
+        "p99": 21.420756,
+        "max": 21.420756,
+        "min": 18.242723
+      },
+      "callback_ms": {
+        "mean": 0.2775467833333333,
+        "median": 0.196651,
+        "p95": 0.290708,
+        "p99": 5.248935,
+        "max": 5.248935,
+        "min": 0.085855
+      },
+      "late_intervals_over_1ms": 1,
+      "missed_full_slots": 0,
+      "wall_ms": 1181.022384,
+      "cpu_ms": 18.111,
+      "cpu_one_core_percent": 1.5335018408931358,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35124,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.00603433382713,
+        "median": 20.292997360229492,
+        "p95": 20.487070083618164,
+        "p99": 21.41118049621582,
+        "max": 21.41118049621582,
+        "min": 18.306970596313477
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 15,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.986178745762707,
+        "median": 20.262615,
+        "p95": 20.443455,
+        "p99": 20.467704,
+        "max": 20.467704,
+        "min": 19.188475
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.985833355932204,
+        "median": 20.223046,
+        "p95": 20.437048,
+        "p99": 20.534279,
+        "max": 20.534279,
+        "min": 19.129363
+      },
+      "callback_ms": {
+        "mean": 0.42035386666666674,
+        "median": 0.179527,
+        "p95": 0.25176,
+        "p99": 15.258874,
+        "max": 15.258874,
+        "min": 0.069223
+      },
+      "late_intervals_over_1ms": 0,
+      "missed_full_slots": 0,
+      "wall_ms": 1179.81279,
+      "cpu_ms": 15.938,
+      "cpu_one_core_percent": 1.3508922885977528,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35124,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.986116279989986,
+        "median": 20.254135131835938,
+        "p95": 20.44200897216797,
+        "p99": 20.476102828979492,
+        "max": 20.476102828979492,
+        "min": 19.181013107299805
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 30,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.156717016949145,
+        "median": 20.202327,
+        "p95": 21.362833,
+        "p99": 30.376722,
+        "max": 30.376722,
+        "min": 18.419044
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.156025338983053,
+        "median": 20.19442,
+        "p95": 21.41826,
+        "p99": 30.303424,
+        "max": 30.303424,
+        "min": 18.403812
+      },
+      "callback_ms": {
+        "mean": 0.6561370333333334,
+        "median": 0.145096,
+        "p95": 0.238037,
+        "p99": 30.384469,
+        "max": 30.384469,
+        "min": 0.076348
+      },
+      "late_intervals_over_1ms": 9,
+      "missed_full_slots": 0,
+      "wall_ms": 1189.874588,
+      "cpu_ms": 14.198,
+      "cpu_one_core_percent": 1.1932349966280649,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35124,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.156561318090407,
+        "median": 20.20406723022461,
+        "p95": 21.384000778198242,
+        "p99": 30.36808967590332,
+        "max": 30.36808967590332,
+        "min": 18.40686798095703
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 50,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.515265389830518,
+        "median": 20.243636,
+        "p95": 21.435735,
+        "p99": 51.203936,
+        "max": 51.203936,
+        "min": 18.241059
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.516889237288144,
+        "median": 20.254866,
+        "p95": 21.395307,
+        "p99": 51.129284,
+        "max": 51.129284,
+        "min": 18.194988
+      },
+      "callback_ms": {
+        "mean": 1.0048778166666668,
+        "median": 0.13558,
+        "p95": 0.267632,
+        "p99": 51.25336,
+        "max": 51.25336,
+        "min": 0.082347
+      },
+      "late_intervals_over_1ms": 11,
+      "missed_full_slots": 1,
+      "wall_ms": 1211.073257,
+      "cpu_ms": 14.414,
+      "cpu_one_core_percent": 1.190183989010336,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35124,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.515522714388574,
+        "median": 20.25008201599121,
+        "p95": 21.456003189086914,
+        "p99": 51.193952560424805,
+        "max": 51.193952560424805,
+        "min": 18.239974975585938
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 100,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 21.353232932203387,
+        "median": 20.33535,
+        "p95": 21.430724,
+        "p99": 100.487914,
+        "max": 100.487914,
+        "min": 18.288516
+      },
+      "receiver_intervals_ms": {
+        "mean": 21.353961677966097,
+        "median": 20.338287,
+        "p95": 21.425565,
+        "p99": 100.647422,
+        "max": 100.647422,
+        "min": 18.250741
+      },
+      "callback_ms": {
+        "mean": 1.8783060666666667,
+        "median": 0.208788,
+        "p95": 0.311859,
+        "p99": 100.38981,
+        "max": 100.38981,
+        "min": 0.059968
+      },
+      "late_intervals_over_1ms": 11,
+      "missed_full_slots": 3,
+      "wall_ms": 1261.166805,
+      "cpu_ms": 19.299,
+      "cpu_one_core_percent": 1.530249600884476,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35124,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 21.353252863479874,
+        "median": 20.340919494628906,
+        "p95": 21.41094207763672,
+        "p99": 100.59499740600586,
+        "max": 100.59499740600586,
+        "min": 18.26000213623047
+      }
+    },
+    {
+      "codec": "G729",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.97597821518988,
+        "median": 20.206678,
+        "p95": 21.337946,
+        "p99": 21.40625,
+        "max": 21.40625,
+        "min": 18.423162
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.976135443037972,
+        "median": 20.194427,
+        "p95": 21.350165,
+        "p99": 21.429883,
+        "max": 21.429883,
+        "min": 18.340877
+      },
+      "callback_ms": {
+        "mean": 0.19304087499999997,
+        "median": 0.176752,
+        "p95": 0.237587,
+        "p99": 2.125162,
+        "max": 2.125162,
+        "min": 0.092955
+      },
+      "late_intervals_over_1ms": 12,
+      "missed_full_slots": 0,
+      "wall_ms": 1581.038317,
+      "cpu_ms": 22.747,
+      "cpu_one_core_percent": 1.438738059376204,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35124,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.97581011132349,
+        "median": 20.202159881591797,
+        "p95": 21.331071853637695,
+        "p99": 21.414995193481445,
+        "max": 21.414995193481445,
+        "min": 18.409013748168945
+      }
+    },
+    {
+      "codec": "G729",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.99091659493671,
+        "median": 19.482386,
+        "p95": 21.380628,
+        "p99": 21.431195,
+        "max": 21.431195,
+        "min": 18.300272
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.99053424050633,
+        "median": 19.562075,
+        "p95": 21.401697,
+        "p99": 21.489131,
+        "max": 21.489131,
+        "min": 18.235866
+      },
+      "callback_ms": {
+        "mean": 0.19090847500000002,
+        "median": 0.193635,
+        "p95": 0.271867,
+        "p99": 0.377558,
+        "max": 0.377558,
+        "min": 0.079437
+      },
+      "late_intervals_over_1ms": 18,
+      "missed_full_slots": 0,
+      "wall_ms": 1580.303093,
+      "cpu_ms": 23.193,
+      "cpu_one_core_percent": 1.4676298554836786,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35124,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.991111151779755,
+        "median": 19.485950469970703,
+        "p95": 21.37613296508789,
+        "p99": 21.461009979248047,
+        "max": 21.461009979248047,
+        "min": 18.281936645507812
+      }
+    },
+    {
+      "codec": "G729",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 2,
+      "sharing": true,
+      "packets": 160,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.498001658227857,
+        "median": 20.214695,
+        "p95": 20.837733,
+        "p99": 21.438563,
+        "max": 157.688346,
+        "min": 0.05192
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.49818537341772,
+        "median": 20.262728,
+        "p95": 20.793603,
+        "p99": 21.437112,
+        "max": 157.568591,
+        "min": 0.014064
+      },
+      "callback_ms": {
+        "mean": 1.7996047687500003,
+        "median": 0.129065,
+        "p95": 0.239669,
+        "p99": 130.188734,
+        "max": 137.861301,
+        "min": 0.010023
+      },
+      "late_intervals_over_1ms": 6,
+      "missed_full_slots": 6,
+      "wall_ms": 2185.417713,
+      "cpu_ms": 358.004,
+      "cpu_one_core_percent": 16.381490726940036,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35728,
+      "file_seconds": 120,
+      "wire_intervals_ms": {
+        "mean": 20.498354223710074,
+        "median": 20.233869552612305,
+        "p95": 20.80082893371582,
+        "p99": 21.451950073242188,
+        "max": 157.66382217407227,
+        "min": 0.028133392333984375
+      }
+    },
+    {
+      "codec": "GSM",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.981268417721523,
+        "median": 20.313082,
+        "p95": 21.41066,
+        "p99": 21.47233,
+        "max": 21.47233,
+        "min": 18.251759
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.98148810126582,
+        "median": 20.304487,
+        "p95": 21.438211,
+        "p99": 21.494504,
+        "max": 21.494504,
+        "min": 18.240094
+      },
+      "callback_ms": {
+        "mean": 0.20975848749999995,
+        "median": 0.198028,
+        "p95": 0.268087,
+        "p99": 1.084406,
+        "max": 1.084406,
+        "min": 0.101571
+      },
+      "late_intervals_over_1ms": 19,
+      "missed_full_slots": 0,
+      "wall_ms": 1580.563347,
+      "cpu_ms": 25.276,
+      "cpu_one_core_percent": 1.5991766510323866,
+      "memory_start_bytes": 10485760,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35728,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.98122734359548,
+        "median": 20.313024520874023,
+        "p95": 21.390914916992188,
+        "p99": 21.471023559570312,
+        "max": 21.471023559570312,
+        "min": 18.25094223022461
+      }
+    },
+    {
+      "codec": "GSM",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.99216148101265,
+        "median": 20.322277,
+        "p95": 21.414316,
+        "p99": 21.460231,
+        "max": 21.460231,
+        "min": 18.24132
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.991872810126573,
+        "median": 20.335005,
+        "p95": 21.425053,
+        "p99": 21.48246,
+        "max": 21.48246,
+        "min": 18.210548
+      },
+      "callback_ms": {
+        "mean": 0.19954101249999998,
+        "median": 0.204872,
+        "p95": 0.267364,
+        "p99": 0.297889,
+        "max": 0.297889,
+        "min": 0.083415
+      },
+      "late_intervals_over_1ms": 20,
+      "missed_full_slots": 0,
+      "wall_ms": 1580.61729,
+      "cpu_ms": 24.862,
+      "cpu_one_core_percent": 1.5729297760623635,
+      "memory_start_bytes": 10485760,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35728,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.99185960504073,
+        "median": 20.327091217041016,
+        "p95": 21.420955657958984,
+        "p99": 21.464824676513672,
+        "max": 21.464824676513672,
+        "min": 18.227100372314453
+      }
+    },
+    {
+      "codec": "GSM",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 2,
+      "sharing": true,
+      "packets": 160,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.99260589873418,
+        "median": 19.806436,
+        "p95": 21.500329,
+        "p99": 21.804542,
+        "max": 77.382491,
+        "min": 0.047514
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.992707196202538,
+        "median": 19.837256,
+        "p95": 21.574233,
+        "p99": 21.791056,
+        "max": 77.371975,
+        "min": 0.008999
+      },
+      "callback_ms": {
+        "mean": 0.84050793125,
+        "median": 0.16007,
+        "p95": 0.264799,
+        "p99": 52.427577,
+        "max": 58.633762,
+        "min": 0.011543
+      },
+      "late_intervals_over_1ms": 16,
+      "missed_full_slots": 2,
+      "wall_ms": 1973.60616,
+      "cpu_ms": 146.809,
+      "cpu_one_core_percent": 7.4386168312324275,
+      "memory_start_bytes": 10485760,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35728,
+      "file_seconds": 120,
+      "wire_intervals_ms": {
+        "mean": 19.992828369140625,
+        "median": 19.80113983154297,
+        "p95": 21.51012420654297,
+        "p99": 21.79884910583496,
+        "max": 77.34799385070801,
+        "min": 0.025987625122070312
+      }
+    },
+    {
+      "codec": "OPUS",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.892433113924053,
+        "median": 20.275728,
+        "p95": 21.270245,
+        "p99": 21.350127,
+        "max": 21.350127,
+        "min": 12.506832
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.891937278481002,
+        "median": 20.249625,
+        "p95": 21.247142,
+        "p99": 21.328073,
+        "max": 21.328073,
+        "min": 12.495006
+      },
+      "callback_ms": {
+        "mean": 0.2834303375000001,
+        "median": 0.181494,
+        "p95": 0.247273,
+        "p99": 8.181992,
+        "max": 8.181992,
+        "min": 0.080587
+      },
+      "late_intervals_over_1ms": 5,
+      "missed_full_slots": 0,
+      "wall_ms": 1581.279987,
+      "cpu_ms": 31.214,
+      "cpu_one_core_percent": 1.9739704705438732,
+      "memory_start_bytes": 10485760,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 36564,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.892176495322698,
+        "median": 20.27583122253418,
+        "p95": 21.266937255859375,
+        "p99": 21.351099014282227,
+        "max": 21.351099014282227,
+        "min": 12.511014938354492
+      }
+    },
+    {
+      "codec": "OPUS",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.000465443037978,
+        "median": 19.494736,
+        "p95": 21.384988,
+        "p99": 21.513148,
+        "max": 21.513148,
+        "min": 18.374236
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.00121696202531,
+        "median": 19.493502,
+        "p95": 21.418007,
+        "p99": 21.54153,
+        "max": 21.54153,
+        "min": 18.335895
+      },
+      "callback_ms": {
+        "mean": 0.19104386250000002,
+        "median": 0.194084,
+        "p95": 0.256651,
+        "p99": 0.31992,
+        "max": 0.31992,
+        "min": 0.086107
+      },
+      "late_intervals_over_1ms": 17,
+      "missed_full_slots": 0,
+      "wall_ms": 1580.994223,
+      "cpu_ms": 23.676,
+      "cpu_one_core_percent": 1.4975386788620795,
+      "memory_start_bytes": 10485760,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 36820,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.000747487514833,
+        "median": 19.501924514770508,
+        "p95": 21.37589454650879,
+        "p99": 21.518945693969727,
+        "max": 21.518945693969727,
+        "min": 18.374919891357422
+      }
+    },
+    {
+      "codec": "OPUS",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 2,
+      "sharing": true,
+      "packets": 160,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 24.173417759493677,
+        "median": 20.215128,
+        "p95": 20.903478,
+        "p99": 21.76591,
+        "max": 740.048738,
+        "min": 0.061144
+      },
+      "receiver_intervals_ms": {
+        "mean": 24.174357360759494,
+        "median": 20.240543,
+        "p95": 20.830803,
+        "p99": 21.692387,
+        "max": 739.922189,
+        "min": 0.011802
+      },
+      "callback_ms": {
+        "mean": 9.0305596625,
+        "median": 0.138662,
+        "p95": 0.22708,
+        "p99": 705.496767,
+        "max": 718.742443,
+        "min": 0.01349
+      },
+      "late_intervals_over_1ms": 5,
+      "missed_full_slots": 35,
+      "wall_ms": 3286.40921,
+      "cpu_ms": 1455.865,
+      "cpu_one_core_percent": 44.299565482291236,
+      "memory_start_bytes": 10485760,
+      "memory_peak_bytes": 12582912,
+      "max_rss_kib": 38740,
+      "file_seconds": 120,
+      "wire_intervals_ms": {
+        "mean": 24.173652069478095,
+        "median": 20.233869552612305,
+        "p95": 20.8590030670166,
+        "p99": 21.731138229370117,
+        "max": 740.0240898132324,
+        "min": 0.03314018249511719
+      }
+    }
+  ],
+  "after": [
+    {
+      "codec": "PCMA",
+      "ptime_ms": 10,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 100,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 9.993625797979798,
+        "median": 10.265755,
+        "p95": 10.542246,
+        "p99": 11.469507,
+        "max": 11.469507,
+        "min": 8.29592
+      },
+      "receiver_intervals_ms": {
+        "mean": 9.992891414141418,
+        "median": 10.266044,
+        "p95": 10.515347,
+        "p99": 11.482147,
+        "max": 11.482147,
+        "min": 8.202815
+      },
+      "callback_ms": {
+        "mean": 0.14174882,
+        "median": 0.142231,
+        "p95": 0.212947,
+        "p99": 0.330565,
+        "max": 0.35358,
+        "min": 0.028224
+      },
+      "late_intervals_over_1ms": 3,
+      "missed_full_slots": 0,
+      "wall_ms": 997.638735,
+      "cpu_ms": 34.518,
+      "cpu_one_core_percent": 3.4599699058397126,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34552,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 9.993483321835296,
+        "median": 10.272026062011719,
+        "p95": 10.514974594116211,
+        "p99": 11.490821838378906,
+        "max": 11.490821838378906,
+        "min": 8.30078125
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 100,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.999395333333343,
+        "median": 20.186113,
+        "p95": 21.336591,
+        "p99": 21.421926,
+        "max": 21.421926,
+        "min": 18.280592
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.999054565656564,
+        "median": 20.188581,
+        "p95": 21.33113,
+        "p99": 21.387532,
+        "max": 21.387532,
+        "min": 18.281086
+      },
+      "callback_ms": {
+        "mean": 0.13809552000000005,
+        "median": 0.147124,
+        "p95": 0.197394,
+        "p99": 0.221913,
+        "max": 0.246139,
+        "min": 0.053131
+      },
+      "late_intervals_over_1ms": 18,
+      "missed_full_slots": 0,
+      "wall_ms": 1984.233814,
+      "cpu_ms": 29.177,
+      "cpu_one_core_percent": 1.4704416281054264,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34552,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.99955466299346,
+        "median": 20.19214630126953,
+        "p95": 21.34394645690918,
+        "p99": 21.39592170715332,
+        "max": 21.39592170715332,
+        "min": 18.284082412719727
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 40,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 39.98898115254236,
+        "median": 40.284647,
+        "p95": 40.427904,
+        "p99": 41.408741,
+        "max": 41.408741,
+        "min": 38.290876
+      },
+      "receiver_intervals_ms": {
+        "mean": 39.987326186440676,
+        "median": 40.281973,
+        "p95": 40.480816,
+        "p99": 41.405059,
+        "max": 41.405059,
+        "min": 38.284815
+      },
+      "callback_ms": {
+        "mean": 0.15715581666666664,
+        "median": 0.158196,
+        "p95": 0.203152,
+        "p99": 0.457456,
+        "max": 0.457456,
+        "min": 0.066953
+      },
+      "late_intervals_over_1ms": 2,
+      "missed_full_slots": 0,
+      "wall_ms": 2364.250268,
+      "cpu_ms": 22.633,
+      "cpu_one_core_percent": 0.9573013612956477,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34552,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 39.98842077740168,
+        "median": 40.28010368347168,
+        "p95": 40.431976318359375,
+        "p99": 41.41116142272949,
+        "max": 41.41116142272949,
+        "min": 38.28883171081543
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 100,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.997052414141415,
+        "median": 20.216515,
+        "p95": 20.385527,
+        "p99": 21.218556,
+        "max": 21.218556,
+        "min": 18.28368
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.998438949494947,
+        "median": 20.206418,
+        "p95": 20.427804,
+        "p99": 21.253607,
+        "max": 21.253607,
+        "min": 18.274299
+      },
+      "callback_ms": {
+        "mean": 0.12761172999999998,
+        "median": 0.139535,
+        "p95": 0.181592,
+        "p99": 0.202796,
+        "max": 0.266812,
+        "min": 0.062028
+      },
+      "late_intervals_over_1ms": 1,
+      "missed_full_slots": 0,
+      "wall_ms": 1983.367239,
+      "cpu_ms": 25.517,
+      "cpu_one_core_percent": 1.2865494346304467,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34552,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.997324606384893,
+        "median": 20.215988159179688,
+        "p95": 20.390987396240234,
+        "p99": 21.245956420898438,
+        "max": 21.245956420898438,
+        "min": 18.286943435668945
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": false,
+      "packets": 100,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.995721252525257,
+        "median": 20.31995,
+        "p95": 21.467179,
+        "p99": 21.611131,
+        "max": 21.611131,
+        "min": 18.402388
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.995083484848482,
+        "median": 20.286443,
+        "p95": 21.512201,
+        "p99": 21.881248,
+        "max": 21.881248,
+        "min": 18.346663
+      },
+      "callback_ms": {
+        "mean": 0.17413144999999997,
+        "median": 0.17445,
+        "p95": 0.23144,
+        "p99": 0.289525,
+        "max": 0.431281,
+        "min": 0.07754
+      },
+      "late_intervals_over_1ms": 14,
+      "missed_full_slots": 0,
+      "wall_ms": 2038.691437,
+      "cpu_ms": 97.002,
+      "cpu_one_core_percent": 4.758052064158447,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34976,
+      "file_seconds": 120,
+      "wire_intervals_ms": {
+        "mean": 19.99561714403557,
+        "median": 20.33090591430664,
+        "p95": 21.47197723388672,
+        "p99": 21.789073944091797,
+        "max": 21.789073944091797,
+        "min": 18.40996742248535
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 3,
+      "sharing": true,
+      "packets": 300,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.99640529629631,
+        "median": 19.7831,
+        "p95": 20.954042,
+        "p99": 21.757266,
+        "max": 22.108983,
+        "min": 18.248414
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.995802148148147,
+        "median": 19.750734,
+        "p95": 20.945231,
+        "p99": 21.815787,
+        "max": 22.286089,
+        "min": 18.228342
+      },
+      "callback_ms": {
+        "mean": 0.10875078666666664,
+        "median": 0.114833,
+        "p95": 0.193336,
+        "p99": 0.21923,
+        "max": 0.312199,
+        "min": 0.012319
+      },
+      "late_intervals_over_1ms": 11,
+      "missed_full_slots": 0,
+      "wall_ms": 1982.867036,
+      "cpu_ms": 55.304,
+      "cpu_one_core_percent": 2.789092712518118,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34976,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.99622643595994,
+        "median": 19.76299285888672,
+        "p95": 20.94292640686035,
+        "p99": 21.756887435913086,
+        "max": 22.15409278869629,
+        "min": 18.25094223022461
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 5,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.00673345762712,
+        "median": 20.151551,
+        "p95": 21.388698,
+        "p99": 21.438933,
+        "max": 21.438933,
+        "min": 19.132151
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.006861186440684,
+        "median": 20.114355,
+        "p95": 21.365205,
+        "p99": 21.444931,
+        "max": 21.444931,
+        "min": 19.113377
+      },
+      "callback_ms": {
+        "mean": 0.22635548333333333,
+        "median": 0.151494,
+        "p95": 0.222194,
+        "p99": 5.232435,
+        "max": 5.232435,
+        "min": 0.048121
+      },
+      "late_intervals_over_1ms": 12,
+      "missed_full_slots": 0,
+      "wall_ms": 1183.510122,
+      "cpu_ms": 17.883,
+      "cpu_one_core_percent": 1.5110136928765532,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34976,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.00674554857157,
+        "median": 20.14899253845215,
+        "p95": 21.3620662689209,
+        "p99": 21.41404151916504,
+        "max": 21.41404151916504,
+        "min": 19.138813018798828
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 15,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.98634547457628,
+        "median": 20.260034,
+        "p95": 21.195739,
+        "p99": 21.335704,
+        "max": 21.335704,
+        "min": 19.150242
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.985878661016947,
+        "median": 20.242753,
+        "p95": 21.140476,
+        "p99": 21.375143,
+        "max": 21.375143,
+        "min": 19.113548
+      },
+      "callback_ms": {
+        "mean": 0.4186330166666667,
+        "median": 0.173306,
+        "p95": 0.277283,
+        "p99": 15.392479,
+        "max": 15.392479,
+        "min": 0.048323
+      },
+      "late_intervals_over_1ms": 4,
+      "missed_full_slots": 0,
+      "wall_ms": 1182.724427,
+      "cpu_ms": 20.608,
+      "cpu_one_core_percent": 1.7424177204382707,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34976,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.985918271339546,
+        "median": 20.255088806152344,
+        "p95": 21.18086814880371,
+        "p99": 21.338939666748047,
+        "max": 21.338939666748047,
+        "min": 19.151926040649414
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 30,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.500810389830498,
+        "median": 20.249625,
+        "p95": 21.278842,
+        "p99": 50.417624,
+        "max": 50.417624,
+        "min": 19.188678
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.501573,
+        "median": 20.23944,
+        "p95": 21.299961,
+        "p99": 50.439927,
+        "max": 50.439927,
+        "min": 19.173466
+      },
+      "callback_ms": {
+        "mean": 0.6402341666666668,
+        "median": 0.141416,
+        "p95": 0.182904,
+        "p99": 30.278766,
+        "max": 30.278766,
+        "min": 0.051475
+      },
+      "late_intervals_over_1ms": 6,
+      "missed_full_slots": 1,
+      "wall_ms": 1213.390188,
+      "cpu_ms": 18.746,
+      "cpu_one_core_percent": 1.5449276074086729,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34976,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.5007973363844,
+        "median": 20.24102210998535,
+        "p95": 21.290063858032227,
+        "p99": 50.41813850402832,
+        "max": 50.41813850402832,
+        "min": 19.173145294189453
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 50,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.84203613559322,
+        "median": 20.210538,
+        "p95": 21.342675,
+        "p99": 70.351657,
+        "max": 70.351657,
+        "min": 18.412477
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.842692762711856,
+        "median": 20.199979,
+        "p95": 21.315757,
+        "p99": 70.492562,
+        "max": 70.492562,
+        "min": 18.381295
+      },
+      "callback_ms": {
+        "mean": 0.9732589333333334,
+        "median": 0.137015,
+        "p95": 0.232921,
+        "p99": 50.21777,
+        "max": 50.21777,
+        "min": 0.05957
+      },
+      "late_intervals_over_1ms": 9,
+      "missed_full_slots": 2,
+      "wall_ms": 1233.406925,
+      "cpu_ms": 18.335,
+      "cpu_one_core_percent": 1.4865329218092398,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34976,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.841861175278485,
+        "median": 20.20406723022461,
+        "p95": 21.29387855529785,
+        "p99": 70.3740119934082,
+        "max": 70.3740119934082,
+        "min": 18.393993377685547
+      }
+    },
+    {
+      "codec": "PCMA",
+      "ptime_ms": 20,
+      "delay_ms": 100,
+      "calls": 1,
+      "sharing": true,
+      "packets": 60,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 21.698026016949154,
+        "median": 20.267219,
+        "p95": 21.345491,
+        "p99": 120.60289,
+        "max": 120.60289,
+        "min": 19.181868
+      },
+      "receiver_intervals_ms": {
+        "mean": 21.69963255932204,
+        "median": 20.304821,
+        "p95": 21.366256,
+        "p99": 120.621362,
+        "max": 120.621362,
+        "min": 19.056097
+      },
+      "callback_ms": {
+        "mean": 1.8381259,
+        "median": 0.166175,
+        "p95": 0.223941,
+        "p99": 100.445572,
+        "max": 100.445572,
+        "min": 0.079255
+      },
+      "late_intervals_over_1ms": 6,
+      "missed_full_slots": 4,
+      "wall_ms": 1284.22128,
+      "cpu_ms": 21.206,
+      "cpu_one_core_percent": 1.6512730578642958,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34976,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 21.69840618715448,
+        "median": 20.272016525268555,
+        "p95": 21.365880966186523,
+        "p99": 120.61095237731934,
+        "max": 120.61095237731934,
+        "min": 19.188880920410156
+      }
+    },
+    {
+      "codec": "G729",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.00200637974683,
+        "median": 19.869662,
+        "p95": 20.769431,
+        "p99": 21.359739,
+        "max": 21.359739,
+        "min": 18.386367
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.003528443037975,
+        "median": 19.923545,
+        "p95": 20.827271,
+        "p99": 21.362783,
+        "max": 21.362783,
+        "min": 18.342768
+      },
+      "callback_ms": {
+        "mean": 0.3110715250000001,
+        "median": 0.310415,
+        "p95": 0.4278,
+        "p99": 0.569006,
+        "max": 0.569006,
+        "min": 0.139491
+      },
+      "late_intervals_over_1ms": 2,
+      "missed_full_slots": 0,
+      "wall_ms": 1585.304399,
+      "cpu_ms": 44.239,
+      "cpu_one_core_percent": 2.7905681727689444,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34976,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.00227759156046,
+        "median": 19.893169403076172,
+        "p95": 20.790815353393555,
+        "p99": 21.36707305908203,
+        "max": 21.36707305908203,
+        "min": 18.359899520874023
+      }
+    },
+    {
+      "codec": "G729",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.992444253164557,
+        "median": 19.669517,
+        "p95": 21.525445,
+        "p99": 21.843604,
+        "max": 21.843604,
+        "min": 18.593885
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.992630594936713,
+        "median": 19.690389,
+        "p95": 21.58117,
+        "p99": 21.87777,
+        "max": 21.87777,
+        "min": 18.573477
+      },
+      "callback_ms": {
+        "mean": 0.2905709249999999,
+        "median": 0.293116,
+        "p95": 0.379022,
+        "p99": 0.484117,
+        "max": 0.484117,
+        "min": 0.15148
+      },
+      "late_intervals_over_1ms": 4,
+      "missed_full_slots": 0,
+      "wall_ms": 1584.760432,
+      "cpu_ms": 40.547,
+      "cpu_one_core_percent": 2.5585570652359646,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 34976,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.992239867584615,
+        "median": 19.66691017150879,
+        "p95": 21.565914154052734,
+        "p99": 21.845102310180664,
+        "max": 21.845102310180664,
+        "min": 18.583059310913086
+      }
+    },
+    {
+      "codec": "G729",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 2,
+      "sharing": true,
+      "packets": 160,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.993935322784814,
+        "median": 20.073617,
+        "p95": 21.05494,
+        "p99": 21.245563,
+        "max": 21.297768,
+        "min": 18.168765
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.993590145569627,
+        "median": 20.085464,
+        "p95": 21.065025,
+        "p99": 21.301033,
+        "max": 21.327567,
+        "min": 18.111777
+      },
+      "callback_ms": {
+        "mean": 0.28264088125,
+        "median": 0.279067,
+        "p95": 0.402308,
+        "p99": 0.503357,
+        "max": 0.614997,
+        "min": 0.061403
+      },
+      "late_intervals_over_1ms": 9,
+      "missed_full_slots": 0,
+      "wall_ms": 1938.363023,
+      "cpu_ms": 129.64,
+      "cpu_one_core_percent": 6.688117677738014,
+      "memory_start_bytes": 6291456,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35836,
+      "file_seconds": 120,
+      "wire_intervals_ms": {
+        "mean": 19.99384089361263,
+        "median": 20.07889747619629,
+        "p95": 21.05093002319336,
+        "p99": 21.269798278808594,
+        "max": 21.28005027770996,
+        "min": 18.146991729736328
+      }
+    },
+    {
+      "codec": "GSM",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.990493202531646,
+        "median": 19.781036,
+        "p95": 20.624017,
+        "p99": 20.680542,
+        "max": 20.680542,
+        "min": 19.006891
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.991382670886082,
+        "median": 19.860393,
+        "p95": 20.59634,
+        "p99": 20.728727,
+        "max": 20.728727,
+        "min": 19.070269
+      },
+      "callback_ms": {
+        "mean": 0.2180929875,
+        "median": 0.217471,
+        "p95": 0.286212,
+        "p99": 0.349482,
+        "max": 0.349482,
+        "min": 0.078184
+      },
+      "late_intervals_over_1ms": 0,
+      "missed_full_slots": 0,
+      "wall_ms": 1584.724797,
+      "cpu_ms": 35.711,
+      "cpu_one_core_percent": 2.253451202858915,
+      "memory_start_bytes": 8388608,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35836,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.990685619885408,
+        "median": 19.7908878326416,
+        "p95": 20.609140396118164,
+        "p99": 20.67708969116211,
+        "max": 20.67708969116211,
+        "min": 19.033193588256836
+      }
+    },
+    {
+      "codec": "GSM",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.99359135443038,
+        "median": 19.680214,
+        "p95": 20.657503,
+        "p99": 20.68481,
+        "max": 20.68481,
+        "min": 19.169927
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.994667822784816,
+        "median": 19.689873,
+        "p95": 20.673343,
+        "p99": 20.695026,
+        "max": 20.695026,
+        "min": 19.127127
+      },
+      "callback_ms": {
+        "mean": 0.22166397500000007,
+        "median": 0.219819,
+        "p95": 0.286061,
+        "p99": 0.367368,
+        "max": 0.367368,
+        "min": 0.147068
+      },
+      "late_intervals_over_1ms": 0,
+      "missed_full_slots": 0,
+      "wall_ms": 1585.398573,
+      "cpu_ms": 38.089,
+      "cpu_one_core_percent": 2.4024873396930952,
+      "memory_start_bytes": 8388608,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35836,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.99379713324052,
+        "median": 19.70195770263672,
+        "p95": 20.670175552368164,
+        "p99": 20.678997039794922,
+        "max": 20.678997039794922,
+        "min": 19.171953201293945
+      }
+    },
+    {
+      "codec": "GSM",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 2,
+      "sharing": true,
+      "packets": 160,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.000792379746827,
+        "median": 19.929641,
+        "p95": 21.080055,
+        "p99": 21.704777,
+        "max": 21.713156,
+        "min": 18.466819
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.00098736708861,
+        "median": 19.908429,
+        "p95": 21.115332,
+        "p99": 21.802829,
+        "max": 21.81652,
+        "min": 18.352875
+      },
+      "callback_ms": {
+        "mean": 0.18303334374999994,
+        "median": 0.1882,
+        "p95": 0.283535,
+        "p99": 0.384458,
+        "max": 0.416398,
+        "min": 0.049184
+      },
+      "late_intervals_over_1ms": 13,
+      "missed_full_slots": 0,
+      "wall_ms": 1917.565391,
+      "cpu_ms": 83.33,
+      "cpu_one_core_percent": 4.345614516777644,
+      "memory_start_bytes": 8388608,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35836,
+      "file_seconds": 120,
+      "wire_intervals_ms": {
+        "mean": 20.000690146337583,
+        "median": 19.92201805114746,
+        "p95": 21.095991134643555,
+        "p99": 21.723031997680664,
+        "max": 21.76499366760254,
+        "min": 18.42498779296875
+      }
+    },
+    {
+      "codec": "OPUS",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 20.005521151898733,
+        "median": 20.123938,
+        "p95": 21.172048,
+        "p99": 21.400718,
+        "max": 21.400718,
+        "min": 18.118857
+      },
+      "receiver_intervals_ms": {
+        "mean": 20.006973164556968,
+        "median": 20.124759,
+        "p95": 21.151139,
+        "p99": 21.358647,
+        "max": 21.358647,
+        "min": 18.200978
+      },
+      "callback_ms": {
+        "mean": 0.7464745624999999,
+        "median": 0.771704,
+        "p95": 1.035688,
+        "p99": 1.131402,
+        "max": 1.131402,
+        "min": 0.27438
+      },
+      "late_intervals_over_1ms": 7,
+      "missed_full_slots": 0,
+      "wall_ms": 1586.397892,
+      "cpu_ms": 82.376,
+      "cpu_one_core_percent": 5.1926443180119914,
+      "memory_start_bytes": 8388608,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35836,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 20.005721080152295,
+        "median": 20.127058029174805,
+        "p95": 21.154165267944336,
+        "p99": 21.40498161315918,
+        "max": 21.40498161315918,
+        "min": 18.224000930786133
+      }
+    },
+    {
+      "codec": "OPUS",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 1,
+      "sharing": true,
+      "packets": 80,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.99645010126582,
+        "median": 20.023737,
+        "p95": 21.189056,
+        "p99": 21.351324,
+        "max": 21.351324,
+        "min": 18.250938
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.995794721519,
+        "median": 20.036603,
+        "p95": 21.215541,
+        "p99": 21.452826,
+        "max": 21.452826,
+        "min": 18.194451
+      },
+      "callback_ms": {
+        "mean": 0.7677871500000001,
+        "median": 0.751526,
+        "p95": 1.070959,
+        "p99": 1.426808,
+        "max": 1.426808,
+        "min": 0.396293
+      },
+      "late_intervals_over_1ms": 8,
+      "missed_full_slots": 0,
+      "wall_ms": 1587.443131,
+      "cpu_ms": 87.529,
+      "cpu_one_core_percent": 5.513835317354748,
+      "memory_start_bytes": 8388608,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35836,
+      "file_seconds": 0.5,
+      "wire_intervals_ms": {
+        "mean": 19.99636541439008,
+        "median": 20.02096176147461,
+        "p95": 21.205902099609375,
+        "p99": 21.385908126831055,
+        "max": 21.385908126831055,
+        "min": 18.234968185424805
+      }
+    },
+    {
+      "codec": "OPUS",
+      "ptime_ms": 20,
+      "delay_ms": 0,
+      "calls": 2,
+      "sharing": true,
+      "packets": 160,
+      "incorrect_or_lost": 0,
+      "send_intervals_ms": {
+        "mean": 19.987885639240503,
+        "median": 20.003271,
+        "p95": 21.167477,
+        "p99": 21.536823,
+        "max": 21.66801,
+        "min": 18.609788
+      },
+      "receiver_intervals_ms": {
+        "mean": 19.988263563291145,
+        "median": 19.999568,
+        "p95": 21.134437,
+        "p99": 21.59047,
+        "max": 21.659549,
+        "min": 18.59379
+      },
+      "callback_ms": {
+        "mean": 0.7179710874999998,
+        "median": 0.726386,
+        "p95": 0.988982,
+        "p99": 1.239981,
+        "max": 1.335848,
+        "min": 0.163545
+      },
+      "late_intervals_over_1ms": 15,
+      "missed_full_slots": 0,
+      "wall_ms": 1922.628652,
+      "cpu_ms": 179.724,
+      "cpu_one_core_percent": 9.347826987444686,
+      "memory_start_bytes": 8388608,
+      "memory_peak_bytes": 10485760,
+      "max_rss_kib": 35836,
+      "file_seconds": 120,
+      "wire_intervals_ms": {
+        "mean": 19.98776574678059,
+        "median": 20.02692222595215,
+        "p95": 21.136045455932617,
+        "p99": 21.53491973876953,
+        "max": 21.652936935424805,
+        "min": 18.6309814453125
+      }
+    }
+  ]
+}

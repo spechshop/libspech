@@ -1,0 +1,5 @@
+PCMA: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+PCMU: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+G729: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+GSM: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
+OPUS: real UDP, dynamic ptime, DTMF pause/resume, RTP wrap, replacement and shutdown OK
