@@ -2664,10 +2664,13 @@ class trunkController
         }
 
         $uni='';
-        if (count($channels) > 1) {
+        $count = count($channels);
+
+        if ($count > 1) {
             $uni = mixAudioChannels($channels);
+        } elseif ($count == 1) {
+            $uni = $channels[0];
         }
-        else $uni=$channels[0];
 
 
         return swoole_string((string)$uni);

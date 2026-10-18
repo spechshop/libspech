@@ -40,7 +40,7 @@ class MediaChannel
 
     public bool $active = true;
 
-    public int $connectTimeout = 10;
+    public int $connectTimeout = 30;
 
 
     private int $packetTimeMs = self::DEFAULT_PACKET_TIME_MS;
@@ -672,7 +672,9 @@ class MediaChannel
                         }
 
                         // Enquanto ainda não passou o timeout final, tenta acordar os members.
-                        if ($elapsed <= $this->connectTimeout) {
+                        $elapsedInSeconds = round($now - $lastPacketTime, 3);
+
+                        if ($elapsedInSeconds <= $this->connectTimeout) {
 
 
                             // disabled
@@ -696,7 +698,7 @@ class MediaChannel
                             if ($this->settings['sendSilenceProbeToMembers']) $this->sendSilenceProbeToMembers($now);
                             continue;
                         }
-                        if ($elapsed > $this->connectTimeout) {
+                        if ($elapsed >= $this->connectTimeout) {
                             // Agora sim: timeout real da chamada.
                             cli::pcl(
                                 "TIMEOUT: no packets received for {$elapsed} seconds, exceed: {$this->connectTimeout}",
