@@ -2670,7 +2670,7 @@ class trunkController
         else $uni=$channels[0];
 
 
-        return swoole_string($uni);
+        return swoole_string((string)$uni);
     }
 
 
