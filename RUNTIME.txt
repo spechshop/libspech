@@ -1,0 +1,818 @@
+PHP 8.5.10 (cli) (built: Oct  5 2026 00:25:59) (ZTS)
+Copyright (c) The PHP Group
+Zend Engine v4.5.10, Copyright (c) Zend Technologies
+    with Zend OPcache v8.5.10, Copyright (c), by Zend Technologies
+
+PHP: /usr/local/bin/php
+
+$ /usr/local/bin/php --ri bcg729
+
+bcg729
+
+bcg729 support => enabled
+libgsm support => enabled
+gsmChannel class => available
+
+$ /usr/local/bin/php --re bcg729
+Extension [ <persistent> extension #7 bcg729 version 1.0.3 ] {
+
+  - Functions {
+    Function [ <internal:bcg729> function decodePcmaToPcm ] {
+
+      - Parameters [1] {
+        Parameter #0 [ <required> string $input ]
+      }
+      - Return [ string ]
+    }
+    Function [ <internal:bcg729> function decodePcmuToPcm ] {
+
+      - Parameters [1] {
+        Parameter #0 [ <required> string $input ]
+      }
+      - Return [ string ]
+    }
+    Function [ <internal:bcg729> function encodePcmToPcma ] {
+
+      - Parameters [1] {
+        Parameter #0 [ <required> string $input ]
+      }
+      - Return [ string ]
+    }
+    Function [ <internal:bcg729> function encodePcmToPcmu ] {
+
+      - Parameters [1] {
+        Parameter #0 [ <required> string $input ]
+      }
+      - Return [ string ]
+    }
+    Function [ <internal:bcg729> function decodeL16ToPcm ] {
+
+      - Parameters [1] {
+        Parameter #0 [ <required> string $input ]
+      }
+      - Return [ string ]
+    }
+    Function [ <internal:bcg729> function encodePcmToL16 ] {
+
+      - Parameters [1] {
+        Parameter #0 [ <required> string $input ]
+      }
+      - Return [ string ]
+    }
+    Function [ <internal:bcg729> function mixAudioChannels ] {
+
+      - Parameters [2] {
+        Parameter #0 [ <required> array $channels ]
+        Parameter #1 [ <optional> int $sample_rate = <default> ]
+      }
+      - Return [ string ]
+    }
+    Function [ <internal:bcg729> function pcmLeToBe ] {
+
+      - Parameters [1] {
+        Parameter #0 [ <required> string $input ]
+      }
+      - Return [ string ]
+    }
+    Function [ <internal:bcg729> function resampler ] {
+
+      - Parameters [4] {
+        Parameter #0 [ <required> string $input ]
+        Parameter #1 [ <required> int $src_rate ]
+        Parameter #2 [ <required> int $dst_rate ]
+        Parameter #3 [ <optional> bool $to_be = <default> ]
+      }
+      - Return [ string ]
+    }
+  }
+
+  - Classes [2] {
+    Class [ <internal:bcg729> class bcg729Channel ] {
+
+      - Constants [0] {
+      }
+
+      - Static properties [0] {
+      }
+
+      - Static methods [0] {
+      }
+
+      - Properties [0] {
+      }
+
+      - Methods [5] {
+        Method [ <internal:bcg729, ctor> public method __construct ] {
+
+          - Parameters [0] {
+          }
+        }
+
+        Method [ <internal:bcg729> public method decode ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $input ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:bcg729> public method encode ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $input ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:bcg729> public method info ] {
+
+          - Parameters [0] {
+          }
+        }
+
+        Method [ <internal:bcg729> public method close ] {
+
+          - Parameters [0] {
+          }
+        }
+      }
+    }
+
+    Class [ <internal:bcg729> class gsmChannel ] {
+
+      - Constants [0] {
+      }
+
+      - Static properties [0] {
+      }
+
+      - Static methods [0] {
+      }
+
+      - Properties [0] {
+      }
+
+      - Methods [5] {
+        Method [ <internal:bcg729, ctor> public method __construct ] {
+
+          - Parameters [0] {
+          }
+        }
+
+        Method [ <internal:bcg729> public method encode ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $input ]
+          }
+          - Return [ string|false ]
+        }
+
+        Method [ <internal:bcg729> public method decode ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $input ]
+          }
+          - Return [ string|false ]
+        }
+
+        Method [ <internal:bcg729> public method info ] {
+
+          - Parameters [0] {
+          }
+          - Return [ array ]
+        }
+
+        Method [ <internal:bcg729> public method close ] {
+
+          - Parameters [0] {
+          }
+          - Return [ bool ]
+        }
+      }
+    }
+  }
+}
+
+
+$ /usr/local/bin/php --ri psampler
+
+psampler
+
+psampler support => enabled
+Version => 0.6.1
+Description => Reamostragem, manipulacao PCM e evidencias acusticas/ring PCM16
+Author => psampler
+PCM native API => v1; startup registry, PCM16LE borrowed access
+
+Classe => Metodos / API
+Resampler => __construct(?int srcRate, ?int dstRate), reset(): void, sample(string pcm, ?int srcRate, ?int dstRate): string, process(string pcm): string, returnEmpty(): string|false
+LPCM => __construct(int channels, int bitDepth, bool isBigEndian=false), encodeMono(array): string, decodeMono(string): array, encodeStereo(array, array): string, decodeStereo(string): array
+ByteBuffer => __construct(int initialCapacity=4096), append(string): void, length(): int, has(int): bool, pop(int): string, peek(int): string, discard(int): void, clear(): void, capacity(): int
+PcmBuffer => __construct(int sampleRate, int channels), append(string pcm): void, size(): int, capacity(): int, sampleRate(): int, channels(): int, clear(): void, flush(): PcmBuffer, reset(int sampleRate, int channels): void, toString(): string, toMono(): PcmBuffer, toStereo(): PcmBuffer, resample(int sampleRate): PcmBuffer, canInvoke(string operation): bool, invoke(string operation, mixed ...args): mixed
+PCMAnalyzer => __construct(int sampleRate=8000, int frameDurationMs=20), analyze(string pcm): array
+
+Funcao global => Assinatura
+interleavePcmStereo => interleavePcmStereo(string leftPcm, string rightPcm): string|false - intercala dois canais PCM 16-bit (L/R) em stream estereo
+monoToStereo => monoToStereo(string pcmData): string - duplica cada amostra PCM 16-bit mono nos canais L/R
+stereoToMono => stereoToMono(string pcmData): string - PCM16LE average, truncation toward zero
+
+Parametro de DSP => Valor
+Filtro => sinc janelado por Kaiser (polyphase)
+FILTER_LENGTH => 64
+KAISER_BETA => 8.6
+Fases polyphase => 256
+Cache FIR => LRU process-wide; 16 pares de taxas; ZTS-safe
+MAX_BUFFER_SIZE => 8192 amostras
+Pos-processamento => remocao de DC offset (passa-alta 1 polo) + soft clipping [-32768, 32767]
+
+$ /usr/local/bin/php --re psampler
+Extension [ <persistent> extension #35 psampler version 0.6.1 ] {
+
+  - Functions {
+    Function [ <internal:psampler> function interleavePcmStereo ] {
+
+      - Parameters [2] {
+        Parameter #0 [ <required> string $leftPcm ]
+        Parameter #1 [ <required> string $rightPcm ]
+      }
+      - Return [ string|false ]
+    }
+    Function [ <internal:psampler> function monoToStereo ] {
+
+      - Parameters [1] {
+        Parameter #0 [ <required> string $pcmData ]
+      }
+      - Return [ string ]
+    }
+    Function [ <internal:psampler> function stereoToMono ] {
+
+      - Parameters [1] {
+        Parameter #0 [ <required> string $pcmData ]
+      }
+      - Return [ string ]
+    }
+  }
+
+  - Classes [5] {
+    Class [ <internal:psampler> class Resampler ] {
+
+      - Constants [0] {
+      }
+
+      - Static properties [0] {
+      }
+
+      - Static methods [0] {
+      }
+
+      - Properties [0] {
+      }
+
+      - Methods [5] {
+        Method [ <internal:psampler, ctor> public method __construct ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <optional> ?int $srcRate = <default> ]
+            Parameter #1 [ <optional> ?int $dstRate = <default> ]
+          }
+        }
+
+        Method [ <internal:psampler> public method reset ] {
+
+          - Parameters [0] {
+          }
+        }
+
+        Method [ <internal:psampler> public method sample ] {
+
+          - Parameters [3] {
+            Parameter #0 [ <required> string $pcm ]
+            Parameter #1 [ <optional> ?int $srcRate = <default> ]
+            Parameter #2 [ <optional> ?int $dstRate = <default> ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:psampler> public method process ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $pcm ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:psampler> public method returnEmpty ] {
+
+          - Parameters [0] {
+          }
+          - Return [ string|false ]
+        }
+      }
+    }
+
+    Class [ <internal:psampler> class LPCM ] {
+
+      - Constants [0] {
+      }
+
+      - Static properties [0] {
+      }
+
+      - Static methods [0] {
+      }
+
+      - Properties [0] {
+      }
+
+      - Methods [5] {
+        Method [ <internal:psampler, ctor> public method __construct ] {
+
+          - Parameters [3] {
+            Parameter #0 [ <required> int $channels ]
+            Parameter #1 [ <required> int $bitDepth ]
+            Parameter #2 [ <optional> bool $isBigEndian = <default> ]
+          }
+        }
+
+        Method [ <internal:psampler> public method encodeMono ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> array $samples ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:psampler> public method decodeMono ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $pcmData ]
+          }
+          - Return [ array ]
+        }
+
+        Method [ <internal:psampler> public method encodeStereo ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <required> array $leftSamples ]
+            Parameter #1 [ <required> array $rightSamples ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:psampler> public method decodeStereo ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $pcmData ]
+          }
+          - Return [ array ]
+        }
+      }
+    }
+
+    Class [ <internal:psampler> final class ByteBuffer ] {
+
+      - Constants [0] {
+      }
+
+      - Static properties [0] {
+      }
+
+      - Static methods [0] {
+      }
+
+      - Properties [0] {
+      }
+
+      - Methods [9] {
+        Method [ <internal:psampler, ctor> public method __construct ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <optional> int $initialCapacity = 4096 ]
+          }
+        }
+
+        Method [ <internal:psampler> public method append ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $data ]
+          }
+          - Return [ void ]
+        }
+
+        Method [ <internal:psampler> public method length ] {
+
+          - Parameters [0] {
+          }
+          - Return [ int ]
+        }
+
+        Method [ <internal:psampler> public method has ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> int $bytes ]
+          }
+          - Return [ bool ]
+        }
+
+        Method [ <internal:psampler> public method pop ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> int $bytes ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:psampler> public method peek ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> int $bytes ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:psampler> public method discard ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> int $bytes ]
+          }
+          - Return [ void ]
+        }
+
+        Method [ <internal:psampler> public method clear ] {
+
+          - Parameters [0] {
+          }
+          - Return [ void ]
+        }
+
+        Method [ <internal:psampler> public method capacity ] {
+
+          - Parameters [0] {
+          }
+          - Return [ int ]
+        }
+      }
+    }
+
+    Class [ <internal:psampler> final class PcmBuffer ] {
+
+      - Constants [0] {
+      }
+
+      - Static properties [0] {
+      }
+
+      - Static methods [0] {
+      }
+
+      - Properties [0] {
+      }
+
+      - Methods [15] {
+        Method [ <internal:psampler, ctor> public method __construct ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <required> int $sampleRate ]
+            Parameter #1 [ <required> int $channels ]
+          }
+        }
+
+        Method [ <internal:psampler> public method append ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $pcm ]
+          }
+          - Return [ void ]
+        }
+
+        Method [ <internal:psampler> public method size ] {
+
+          - Parameters [0] {
+          }
+          - Return [ int ]
+        }
+
+        Method [ <internal:psampler> public method capacity ] {
+
+          - Parameters [0] {
+          }
+          - Return [ int ]
+        }
+
+        Method [ <internal:psampler> public method sampleRate ] {
+
+          - Parameters [0] {
+          }
+          - Return [ int ]
+        }
+
+        Method [ <internal:psampler> public method channels ] {
+
+          - Parameters [0] {
+          }
+          - Return [ int ]
+        }
+
+        Method [ <internal:psampler> public method clear ] {
+
+          - Parameters [0] {
+          }
+          - Return [ void ]
+        }
+
+        Method [ <internal:psampler> public method flush ] {
+
+          - Parameters [0] {
+          }
+          - Return [ PcmBuffer ]
+        }
+
+        Method [ <internal:psampler> public method reset ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <required> int $sampleRate ]
+            Parameter #1 [ <required> int $channels ]
+          }
+          - Return [ void ]
+        }
+
+        Method [ <internal:psampler> public method toString ] {
+
+          - Parameters [0] {
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:psampler> public method toMono ] {
+
+          - Parameters [0] {
+          }
+          - Return [ PcmBuffer ]
+        }
+
+        Method [ <internal:psampler> public method toStereo ] {
+
+          - Parameters [0] {
+          }
+          - Return [ PcmBuffer ]
+        }
+
+        Method [ <internal:psampler> public method resample ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> int $sampleRate ]
+          }
+          - Return [ PcmBuffer ]
+        }
+
+        Method [ <internal:psampler> public method canInvoke ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $operation ]
+          }
+          - Return [ bool ]
+        }
+
+        Method [ <internal:psampler> public method invoke ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <required> string $operation ]
+            Parameter #1 [ <optional> mixed ...$args ]
+          }
+          - Return [ mixed ]
+        }
+      }
+    }
+
+    Class [ <internal:psampler> class PCMAnalyzer ] {
+
+      - Constants [0] {
+      }
+
+      - Static properties [0] {
+      }
+
+      - Static methods [0] {
+      }
+
+      - Properties [0] {
+      }
+
+      - Methods [2] {
+        Method [ <internal:psampler, ctor> public method __construct ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <optional> int $sampleRate = 8000 ]
+            Parameter #1 [ <optional> int $frameDurationMs = 20 ]
+          }
+        }
+
+        Method [ <internal:psampler> public method analyze ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $pcm ]
+          }
+          - Return [ array ]
+        }
+      }
+    }
+  }
+}
+
+
+$ /usr/local/bin/php --ri opus
+
+opus
+
+Opus Audio Codec Extension => Information
+Extension Version => 1.1.1
+Status => enabled
+libopus Version => libopus 1.5.2
+Compiled => Oct  5 2026 00:25:22
+
+Codec Capabilities => Supported
+Sample Rates => 8000, 12000, 16000, 24000, 48000 Hz
+Audio Channels => Mono, Stereo
+Applications => VOIP, Audio, Restricted Low Delay
+Bitrate Control => Configurable (6-510 kbps)
+Frame Sizes => 2.5, 5, 10, 20, 40, 60 ms
+
+Features => Available
+Encoding => Yes
+Decoding => Yes
+DTX (Discontinuous Transmission) => Yes
+FEC (Forward Error Correction) => Yes
+VBR (Variable Bitrate) => Yes
+Packet Loss Concealment => Yes
+
+$ /usr/local/bin/php --re opus
+Extension [ <persistent> extension #28 opus version 1.1.1 ] {
+
+  - Functions {
+    Function [ <internal:opus> function resample ] {
+
+      - Parameters [4] {
+        Parameter #0 [ <required> string $pcm ]
+        Parameter #1 [ <required> int $src_rate ]
+        Parameter #2 [ <required> int $dst_rate ]
+        Parameter #3 [ <optional> array $options = [] ]
+      }
+      - Return [ string ]
+    }
+  }
+
+  - Classes [1] {
+    Class [ <internal:opus> class opusChannel ] {
+
+      - Constants [0] {
+      }
+
+      - Static properties [0] {
+      }
+
+      - Static methods [0] {
+      }
+
+      - Properties [0] {
+      }
+
+      - Methods [17] {
+        Method [ <internal:opus, ctor> public method __construct ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <optional> int $sample_rate = <default> ]
+            Parameter #1 [ <optional> int $channels = <default> ]
+          }
+        }
+
+        Method [ <internal:opus> public method encode ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <required> string $pcm_data ]
+            Parameter #1 [ <optional> ?int $pcm_rate = <default> ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:opus> public method decode ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <required> string $encoded_data ]
+            Parameter #1 [ <optional> ?int $pcm_rate_out = <default> ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:opus> public method resample ] {
+
+          - Parameters [3] {
+            Parameter #0 [ <required> string $pcm_data ]
+            Parameter #1 [ <required> int $src_rate ]
+            Parameter #2 [ <required> int $dst_rate ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:opus> public method setBitrate ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> int $value ]
+          }
+        }
+
+        Method [ <internal:opus> public method setVBR ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> bool $enable ]
+          }
+        }
+
+        Method [ <internal:opus> public method setComplexity ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> int $value ]
+          }
+        }
+
+        Method [ <internal:opus> public method setDTX ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> bool $enable ]
+          }
+        }
+
+        Method [ <internal:opus> public method setSignalVoice ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> bool $enable ]
+          }
+        }
+
+        Method [ <internal:opus> public method reset ] {
+
+          - Parameters [0] {
+          }
+          - Return [ void ]
+        }
+
+        Method [ <internal:opus> public method enhanceVoiceClarity ] {
+
+          - Parameters [2] {
+            Parameter #0 [ <required> string $pcm_data ]
+            Parameter #1 [ <optional> ?float $intensity = <default> ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:opus> public method spatialStereoEnhance ] {
+
+          - Parameters [3] {
+            Parameter #0 [ <required> string $pcm_data ]
+            Parameter #1 [ <optional> ?float $width = <default> ]
+            Parameter #2 [ <optional> ?float $depth = <default> ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:opus> public method monoToStereo ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $pcm_data ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:opus> public method stereoToMono ] {
+
+          - Parameters [1] {
+            Parameter #0 [ <required> string $pcm_data ]
+          }
+          - Return [ string ]
+        }
+
+        Method [ <internal:opus> public method hasLibsoxr ] {
+
+          - Parameters [0] {
+          }
+          - Return [ bool ]
+        }
+
+        Method [ <internal:opus> public method getInfo ] {
+
+          - Parameters [0] {
+          }
+          - Return [ array ]
+        }
+
+        Method [ <internal:opus> public method destroy ] {
+
+          - Parameters [0] {
+          }
+          - Return [ void ]
+        }
+      }
+    }
+  }
+}
+
+Fim do relatório.

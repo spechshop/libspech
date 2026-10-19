@@ -62,8 +62,10 @@ include 'plugins/autoloader.php';
         //exit;
         // Instancia o controlador do trunk SIP com as credenciais
         $phone = new trunkController($username, $password, $domain);
-        $phone->setSipIpVersion(6);
-        $phone->setPacketTime(60);$phone->mountLineCodecSDP('OPUS/48000/2');
+        $phone->setSipIpVersion(4);
+        $phone->setPacketTime(20);
+        $phone->mountLineCodecSDP('OPUS/48000/2');
+        //$phone->mountLineCodecSDP('PCMU/8000/1');
         //$phone->enableStereoSound();
         $phone->enableAudioRecording();
         $phone->enableAudioMemorySharing();
@@ -109,7 +111,7 @@ include 'plugins/autoloader.php';
         });
         $phone->onHangup(function (trunkController $phone) {
             // Salva o buffer de áudio gravado em um arquivo WAV
-            $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());
+            $phone->saveBufferToWavFile('rec2.wav', $phone->getBuffer());
             // Desbloqueia a corotina para continuar a execução
 
             cli::pcl("Bye recebido", "red");
@@ -163,7 +165,7 @@ include 'plugins/autoloader.php';
 
 
             $phone->bye();
-            $phone->close();
+
 
             // Define flags indicando que a chamada foi encerrada
             $phone->receiveBye = true;
@@ -175,7 +177,7 @@ include 'plugins/autoloader.php';
         $phone->onPacketOnTimeoutMedia(function ($peer) use ($phone) {
             cli::pcl("Timeout de mídia atingido, encerrando chamada", 'bold_red');
             $phone->bye();
-            $phone->close();
+
             return true;
         });
 
@@ -183,7 +185,8 @@ include 'plugins/autoloader.php';
         //$phone->enableStereoSound();
 
 
-        $phone->call('notebook20');
+        //$phone->call('*53');
+        $phone->call('556928880032');
 
 
         $phone->saveBufferToWavFile('rec.wav', $phone->getBuffer());

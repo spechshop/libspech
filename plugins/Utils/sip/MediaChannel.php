@@ -1189,8 +1189,8 @@ class MediaChannel
             /** @var opusChannel $opus */
             foreach ([$peer['opusEncoder'], $peer['opusDecoder']] as $opus) {
                 $opus->setComplexity(8);
-                $opus->setSignalVoice(true);
-                $opus->setDTX(true);
+                $opus->setSignalVoice(false);
+                $opus->setDTX(false);
                 $opus->setVBR(true);
                 $opus->setBitrate(24000);
             }

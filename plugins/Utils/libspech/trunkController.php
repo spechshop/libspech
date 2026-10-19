@@ -2668,9 +2668,7 @@ class trunkController
 
     public function getBuffer(): string|StringObject
     {
-        $mixed = '';
         $channels = [];
-        $bcgChannel = new \bcg729Channel();
 
 
         foreach ($this->bufferWriteSound as $ssrc => $freq) {
@@ -2685,7 +2683,7 @@ class trunkController
         $count = count($channels);
 
         if ($count > 1) {
-            $uni = mixAudioChannels($channels);
+            $uni = interleavePcmStereo($channels[0], $channels[1]);
         } elseif ($count == 1) {
             $uni = $channels[0];
         }
@@ -3666,13 +3664,17 @@ class trunkController
     {
         $inCh = (int)($options['input_channels'] ?? 1);
         $outCh = (int)($options['output_channels'] ?? $inCh);
+        $hasc = 'não';
         if ($inCh === 1 && $outCh === 2) {
             $pcm = monoToStereo($pcm);
             $inCh = 2;
+            $hasc = 'sim';
         } elseif ($inCh === 2 && $outCh === 1) {
             $pcm = stereoToMono($pcm);
             $inCh = 1;
+            $hasc = 'sim';
         }
+
         if ($srcRate === $dstRate && $inCh === $outCh) {
             return $pcm;
         }
@@ -3695,19 +3697,17 @@ class trunkController
                 'output_channels' => $outCh,
             ]);
         }
-        if ($outCh === 2) {
-            $left = $right = '';
-            for ($offset = 0, $length = strlen($pcm); $offset + 4 <= $length; $offset += 4) {
-                $left .= substr($pcm, $offset, 2);
-                $right .= substr($pcm, $offset + 2, 2);
-            }
-            $left = resampler($left, $srcRate, $dstRate);
-            $right = resampler($right, $srcRate, $dstRate);
-            $output = '';
-            for ($offset = 0, $length = min(strlen($left), strlen($right)); $offset + 2 <= $length; $offset += 2) {
-                $output .= substr($left, $offset, 2) . substr($right, $offset, 2);
-            }
-            return $output;
+        if ($inCh === 2 && $outCh === 2) {
+            // PcmBuffer consumes PCM16LE frames and applies the same FIR to
+            // both interleaved channels while keeping their histories separate.
+            $pcm = substr($pcm, 0, strlen($pcm) - (strlen($pcm) % 4));
+            $buffer = new \PcmBuffer($srcRate, 2);
+            $buffer->append($pcm);
+            $buffer->resample($dstRate);
+            $output = $buffer->toString();
+            // flush() replaces the buffer payload with the FIR tail.
+            $buffer->flush();
+            return $output . $buffer->toString();
         }
         return resampler($pcm, $srcRate, $dstRate);
     }
