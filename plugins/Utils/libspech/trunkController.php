@@ -2257,14 +2257,14 @@ class trunkController
                         break;
 
                     case 'OPUS':
-                        if (!isset($this->mediaChannel->members[$targetId]['opus'])) {
+                        if (!isset($this->mediaChannel->members[$targetId]['opusDecoder'])) {
                             return;
                         }
 
 
 
                         $pcmData = $this->mediaChannel
-                            ->members[$targetId]['opus']
+                            ->members[$targetId]['opusDecoder']
                             ->decode($rtpc->payloadRaw);
                         break;
 
@@ -2306,6 +2306,8 @@ class trunkController
 
                     $this->bufferWriteSound[$ssrc][$frequencyPacket][$channelsPacket] .= $pcmData;
                 }
+
+
 
                 if ($hasPcmCallback) {
                     $frequencyPacket ??= $channel->getFrequencyFromPtCodec($rtpc->payloadType);
