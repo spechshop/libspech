@@ -198,9 +198,8 @@ include 'plugins/autoloader.php';
         cli::pcl("Script finalizado", "green");
 
         // Fecha a conexão SIP e libera recursos
-        $phone->close();
-
         cli::pcl("Processo cancelado", "red");
+        return 0;
     });
 });
 
