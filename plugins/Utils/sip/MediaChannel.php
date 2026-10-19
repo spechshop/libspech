@@ -1188,11 +1188,11 @@ class MediaChannel
         if ($codec === 'OPUS') {
             /** @var opusChannel $opus */
             foreach ([$peer['opusEncoder'], $peer['opusDecoder']] as $opus) {
-                $opus->setComplexity(8);
-                $opus->setSignalVoice(false);
-                $opus->setDTX(false);
-                $opus->setVBR(true);
-                $opus->setBitrate(24000);
+               //$opus->setComplexity(8);
+               //$opus->setSignalVoice(false);
+               $opus->setDTX(true);
+               //$opus->setVBR(true);
+               //$opus->setBitrate(24000);
             }
         }
 

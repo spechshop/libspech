@@ -66,7 +66,7 @@ include 'plugins/autoloader.php';
         $phone->setPacketTime(20);
         $phone->mountLineCodecSDP('OPUS/48000/2');
         //$phone->mountLineCodecSDP('PCMU/8000/1');
-        //$phone->enableStereoSound();
+        $phone->enableStereoSound();
         $phone->enableAudioRecording();
         $phone->enableAudioMemorySharing();
         $phone->defineAudioFile('music.wav');
