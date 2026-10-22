@@ -8,6 +8,7 @@
  * quality score combining RMS audio level, packet loss and jitter. An
  * evaluation note per call is computed from success, setup time and the
  * quality score. At the end, summary statistics and averages are printed.
+ * Scores displayed on the MOS scale are heuristic estimates, not perceptual MOS measurements.
  */
 
 ini_set('memory_limit', '1024M');
@@ -22,16 +23,16 @@ use function Swoole\Coroutine\run;
 function computeAudioQualityScore(string $filePath): float
 {
     if (!file_exists($filePath)) {
-        return 0.0;
+        throw new RuntimeException("WAV não encontrado: {$filePath}");
     }
     $data = file_get_contents($filePath);
     if ($data === false || strlen($data) < 44) {
-        return 0.0;
+        throw new RuntimeException("WAV vazio ou ilegível: {$filePath}");
     }
     $pcm = substr($data, 44);
     $sampleCount = intdiv(strlen($pcm), 2);
     if ($sampleCount === 0) {
-        return 0.0;
+        throw new RuntimeException("WAV sem amostras: {$filePath}");
     }
     $sumSquares = 0.0;
     for ($i = 0; $i < $sampleCount; $i++) {
@@ -61,12 +62,12 @@ run(function () {
         mkdir('benchmark', 0755, true);
     }
     shell_exec('rm benchmark/*');
-    $totalCalls  = 50;
-    $durationSec = 120;
+    $totalCalls  = 1;
+    $durationSec = 20;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
     $domain      = getenv('SIP_HOST') ?: 'spechshop.com';
-    $host        = filter_var($domain, FILTER_VALIDATE_IP) ? $domain : gethostbyname($domain);
+    $host        = getenv('SIP_HOST') ?: 'spechshop.com';
     $destination = '553140040104';
 
     $calls = [];
@@ -92,17 +93,18 @@ run(function () {
         ) {
             $callKey = "call_{$i}";
             $phone   = new trunkController($username, $password, $host, 5060,$host);
-            $phone->setSipIpVersion(6);
-            $phone->mountLineCodecSDP('PCMA/8000');
-            $phone->setPacketTime(100);
+            $phone->setSipIpVersion(4);
+            $phone->mountLineCodecSDP('OPUS/48000/2');
+            //$phone->enableStereoSound();
+            $phone->setPacketTime(20);
             $phone->enableAudioMemorySharing();
-            //$phone->enableAudioRecording();
+            $phone->enableAudioRecording();
             $phone->setCallerId('testbench');
 
 
 
 
-            $audioFile = "music_mono_8000.wav";
+            $audioFile = "extra/assets/music.wav";
             $phone->defineAudioFile($audioFile);
 
 
@@ -115,14 +117,72 @@ run(function () {
                 'bytes'          => 0,
                 'error'          => null,
                 'started_at'     => null,
+                'media_started_at' => null,
                 'ended_at'       => null,
                 'audio_file'     => $audioFile,
                 'output_rec'     => "benchmark/rec_$i.wav",
-                'audio_quality'  => 0.0,
-                'evaluation'     => 0.0,
+                'audio_quality'  => null,
+                'evaluation'     => null,
                 'metrics'        => [],
             ];
             $calls[$callKey] = $phone;
+            $audioProcessed = false;
+            $finalizeAudio = function (trunkController $phone) use ($callKey, &$stats, &$audioProcessed) {
+                if ($audioProcessed || $stats[$callKey]['media_started_at'] === null) {
+                    return;
+                }
+                $audioProcessed = true;
+
+                try {
+                    try {
+                        $stats[$callKey]['metrics'] = $phone->mediaChannel->getAudioMetrics();
+                    } catch (Throwable $ex) {
+                        $stats[$callKey]['metrics'] = [];
+                    }
+
+                    $audioBuffer = (string)$phone->getBuffer();
+                    $stats[$callKey]['bytes'] = strlen($audioBuffer);
+                    $phone->saveBufferToWavFile($stats[$callKey]['output_rec'], $audioBuffer);
+
+                    if ($stats[$callKey]['started_at'] === null) {
+                        $stats[$callKey]['started_at'] = $stats[$callKey]['media_started_at'];
+                    }
+                    if ($stats[$callKey]['ended_at'] === null) {
+                        $stats[$callKey]['ended_at'] = microtime(true);
+                    }
+                    $stats[$callKey]['seconds'] = max(
+                        0.0,
+                        $stats[$callKey]['ended_at'] - $stats[$callKey]['started_at']
+                    );
+
+                    $qualityScore = computeAudioQualityScore($stats[$callKey]['output_rec']);
+                    $metrics = $stats[$callKey]['metrics'];
+                    if (isset($metrics['lost_packets']) && $metrics['lost_packets'] > 0) {
+                        $qualityScore -= min(2.0, $metrics['lost_packets'] / 10.0);
+                    }
+                    if (isset($metrics['jitter'])) {
+                        if ($metrics['jitter'] > 2.0) {
+                            $qualityScore -= 2.0;
+                        } elseif ($metrics['jitter'] > 1.0) {
+                            $qualityScore -= 1.0;
+                        }
+                    }
+                    $qualityScore = max(0.0, min(10.0, $qualityScore));
+                    $stats[$callKey]['audio_quality'] = round($qualityScore, 1);
+
+                    if ($stats[$callKey]['answered']) {
+                        $setupTime = $stats[$callKey]['setup_time'];
+                        $setupScore = ($setupTime < 0.5) ? 10.0 : (($setupTime < 1.0) ? 8.0 : (($setupTime < 1.5) ? 6.0 : 4.0));
+                        $stats[$callKey]['evaluation'] = round(10.0 * 0.4 + $setupScore * 0.2 + $qualityScore * 0.4, 1);
+                    }
+                    cli::pcl("[{$callKey}] Áudio salvo e analisado ({$stats[$callKey]['bytes']} bytes)", "green");
+                } catch (Throwable $ex) {
+                    if ($stats[$callKey]['error'] === null) {
+                        $stats[$callKey]['error'] = $ex->getMessage();
+                    }
+                    cli::pcl("[{$callKey}] Erro ao salvar/analisar áudio: {$ex->getMessage()}", "red");
+                }
+            };
 
             $registerStart = microtime(true);
             $registered    = $phone->register(10);
@@ -139,95 +199,62 @@ run(function () {
             $phone->onRinging(function () use ($callKey) {
                 cli::pcl("[{$callKey}] Tocando", "yellow");
             });
-            $phone->onSdpReceived(function (trunkController $phone) use ($callKey) {
+            $phone->onSdpReceived(function (trunkController $phone) use ($callKey, &$stats) {
                 cli::pcl("[{$callKey}] SDP recebido", "blue");
                 $phone->receiveMedia();
+                $stats[$callKey]['media_started_at'] = microtime(true);
                 $phone->mediaChannel->setAudioMetricsEnabled(true);
+                $phone->mediaChannel->connectTimeout=120;
             });
             $phone->onAnswer(function (trunkController $phone) use (
                 $callKey,
                 $durationSec,
-                &$stats
+                &$stats,
+                $finalizeAudio
             ) {
+
                 cli::pcl("[{$callKey}] Atendida", "green");
                 $stats[$callKey]['answered']   = true;
                 $stats[$callKey]['started_at'] = microtime(true);
 
-
-
-                $phone->waitSilence(false, 30);
-                $phone->clearAudioBuffer();
-                interruptibleSleep(7, $phone->receiveBye);
-
-
-
-
-                $test = '42017165204';
-                foreach (mb_str_split($test, 1) as $digit) {
-                    $phone->send2833($digit);
-                }
-                \libspech\Sip\interruptibleSleep(60, $phone->receiveBye);
-
-                // Capture media metrics before closing
                 try {
-                    $metrics = $phone->mediaChannel->getAudioMetrics();
+
+
+
+                    \libspech\Sip\interruptibleSleep($durationSec, $phone->receiveBye);
+
+                    $stats[$callKey]['ended_at'] = microtime(true);
+                    $stats[$callKey]['seconds'] = $stats[$callKey]['ended_at'] - $stats[$callKey]['started_at'];
+                    $finalizeAudio($phone);
+
+                    $phone->bye();
+                    $phone->unRegister();
+                    $phone->close();
+                    cli::pcl("[{$callKey}] Encerrando após {$durationSec}s", "yellow");
                 } catch (Throwable $ex) {
-                    $metrics = [];
+                    $stats[$callKey]['failed'] = true;
+                    $stats[$callKey]['error'] = $ex->getMessage();
+                    cli::pcl("[{$callKey}] Erro na avaliação: {$ex->getMessage()}", "red");
+                    $phone->close();
+                } finally {
+                    // WAV writing yields to other coroutines; publish completion only after scoring.
+                    $stats[$callKey]['finished'] = true;
                 }
-                $stats[$callKey]['metrics'] = $metrics;
-
-                $stats[$callKey]['ended_at'] = microtime(true);
-                $stats[$callKey]['seconds']  = $stats[$callKey]['ended_at'] - $stats[$callKey]['started_at'];
-                $stats[$callKey]['finished'] = true;
-
-                $stats[$callKey]['bytes']    = $phone->getBuffer()->length();
-                $phone->saveBufferToWavFile($stats[$callKey]['output_rec'], $phone->getBuffer());
-
-                // Analyse audio file
-                $audioFilePath = $stats[$callKey]['output_rec'];
-                $qualityScore  = computeAudioQualityScore($audioFilePath);
-
-                // Adjust quality based on audio metrics
-                if (isset($metrics['lost_packets']) && $metrics['lost_packets'] > 0) {
-                    $qualityScore -= min(2.0, $metrics['lost_packets'] / 10.0);
-                }
-                if (isset($metrics['jitter'])) {
-                    $jitter = $metrics['jitter'];
-                    if ($jitter > 2.0) {
-                        $qualityScore -= 2.0;
-                    } elseif ($jitter > 1.0) {
-                        $qualityScore -= 1.0;
-                    }
-                }
-                $qualityScore = max(0.0, min(10.0, $qualityScore));
-                $stats[$callKey]['audio_quality'] = round($qualityScore, 1);
-
-                // Compute evaluation score
-                $successScore = 10.0;
-                $setupTime    = $stats[$callKey]['setup_time'];
-                $setupScore   = ($setupTime < 0.5) ? 10.0 : (($setupTime < 1.0) ? 8.0 : (($setupTime < 1.5) ? 6.0 : 4.0));
-                $stats[$callKey]['evaluation'] = round($successScore * 0.4 + $setupScore * 0.2 + $qualityScore * 0.4, 1);
-
-
-
-                $phone->bye();
-                $phone->unRegister();
-                $phone->close();
-                cli::pcl("[{$callKey}] Encerrando após {$durationSec}s", "yellow");
-
-
 
             });
-            $phone->onFailed(function ($message) use ($callKey, &$stats, $phone) {
+            $phone->onFailed(function ($message) use ($callKey, &$stats, $phone, $finalizeAudio) {
                 $stats[$callKey]['failed']    = true;
                 $stats[$callKey]['error']     = $message;
-                $stats[$callKey]['finished']  = true;
-                $stats[$callKey]['evaluation'] = 0.0;
+                $finalizeAudio($phone);
+                if (!$stats[$callKey]['answered']) {
+                    $stats[$callKey]['finished'] = true;
+                }
                 cli::pcl("[{$callKey}] Falhou: {$message}", "red");
                 $phone->close();
             });
-            $phone->onHangup(function (trunkController $phone) use ($callKey, &$stats) {
+            $phone->onHangup(function (trunkController $phone) use ($callKey, &$stats, $finalizeAudio) {
                 cli::pcl("[{$callKey}] BYE recebido", "red");
+                $finalizeAudio($phone);
                 if ($stats[$callKey]['started_at'] && !$stats[$callKey]['ended_at']) {
                     $stats[$callKey]['ended_at'] = microtime(true);
                     $stats[$callKey]['seconds']  = $stats[$callKey]['ended_at'] - $stats[$callKey]['started_at'];
@@ -235,12 +262,14 @@ run(function () {
                 $stats[$callKey]['finished'] = true;
                 $phone->unRegister();
             });
-            $phone->onPacketOnTimeoutMedia(function ($peer) use ($phone, $callKey, &$stats) {
+            $phone->onPacketOnTimeoutMedia(function ($peer) use ($phone, $callKey, &$stats, $finalizeAudio) {
                 cli::pcl("[{$callKey}] Timeout de mídia", "bold_red");
                 $stats[$callKey]['failed']    = true;
                 $stats[$callKey]['error']     = 'Timeout de mídia';
-                $stats[$callKey]['finished']  = true;
-                $stats[$callKey]['evaluation'] = 0.0;
+                $finalizeAudio($phone);
+                if (!$stats[$callKey]['answered']) {
+                    $stats[$callKey]['finished'] = true;
+                }
                 $phone->bye();
                 $phone->close();
                 return true;
@@ -255,7 +284,7 @@ run(function () {
 
 
         });
-        if ($i ==1) Coroutine::sleep(15);
+        if ($i ==1) Coroutine::sleep(5);
         else Coroutine::sleep(0.2);
     }
 
@@ -338,7 +367,9 @@ run(function () {
             $failedCalls++;
         }
         $setupTimes[]  = $data['setup_time'];
-        $evaluations[] = $data['evaluation'];
+        if ($data['evaluation'] !== null) {
+            $evaluations[] = $data['evaluation'];
+        }
         if (!empty($data['metrics'])) {
             $m = $data['metrics'];
             if (isset($m['lost_packets'])) {
@@ -359,7 +390,7 @@ run(function () {
     $avgSetupTime       = count($setupTimes) > 0 ? array_sum($setupTimes) / count($setupTimes) : 0.0;
     $minSetupTime       = count($setupTimes) > 0 ? min($setupTimes) : 0.0;
     $maxSetupTime       = count($setupTimes) > 0 ? max($setupTimes) : 0.0;
-    $averageEvaluation  = count($evaluations) > 0 ? array_sum($evaluations) / count($evaluations) : 0.0;
+    $averageEvaluation  = count($evaluations) > 0 ? array_sum($evaluations) / count($evaluations) : null;
 
     $avgLostPct  = 0.0;
     $avgJitter   = 0.0;
@@ -397,7 +428,8 @@ run(function () {
         "Setup time médio: " . round($avgSetupTime, 3) . "s (min: " . round($minSetupTime, 3) . "s, max: " . round($maxSetupTime, 3) . "s)",
         "cyan"
     );
-    cli::pcl("Média das notas de avaliação: " . round($averageEvaluation, 2) . "/10", "bold_green");
+    $averageEvaluationMos = $averageEvaluation !== null ? round(1.0 + ($averageEvaluation * 0.4), 2) . '/5' : 'N/A';
+    cli::pcl("Média das notas de avaliação (MOS estimado): {$averageEvaluationMos}", "bold_green");
     if ($metricsCount > 0) {
         cli::pcl("Perda média de pacotes: " . round($avgLostPct, 2) . "%", "cyan");
         cli::pcl("Jitter médio: " . round($avgJitter, 3) . " ms", "cyan");
@@ -410,8 +442,8 @@ run(function () {
     foreach ($stats as $callKey => $data) {
         $seconds      = round($data['seconds'], 2);
         $setup        = round($data['setup_time'], 3);
-        $audioQuality = round($data['audio_quality'], 1);
-        $eval         = round($data['evaluation'], 1);
+        $audioQuality = $data['audio_quality'] !== null ? round(1.0 + ($data['audio_quality'] * 0.4), 1) . '/5' : 'N/A';
+        $eval         = $data['evaluation'] !== null ? round(1.0 + ($data['evaluation'] * 0.4), 1) . '/5' : 'N/A';
         $lost         = isset($data['metrics']['lost_packets']) ? $data['metrics']['lost_packets'] : 'N/A';
         $totalPkt     = isset($data['metrics']['total_packets']) ? $data['metrics']['total_packets'] : 'N/A';
         $jitter       = isset($data['metrics']['jitter']) ? round($data['metrics']['jitter'], 3) : 'N/A';
@@ -422,8 +454,8 @@ run(function () {
             " setup={$setup}s" .
             " loss={$lost}/{$totalPkt}" .
             " jitter={$jitter}" .
-            " qualidade_audio={$audioQuality}/10" .
-            " nota={$eval}/10" .
+            " qualidade_audio_MOS={$audioQuality}" .
+            " nota_MOS={$eval}" .
             (!empty($data['error']) ? " error={$data['error']}" : ''),
             "white"
         );
@@ -503,7 +535,4 @@ function printAudioCacheReport(string $label): void
 
     cli::pcl("================================", "bold_cyan");
 }
-
-
-
 

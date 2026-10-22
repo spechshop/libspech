@@ -9,13 +9,11 @@ use libspech\Cli\cli;
 use libspech\Network\network;
 use libspech\Packet\renderMessages;
 use libspech\Rtp\MediaChannel;
-use libspech\Rtp\PcmStreamConverter;
 use libspech\Rtp\rtpc;
 use libspech\Rtp\rtpChannel;
 use Random\RandomException;
 use SocketMutable;
 use Swoole\Coroutine;
-use Swoole\Coroutine\Socket;
 use Swoole\StringObject;
 use Swoole\Timer;
 
@@ -184,9 +182,9 @@ class trunkController
     private ?string $currentProxyId = null;
     public string $userAgent = 'SPECHSHOP LIB';
     private string|int|null $ptTelephoneEvent;
-    private string|int|null $ptUse=8;
-    private string|int|null $txPt=8;
-    private string|int|null $rxPt=8;
+    private string|int|null $ptUse = 8;
+    private string|int|null $txPt = 8;
+    private string|int|null $rxPt = 8;
     /** @var array<int,string> Explicit mappings from the remote SDP used for TX. */
     public array $txCodecMapper = [];
     /** @var array<int,string> Explicit mappings from libspech's local SDP used for RX. */
@@ -510,27 +508,28 @@ class trunkController
     {
 
 
-        $ptFind=false;
+        $ptFind = false;
         foreach ($this->mapLearn as $pt => $aValues) {
             foreach ($aValues as $a) {
                 if (str_contains($a, 'opus')) {
-                    $ptFind=$pt;
+                    $ptFind = $pt;
                     break 2;
                 }
             }
         }
         if (!$ptFind) return;
-        $dtmf48k=$this->ptsDtmfRegistered[48000];
+        $dtmf48k = $this->ptsDtmfRegistered[48000];
         unset($this->mapLearn[$ptFind]);
         unset($this->mapLearn[$dtmf48k]);
         unset($this->ptsRegistered[$ptFind]);
         unset($this->ptsRegistered[$dtmf48k]);
-        $this->stereoMode=true;
+        $this->stereoMode = true;
 
         $this->mountLineCodecSDP('OPUS/48000/2');
-        $this->defaultChannels=2;
+        $this->defaultChannels = 2;
     }
-    public bool $stereoMode=false;
+
+    public bool $stereoMode = false;
 
     public function mountLineCodecSDP(string $codec = 'PCMA/8000'): array
     {
@@ -2133,7 +2132,6 @@ class trunkController
                 }
 
 
-
                 $this->mediaChannel->onVadChange(function ($isVoiceActive, $energy, $id) {
                     //cli::pcl("{$id} Nivel de energia: {$energy}", !$isVoiceActive ? 'bold_red' : 'bold_green');
                 });
@@ -2178,8 +2176,7 @@ class trunkController
             } else {
                 $this->defaultChannels = 1;
             }
-
-            $this->mediaChannel->addMember([
+            $peer = [
                 'address' => $this->audioRemoteIp,
                 'port' => $this->audioRemotePort,
                 'codec' => $this->codecName,
@@ -2193,8 +2190,8 @@ class trunkController
                 'ssrc' => $audioAttributes['ssrc'] ?? $this->ssrc,
                 'frequency' => $this->frequencyCall,
                 'channels' => $this->defaultChannels,
-
-            ]);
+            ];
+            $this->mediaChannel->addMember($peer);
 
 
             $this->mediaChannel->recordingEnabled = $this->audioRecordingEnabled;
@@ -2262,7 +2259,6 @@ class trunkController
                         }
 
 
-
                         $pcmData = $this->mediaChannel
                             ->members[$targetId]['opusDecoder']
                             ->decode($rtpc->payloadRaw);
@@ -2306,7 +2302,6 @@ class trunkController
 
                     $this->bufferWriteSound[$ssrc][$frequencyPacket][$channelsPacket] .= $pcmData;
                 }
-
 
 
                 if ($hasPcmCallback) {
@@ -2681,7 +2676,7 @@ class trunkController
             }
         }
 
-        $uni='';
+        $uni = '';
         $count = count($channels);
 
         if ($count > 1) {
@@ -2906,7 +2901,7 @@ class trunkController
     public function bye(): void
     {
         if ($this->byeSent) return;
-        $this->byeSent=true;
+        $this->byeSent = true;
         if (empty($this->headers200)) {
             return;
         }
@@ -2995,7 +2990,7 @@ class trunkController
             return false;
         }
 
-        $this->isRegistered=false;
+        $this->isRegistered = false;
         $maxWait = 1.5;
         if ($this->registerCount > 3) {
             return false;
@@ -3009,8 +3004,7 @@ class trunkController
         $startTimer = time();
 
 
-
-        $sent=false;
+        $sent = false;
         if (!$this->reopenSipSocket()) {
             cli::pcl("Falha ao iniciar socket SIP para deslogar", 'red');
             return false;
@@ -3022,17 +3016,16 @@ class trunkController
                     return false;
                 }
             } else {
-               $this->sendSipTo($this->host, $this->port, $renderSolution);
-               $sent=$this->socket->recvfrom($peer, 1);
+                $this->sendSipTo($this->host, $this->port, $renderSolution);
+                $sent = $this->socket->recvfrom($peer, 1);
                 if ($sent === false) {
                     $this->socket->close();
                 } else {
-                    $sent=true;
+                    $sent = true;
                     break;
                 }
             }
         }
-
 
 
         $startTimer = time();
@@ -3042,10 +3035,10 @@ class trunkController
 
 
                 if (!$sent)
-                $res = $this->safeRecvfrom($peer, 1);
+                    $res = $this->safeRecvfrom($peer, 1);
                 else {
-                    $res=$sent;
-                    $sent=false;
+                    $res = $sent;
+                    $sent = false;
                 }
 
                 if ($res === null) {
@@ -3323,7 +3316,7 @@ class trunkController
             "method" => "REGISTER",
             "methodForParser" => "REGISTER {$registerUri} SIP/2.0",
             "headers" => [
-                "Via" => ["SIP/2.0/UDP {$this->sipViaAddress()};branch=z9hG4bK-" . bin2hex(secure_random_bytes(8)).';rport'],
+                "Via" => ["SIP/2.0/UDP {$this->sipViaAddress()};branch=z9hG4bK-" . bin2hex(secure_random_bytes(8)) . ';rport'],
                 "From" => [sip::renderURI([
                     "user" => $this->username,
                     "peer" => [
@@ -3351,8 +3344,8 @@ class trunkController
     public function saveBufferToWavFile(string $caminho, string $audioBuffer): void
     {
 
-        $chans=1;
-        if ($this->stereoMode) $chans=2;
+        $chans = 1;
+        if ($this->stereoMode) $chans = 2;
         $audio = waveHead3(strlen($audioBuffer), $this->frequencyCall, $chans, 1) . $audioBuffer;
         Coroutine::writeFile($caminho, $audio);
     }
@@ -3670,11 +3663,9 @@ class trunkController
         if ($inCh === 1 && $outCh === 2) {
             $pcm = monoToStereo($pcm);
             $inCh = 2;
-            $hasc = 'sim';
         } elseif ($inCh === 2 && $outCh === 1) {
             $pcm = stereoToMono($pcm);
             $inCh = 1;
-            $hasc = 'sim';
         }
 
         if ($srcRate === $dstRate && $inCh === $outCh) {
@@ -3684,9 +3675,9 @@ class trunkController
         $options['output_channels'] = $outCh;
         if (($mode ?? $this->resampleMode) === 'resample') {
             $opts = $options + [
-                'resample_filter'  => 'kaiser_best',
-                'resample_quality' => 10,
-            ];
+                    'resample_filter' => 'kaiser_best',
+                    'resample_quality' => 10,
+                ];
             return resample($pcm, $srcRate, $dstRate, $opts);
         }
 
@@ -3695,7 +3686,7 @@ class trunkController
         // padding that result would replace actual stereo audio with silence.
         if ($inCh !== $outCh) {
             return resample($pcm, $srcRate, $dstRate, [
-                'input_channels'  => $inCh,
+                'input_channels' => $inCh,
                 'output_channels' => $outCh,
             ]);
         }
@@ -3733,7 +3724,7 @@ class trunkController
     public function enableVAD(): void
     {
         $this->vadEnabled = true;
-        $this->vadTimeoutSeconds=10;
+        $this->vadTimeoutSeconds = 10;
     }
 
     public bool $loopAudioFile = true;
@@ -3925,7 +3916,8 @@ class trunkController
         $this->onReceiveSdpCallable = $param;
     }
 
-    public int|float $voiceActivityTimeout=10;
+    public int|float $voiceActivityTimeout = 10;
+
     public function voiceActivityTimeout(int|float $time): void
     {
         $this->voiceActivityTimeout = $time;
