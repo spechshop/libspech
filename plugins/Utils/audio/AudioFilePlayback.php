@@ -3,6 +3,7 @@
 namespace libspech\Audio;
 
 use Closure;
+use libspech\Cli\cli;
 use libspech\Rtp\PcmStreamConverter;
 use Swoole\Coroutine;
 use Swoole\Coroutine\Channel;
@@ -74,6 +75,9 @@ final class AudioFilePlayback
                     'OPUS' => new \opusChannel(48000, $context['channels']),
                     default => null,
                 };
+                if ($context['codec'] == 'OPUS') {
+                    $this->encoder->setVBR(true);
+                }
                 $this->encoderContext = $encoderContext;
             }
             $this->context = $context;

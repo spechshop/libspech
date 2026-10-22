@@ -2,6 +2,7 @@
 
 namespace libspech\Rtp;
 
+use libspech\Cli\cli;
 use PcmBuffer;
 
 /** One continuous PCM16LE source-to-destination stream. */
@@ -38,7 +39,15 @@ final class PcmStreamConverter
         if ($pcm === '' || $this->buffer === null) {
             return $pcm;
         }
-        $this->buffer->clear();
+        if ($this->sourceRate === $this->targetRate) {
+            // Channel-only transforms retain their output format after clear().
+            // Restore the source format before appending the next source block.
+            $this->buffer->reset($this->sourceRate, $this->sourceChannels);
+        } else {
+            // Keep the native resampler's continuous FIR history across blocks.
+            $this->buffer->clear();
+        }
+
         $this->buffer->append($pcm);
         if ($this->sourceChannels === 2 && $this->targetChannels === 1) {
             $this->buffer->toMono();
