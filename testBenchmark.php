@@ -62,8 +62,8 @@ run(function () {
         mkdir('benchmark', 0755, true);
     }
     shell_exec('rm benchmark/*');
-    $totalCalls  = 1;
-    $durationSec = 20;
+    $totalCalls  = 50;
+    $durationSec = 120;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
     $domain      = getenv('SIP_HOST') ?: 'spechshop.com';
@@ -94,8 +94,8 @@ run(function () {
             $callKey = "call_{$i}";
             $phone   = new trunkController($username, $password, $host, 5060,$host);
             $phone->setSipIpVersion(4);
-            $phone->mountLineCodecSDP('OPUS/48000/2');
-            //$phone->enableStereoSound();
+            $phone->mountLineCodecSDP('PCMA/8000');
+            $phone->enableStereoSound();
             $phone->setPacketTime(20);
             $phone->enableAudioMemorySharing();
             $phone->enableAudioRecording();
@@ -104,15 +104,19 @@ run(function () {
 
 
 
-            $audioFile = "extra/assets/music.wav";
+            $audioFile = "/home/lotus/Músicas/5.-Kant-Spinardi-Nefarius-nrdc50.wav";
+
+
             $phone->defineAudioFile($audioFile);
 
 
+
             $stats[$callKey] = [
+                'cid'            => $phone->callId,
                 'answered'       => false,
                 'failed'         => false,
                 'finished'       => false,
-                'setup_time'     => 0.0,
+                'registration_time' => 0.0,
                 'seconds'        => 0.0,
                 'bytes'          => 0,
                 'error'          => null,
@@ -160,10 +164,10 @@ run(function () {
                     if (isset($metrics['lost_packets']) && $metrics['lost_packets'] > 0) {
                         $qualityScore -= min(2.0, $metrics['lost_packets'] / 10.0);
                     }
-                    if (isset($metrics['jitter'])) {
-                        if ($metrics['jitter'] > 2.0) {
+                    if (isset($metrics['jitter_ms'])) {
+                        if ($metrics['jitter_ms'] > 2.0) {
                             $qualityScore -= 2.0;
-                        } elseif ($metrics['jitter'] > 1.0) {
+                        } elseif ($metrics['jitter_ms'] > 1.0) {
                             $qualityScore -= 1.0;
                         }
                     }
@@ -171,9 +175,9 @@ run(function () {
                     $stats[$callKey]['audio_quality'] = round($qualityScore, 1);
 
                     if ($stats[$callKey]['answered']) {
-                        $setupTime = $stats[$callKey]['setup_time'];
-                        $setupScore = ($setupTime < 0.5) ? 10.0 : (($setupTime < 1.0) ? 8.0 : (($setupTime < 1.5) ? 6.0 : 4.0));
-                        $stats[$callKey]['evaluation'] = round(10.0 * 0.4 + $setupScore * 0.2 + $qualityScore * 0.4, 1);
+                        $registrationTime = $stats[$callKey]['registration_time'];
+                        $registrationScore = ($registrationTime < 0.5) ? 10.0 : (($registrationTime < 1.0) ? 8.0 : (($registrationTime < 1.5) ? 6.0 : 4.0));
+                        $stats[$callKey]['evaluation'] = round(10.0 * 0.4 + $registrationScore * 0.2 + $qualityScore * 0.4, 1);
                     }
                     cli::pcl("[{$callKey}] Áudio salvo e analisado ({$stats[$callKey]['bytes']} bytes)", "green");
                 } catch (Throwable $ex) {
@@ -193,8 +197,8 @@ run(function () {
                 cli::pcl("[{$callKey}] Erro ao registrar", "red");
                 return;
             }
-            $stats[$callKey]['setup_time'] = microtime(true) - $registerStart;
-            cli::pcl("[{$callKey}] Registrado em " . round($stats[$callKey]['setup_time'], 3) . "s", "green");
+            $stats[$callKey]['registration_time'] = microtime(true) - $registerStart;
+            cli::pcl("[{$callKey}] Registrado em " . round($stats[$callKey]['registration_time'], 3) . "s", "green");
 
             $phone->onRinging(function () use ($callKey) {
                 cli::pcl("[{$callKey}] Tocando", "yellow");
@@ -212,6 +216,7 @@ run(function () {
                 &$stats,
                 $finalizeAudio
             ) {
+
 
                 cli::pcl("[{$callKey}] Atendida", "green");
                 $stats[$callKey]['answered']   = true;
@@ -350,7 +355,7 @@ run(function () {
     $answeredCalls = 0;
     $failedCalls   = 0;
     $totalSeconds  = 0.0;
-    $setupTimes    = [];
+    $registrationTimes = [];
     $evaluations   = [];
     // aggregate metrics
     $totalLostPackets = 0;
@@ -366,7 +371,7 @@ run(function () {
         if ($data['failed']) {
             $failedCalls++;
         }
-        $setupTimes[]  = $data['setup_time'];
+        $registrationTimes[] = $data['registration_time'];
         if ($data['evaluation'] !== null) {
             $evaluations[] = $data['evaluation'];
         }
@@ -378,8 +383,8 @@ run(function () {
             if (isset($m['total_packets'])) {
                 $totalPackets += (int)$m['total_packets'];
             }
-            if (isset($m['jitter'])) {
-                $totalJitter += (float)$m['jitter'];
+            if (isset($m['jitter_ms'])) {
+                $totalJitter += (float)$m['jitter_ms'];
             }
             $metricsCount++;
         }
@@ -387,15 +392,16 @@ run(function () {
     $endBenchmark       = microtime(true);
     $totalBenchmarkTime = $endBenchmark - $benchmarkStart;
     $callsPerSecond     = $totalCalls / $totalBenchmarkTime;
-    $avgSetupTime       = count($setupTimes) > 0 ? array_sum($setupTimes) / count($setupTimes) : 0.0;
-    $minSetupTime       = count($setupTimes) > 0 ? min($setupTimes) : 0.0;
-    $maxSetupTime       = count($setupTimes) > 0 ? max($setupTimes) : 0.0;
+    $avgRegistrationTime = count($registrationTimes) > 0 ? array_sum($registrationTimes) / count($registrationTimes) : 0.0;
+    $minRegistrationTime = count($registrationTimes) > 0 ? min($registrationTimes) : 0.0;
+    $maxRegistrationTime = count($registrationTimes) > 0 ? max($registrationTimes) : 0.0;
     $averageEvaluation  = count($evaluations) > 0 ? array_sum($evaluations) / count($evaluations) : null;
 
     $avgLostPct  = 0.0;
     $avgJitter   = 0.0;
-    if ($totalPackets > 0) {
-        $avgLostPct = ($totalLostPackets / $totalPackets) * 100.0;
+    $expectedPackets = $totalPackets + $totalLostPackets;
+    if ($expectedPackets > 0) {
+        $avgLostPct = ($totalLostPackets / $expectedPackets) * 100.0;
     }
     if ($metricsCount > 0) {
         $avgJitter = $totalJitter / $metricsCount;
@@ -425,11 +431,11 @@ run(function () {
     cli::pcl("Tempo total: " . round($totalBenchmarkTime, 2) . "s", "bold_yellow");
     cli::pcl("Throughput: " . round($callsPerSecond, 2) . " chamadas/s", "bold_yellow");
     cli::pcl(
-        "Setup time médio: " . round($avgSetupTime, 3) . "s (min: " . round($minSetupTime, 3) . "s, max: " . round($maxSetupTime, 3) . "s)",
+        "Tempo de registro SIP médio: " . round($avgRegistrationTime, 3) . "s (min: " . round($minRegistrationTime, 3) . "s, max: " . round($maxRegistrationTime, 3) . "s)",
         "cyan"
     );
     $averageEvaluationMos = $averageEvaluation !== null ? round(1.0 + ($averageEvaluation * 0.4), 2) . '/5' : 'N/A';
-    cli::pcl("Média das notas de avaliação (MOS estimado): {$averageEvaluationMos}", "bold_green");
+    cli::pcl("Média da estimativa heurística (escala MOS; não perceptual): {$averageEvaluationMos}", "bold_green");
     if ($metricsCount > 0) {
         cli::pcl("Perda média de pacotes: " . round($avgLostPct, 2) . "%", "cyan");
         cli::pcl("Jitter médio: " . round($avgJitter, 3) . " ms", "cyan");
@@ -441,21 +447,21 @@ run(function () {
 
     foreach ($stats as $callKey => $data) {
         $seconds      = round($data['seconds'], 2);
-        $setup        = round($data['setup_time'], 3);
+        $registration = round($data['registration_time'], 3);
         $audioQuality = $data['audio_quality'] !== null ? round(1.0 + ($data['audio_quality'] * 0.4), 1) . '/5' : 'N/A';
         $eval         = $data['evaluation'] !== null ? round(1.0 + ($data['evaluation'] * 0.4), 1) . '/5' : 'N/A';
         $lost         = isset($data['metrics']['lost_packets']) ? $data['metrics']['lost_packets'] : 'N/A';
         $totalPkt     = isset($data['metrics']['total_packets']) ? $data['metrics']['total_packets'] : 'N/A';
-        $jitter       = isset($data['metrics']['jitter']) ? round($data['metrics']['jitter'], 3) : 'N/A';
+        $jitter       = isset($data['metrics']['jitter_ms']) ? round($data['metrics']['jitter_ms'], 3) : 'N/A';
         cli::pcl(
-            "[{$callKey}] answered=" . ($data['answered'] ? 'sim' : 'nao') .
+            "[{$callKey}] $data[cid] answered=" . ($data['answered'] ? 'sim' : 'nao') .
             " failed=" . ($data['failed'] ? 'sim' : 'nao') .
             " seconds={$seconds}" .
-            " setup={$setup}s" .
-            " loss={$lost}/{$totalPkt}" .
-            " jitter={$jitter}" .
-            " qualidade_audio_MOS={$audioQuality}" .
-            " nota_MOS={$eval}" .
+            " registro_sip={$registration}s" .
+            " perda_estimada={$lost}/" . ((int)$lost + (int)$totalPkt) .
+            " jitter_ms={$jitter}" .
+            " qualidade_audio_heuristica_escala_MOS={$audioQuality}" .
+            " nota_heuristica_escala_MOS={$eval}" .
             (!empty($data['error']) ? " error={$data['error']}" : ''),
             "white"
         );
@@ -535,4 +541,3 @@ function printAudioCacheReport(string $label): void
 
     cli::pcl("================================", "bold_cyan");
 }
-
