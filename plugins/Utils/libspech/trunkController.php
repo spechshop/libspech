@@ -147,6 +147,10 @@ class trunkController
     public array $codecRtpMap = [];
     public array $box = [];
     public array $bufferWriteSound = [];
+    /** Buffer lengths observed before each new SSRC/rate/channel bucket. No PCM copies. */
+    private array $recordingCheckpoints = [];
+    /** @var array{rate:int,channels:int}|null Format returned by the last getBuffer(). */
+    private ?array $recordingFormat = null;
     public array $volumeCodec = [];
     public $rtpSocket;
     public $remoteIp;
@@ -2298,7 +2302,7 @@ class trunkController
 
                     $this->bufferWriteSound[$ssrc] ??= [];
                     $this->bufferWriteSound[$ssrc][$frequencyPacket] ??= [];
-                    $this->bufferWriteSound[$ssrc][$frequencyPacket][$channelsPacket] ??= '';
+                    $this->bufferWriteSound[$ssrc][$frequencyPacket][$channelsPacket] ??= $this->beginRecordingBuffer();
 
                     $this->bufferWriteSound[$ssrc][$frequencyPacket][$channelsPacket] .= $pcmData;
                 }
@@ -2663,30 +2667,106 @@ class trunkController
     }
 
 
-    public function getBuffer(): string|StringObject
+    /** Called only by the existing ??= initialization, never for subsequent packets. */
+    private function beginRecordingBuffer(): string
     {
-        $channels = [];
-
-
-        foreach ($this->bufferWriteSound as $ssrc => $freq) {
-            foreach ($freq as $freqPacket => $chansGroup) {
-                foreach ($chansGroup as $nchan => $pcm) {
-                    $channels[] = $pcm;
+        $checkpoint = [];
+        foreach ($this->bufferWriteSound as $ssrc => $rates) {
+            foreach ($rates as $rate => $channels) {
+                foreach ($channels as $count => $pcm) {
+                    $checkpoint[$ssrc][$rate][$count] = strlen($pcm);
                 }
             }
         }
+        if ($checkpoint !== []) {
+            $this->recordingCheckpoints[] = $checkpoint;
+        }
+        return '';
+    }
 
-        $uni = '';
-        $count = count($channels);
+    /** @return array{0:array,1:array{rate:int,channels:int}} */
+    private function collectRecordingStreams(): array
+    {
+        $streams = [];
+        $format = ['rate' => $this->frequencyCall, 'channels' => $this->defaultChannels];
+        $longest = -1.0;
+        foreach ($this->bufferWriteSound as $ssrc => $rates) {
+            foreach ($rates as $rate => $channels) {
+                foreach ($channels as $count => $pcm) {
+                    $size = strlen($pcm);
+                    if ($size === 0) {
+                        continue;
+                    }
+                    $rate = (int)$rate;
+                    $count = (int)$count;
+                    if ($rate <= 0 || !in_array($count, [1, 2], true) || $size % (2 * $count) !== 0) {
+                        throw new \UnexpectedValueException('Invalid recording PCM16 format');
+                    }
+                    $streams[] = [
+                        'ssrc' => $ssrc, 'rate' => $rate, 'channels' => $count,
+                        'pcm' => $pcm, 'size' => $size, 'offset' => 0,
+                    ];
+                    $duration = $size / (2 * $count * $rate);
+                    if ($duration > $longest) {
+                        $longest = $duration;
+                        $format = ['rate' => $rate, 'channels' => $count];
+                    }
+                }
+            }
+        }
+        return [$streams, $format];
+    }
 
-        if ($count > 1) {
-            $uni = interleavePcmStereo($channels[0], $channels[1]);
-        } elseif ($count == 1) {
-            $uni = $channels[0];
+    public function getBuffer(): string|StringObject
+    {
+        [$streams, $format] = $this->collectRecordingStreams();
+        $this->recordingFormat = $format;
+        $chunks = [];
+        $checkpoints = $this->recordingCheckpoints;
+        // The final interval ends at the current length of every buffer.
+        $checkpoints[] = null;
+        foreach ($checkpoints as $checkpoint) {
+            $selected = null;
+            $longest = 0.0;
+            foreach ($streams as $index => &$stream) {
+                $end = $checkpoint === null ? $stream['size']
+                    : min($stream['size'], $checkpoint[$stream['ssrc']][$stream['rate']][$stream['channels']] ?? 0);
+                $length = $end - $stream['offset'];
+                $duration = $length / (2 * $stream['channels'] * $stream['rate']);
+                if ($duration > $longest) {
+                    $longest = $duration;
+                    $selected = [$index, $stream['offset'], $length];
+                }
+                $stream['offset'] = max($stream['offset'], $end);
+            }
+            unset($stream);
+            if ($selected === null) {
+                continue;
+            }
+            // Keep known sequential segments. Within an interval there is no
+            // cross-SSRC chronology: prefer its longest received PCM stream.
+            // Never interpret independent SSRCs as left/right stereo channels.
+            $last = array_key_last($chunks);
+            if ($last !== null && $chunks[$last][0] === $selected[0]
+                && $chunks[$last][1] + $chunks[$last][2] === $selected[1]) {
+                $chunks[$last][2] += $selected[2];
+            } else {
+                $chunks[] = $selected;
+            }
         }
 
-
-        return swoole_string((string)$uni);
+        $pcm = '';
+        foreach ($chunks as [$index, $offset, $length]) {
+            $stream = $streams[$index];
+            $part = $offset === 0 && $length === $stream['size'] ? $stream['pcm']
+                : substr($stream['pcm'], $offset, $length);
+            // Conversion is confined to assembly; already interleaved stereo
+            // passes through unchanged when its format matches the output.
+            $pcm .= $this->doResample($part, $stream['rate'], $format['rate'], [
+                'input_channels' => $stream['channels'], 'output_channels' => $format['channels'],
+            ]);
+        }
+        return swoole_string($pcm);
     }
 
 
@@ -2884,6 +2964,7 @@ class trunkController
 
 
         $this->bufferWriteSound = [];
+        $this->recordingCheckpoints = [];
         $this->box = [];
         $this->members = [];
         $this->callActive = false;
@@ -3343,10 +3424,10 @@ class trunkController
 
     public function saveBufferToWavFile(string $caminho, string $audioBuffer): void
     {
-
-        $chans = 1;
-        if ($this->stereoMode) $chans = 2;
-        $audio = waveHead3(strlen($audioBuffer), $this->frequencyCall, $chans, 1) . $audioBuffer;
+        // A raw string carries no format: use the last assembled PCM format,
+        // or infer it from the recording buckets when getBuffer() was not called.
+        $format = $this->recordingFormat ?? $this->collectRecordingStreams()[1];
+        $audio = waveHead3(strlen($audioBuffer), $format['rate'], $format['channels'], 1) . $audioBuffer;
         Coroutine::writeFile($caminho, $audio);
     }
 
@@ -3394,6 +3475,8 @@ class trunkController
     {
         $this->bufferAudio = "";
         $this->bufferWriteSound = [];
+        $this->recordingCheckpoints = [];
+        $this->recordingFormat = null;
 
     }
 
