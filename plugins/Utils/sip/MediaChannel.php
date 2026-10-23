@@ -908,7 +908,7 @@ class MediaChannel
                                     'G729' => $this->rtpChans[$ssrc]->bcg729Channel->decode($rtpc->payloadRaw),
                                     'PCMU' => decodePcmuToPcm($rtpc->payloadRaw),
                                     'PCMA' => decodePcmaToPcm($rtpc->payloadRaw),
-                                    'OPUS' => ($this->members[$idFrom]['opusDecoder'] ?? $this->members[$idFrom]['opus'])->decode($rtpc->payloadRaw),
+                                    'OPUS' => ($this->members[$idFrom]['opusDecoder'] ?? $this->members[$idFrom]['opusDecoder'])->decode($rtpc->payloadRaw),
                                     'L16' => decodeL16ToPcm($rtpc->payloadRaw),
                                     'GSM' => $this->decodeGsmPayloadForMember($idFrom, $rtpc->payloadRaw),
                                     default => false
