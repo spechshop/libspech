@@ -45,6 +45,7 @@ class MediaChannel
 
     private int $packetTimeMs = self::DEFAULT_PACKET_TIME_MS;
     private bool $receiveOnlyMode = false;
+    private bool $nativeRtpReceive = false;
     public bool $debugEnabled = false;
     private array $settings = [];
     /** @var array<string,true> Explicitly replaced transports cannot autojoin. */
@@ -54,6 +55,12 @@ class MediaChannel
     public function setSettings(array $settings): void
     {
         $this->settings = $settings;
+    }
+
+    /** Opt in before start(); unavailable native APIs fall back to recvfrom(). */
+    public function setNativeRtpReceive(bool $enabled): void
+    {
+        $this->nativeRtpReceive = $enabled;
     }
 
     /**
@@ -618,6 +625,19 @@ class MediaChannel
                 $maxFrequency = 8000;
                 $this->active = true;
 
+                $nativeBuffer = null;
+                if ($this->nativeRtpReceive
+                    && function_exists('psampler_binary_slice')
+                    && class_exists(\Swoole\Buffer::class, false)
+                    && method_exists($this->socket, 'recvfromInto')
+                    && method_exists(ByteBuffer::class, 'supportsNativeBuffer')) {
+                    $candidate = new \Swoole\Buffer(65536);
+                    if (ByteBuffer::supportsNativeBuffer($candidate)) {
+                        $nativeBuffer = $candidate;
+                    }
+                    unset($candidate);
+                }
+
                 foreach ($this->ptCodecsFrequency as $codec => $frequency) {
                     if ($frequency > $maxFrequency) {
                         $maxFrequency = $frequency;
@@ -636,7 +656,7 @@ class MediaChannel
                         // close() is normally called by the RTP control coroutine
                         // while recvfrom() belongs to this coroutine. Swoole may
                         // reject a cross-coroutine close, so the owner performs the
-                        // definitive close after the 200 ms receive timeout wakes.
+                        // definitive close after cancellation or receive timeout.
                         try {
                             if (method_exists($this->socket, 'destroy')) {
                                 $this->socket->destroy();
@@ -656,7 +676,18 @@ class MediaChannel
                         return;
                     }
                     $peer = ['address' => '0.0.0.0', 'port' => 0];
-                    $packet = $this->socket->recvfrom($peer, 1.0);
+                    if ($nativeBuffer !== null) {
+                        $bytes = $this->socket->recvfromInto($nativeBuffer, $peer, 1.0);
+                        $packetLength = $bytes === false ? 0 : $bytes;
+                        $packet = $packetLength > 0;
+                        // recvfrom's falsey string "0" also follows the idle path.
+                        if ($packetLength === 1 && \psampler_binary_slice($nativeBuffer, 0, 1) === '0') {
+                            $packet = false;
+                        }
+                    } else {
+                        $packet = $this->socket->recvfrom($peer, 1.0);
+                        $packetLength = $packet === false ? 0 : strlen($packet);
+                    }
                     $currentTime = microtime(true);
 
 
@@ -666,6 +697,12 @@ class MediaChannel
 
 
                         $errCode = (int)($this->socket->errCode ?? 0);
+                        if ($nativeBuffer !== null && ($bytes === 0
+                            || ($bytes === false && defined('SOCKET_EMSGSIZE') && $errCode === SOCKET_EMSGSIZE))) {
+                            // Empty/oversized datagrams are not fatal and do not
+                            // refresh inactivity. Run the existing idle policy.
+                            $errCode = 0;
+                        }
 
                         if ($errCode !== 0 && !in_array($errCode, [110, 11, 35], true)) {
                             $this->unblock();
@@ -734,7 +771,9 @@ class MediaChannel
                     if ($this->retiredMemberEndpoints !== [] && isset($this->retiredMemberEndpoints[$idFrom])) {
                         continue;
                     }
-                    if ($this->isRtcpPacket($packet)) {
+                    if ($this->isRtcpPacket($nativeBuffer === null
+                        ? $packet
+                        : \psampler_binary_slice($nativeBuffer, 0, min(4, $packetLength)))) {
                         if ($this->audioMetricsEnabled) {
                             $this->audioMetrics['rtcp_packets']++;
                         }
@@ -743,9 +782,11 @@ class MediaChannel
                     $this->packetsProcessed++;
 
 
-                    $rtpc = new rtpc($packet);
+                    $rtpc = $nativeBuffer === null
+                        ? new rtpc($packet)
+                        : rtpc::fromNativeBuffer($nativeBuffer, $packetLength);
 
-                    if ($this->audioMetricsEnabled && (strlen($packet) < 12 || $rtpc->version !== 2)) {
+                    if ($this->audioMetricsEnabled && ($packetLength < 12 || $rtpc->version !== 2)) {
                         continue;
                     }
 
@@ -769,7 +810,7 @@ class MediaChannel
                     if ($this->audioMetricsEnabled) {
                         // Contagem, bytes e chegada cobrem somente RTP válido e mapeado; RTCP fica separado.
                         $this->audioMetrics['total_packets']++;
-                        $this->audioMetrics['bytes_received'] += strlen($packet);
+                        $this->audioMetrics['bytes_received'] += $packetLength;
                         if ($this->audioMetrics['first_arrival'] === 0.0) {
                             $this->audioMetrics['first_arrival'] = $currentTime;
                         }

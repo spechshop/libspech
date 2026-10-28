@@ -29,6 +29,7 @@ function receiveRegression(string $codec, bool $receiveOnly, bool $dynamicMappin
     }
     $sourcePort = $sender->getsockname()['port'];
     $media = new MediaChannel($receiver, 'receive-only-validation');
+    $media->setNativeRtpReceive(in_array('--native-rtp', $GLOBALS['argv'] ?? [], true));
     receiveCheck(!(new ReflectionProperty($media, 'receiveOnlyMode'))->getValue($media), 'Default mode changed');
     $trunk = (new ReflectionClass(trunkController::class))->newInstanceWithoutConstructor();
     $trunk->socketInUse = false;

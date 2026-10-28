@@ -845,6 +845,54 @@ public bcg729Channel $channelDecode;             // Decoder G.729
 public ?opusChannel $opusChannel;                // Encoder/Decoder Opus
 ```
 
+**Recepção RTP nativa opcional (PHP 8.5):**
+
+```php
+$mediaChannel->setNativeRtpReceive(true); // antes de start()
+// $trunk->mediaChannel->setNativeRtpReceive(true); // antes de receiveMedia()
+```
+
+O padrão continua sendo `recvfrom()`. A seleção ocorre uma vez por corrotina;
+se `recvfromInto()`, `Swoole\Buffer`, `psampler_binary_slice()` ou a ponte binária
+não estiverem disponíveis, a recepção usa o caminho tradicional. Para comparar
+no mesmo PHP, utilize `setNativeRtpReceive(false)` e `true` em execuções separadas.
+
+O caminho nativo reutiliza um `Swoole\Buffer(65536)` e extrai cabeçalho/payload
+diretamente pela psampler, sem outro `ByteBuffer`. `payloadRaw` permanece uma
+string independente para os codecs. `rtpc::fromNativeBuffer($source, $length)`
+exige o comprimento válido informado pelo produtor, normalmente o retorno de
+`recvfromInto()`; a origem não pode ser modificada durante a chamada síncrona.
+
+`rawPacket` guarda o datagrama original e é materializado na primeira leitura.
+O snapshot inclui CSRCs/extensões e o payload original, mesmo se `payloadRaw`
+for alterado. Leitura, escrita direta, referências, `isset`, clonagem e
+`serialize()` são suportados; a serialização materializa o pacote completo.
+Não há views nativas nem referências ao buffer receptor guardadas no `rtpc`.
+Pacotes com limites de cabeçalho inválidos mantêm o comportamento legado e
+materializam `rawPacket` imediatamente. Pacotes menores que 12 bytes conservam
+os campos default e `rawPacket=''`, como antes. O padding permanece em `payloadRaw`,
+como no parser tradicional; versão inválida e retornos parciais não foram corrigidos.
+
+A implementação usa a propriedade pública tipada desinicializada e `__get()`
+por referência, pois PHP 8.5 não permite combinar getter de hook por referência
+com setter. Antes da primeira leitura, reflexão, `(array)`, `get_object_vars()` e
+serializadores que enumeram propriedades (como `json_encode()`)
+podem observar `rawPacket` desinicializado/ausente; `unset()` nesse estado não
+oferece a mesma semântica do snapshot tradicional. Consumidores que dependem
+dessas operações devem manter `setNativeRtpReceive(false)`, ou ler `rawPacket`
+antes de executá-las. Não há detecção automática dessas operações.
+
+O forwarding de escuta que lê `rawPacket` continua recebendo os bytes completos;
+nesse caso a string completa é criada. Não se pressupõe ganho de CPU.
+
+Validação funcional, usando um PHP com as APIs nativas compiladas:
+
+```sh
+php test_rtpc_native.php
+php extra/validation/10_native_rtp_receive.php
+php extra/validation/07_media_receive_only.php --native-rtp
+```
+
 #### `plugins/Utils/sip/rtpChannel.php` (Canal RTP)
 
 Classe `libspech\Rtp\rtpChannel` - Montagem/desmontagem de pacotes RTP.
