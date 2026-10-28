@@ -62,8 +62,8 @@ run(function () {
         mkdir('benchmark', 0755, true);
     }
     shell_exec('rm benchmark/*');
-    $totalCalls  = 3;
-    $durationSec = 30;
+    $totalCalls  = 30;
+    $durationSec = 120;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
     $domain      = getenv('SIP_HOST') ?: 'spechshop.com';
