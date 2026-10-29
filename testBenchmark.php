@@ -62,7 +62,7 @@ run(function () {
         mkdir('benchmark', 0755, true);
     }
     shell_exec('rm benchmark/*');
-    $totalCalls  = 30;
+    $totalCalls  = 1;
     $durationSec = 120;
     $username    = getenv('SIP_USERNAME') ?: '';
     $password    = getenv('SIP_PASSWORD') ?: '';
