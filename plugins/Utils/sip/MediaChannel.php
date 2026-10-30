@@ -45,7 +45,7 @@ class MediaChannel
 
     private int $packetTimeMs = self::DEFAULT_PACKET_TIME_MS;
     private bool $receiveOnlyMode = false;
-    private bool $nativeRtpReceive = true;
+    private bool $nativeRtpReceive = false;
     public bool $debugEnabled = false;
     private array $settings = [];
     /** @var array<string,true> Explicitly replaced transports cannot autojoin. */
