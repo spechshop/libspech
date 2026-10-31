@@ -677,7 +677,7 @@ class MediaChannel
                     }
                     $peer = ['address' => '0.0.0.0', 'port' => 0];
                     if ($nativeBuffer !== null) {
-                        $bytes = $this->socket->recvfromInto($nativeBuffer, $peer, 1.0);
+                        $bytes = $this->socket->recvfromInto($nativeBuffer, $peer, 0.2);
                         $packetLength = $bytes === false ? 0 : $bytes;
                         $packet = $packetLength > 0;
                         // recvfrom's falsey string "0" also follows the idle path.
@@ -685,7 +685,7 @@ class MediaChannel
                             $packet = false;
                         }
                     } else {
-                        $packet = $this->socket->recvfrom($peer, 1.0);
+                        $packet = $this->socket->recvfrom($peer, -1);
                         $packetLength = $packet === false ? 0 : strlen($packet);
                     }
                     $currentTime = microtime(true);
