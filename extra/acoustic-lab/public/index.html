@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Acoustic Lab · libspech</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main class="layout">
+    <header>
+      <div class="eyebrow">LIBSPECH / PSAMPLER 0.7.0</div>
+      <h1>Acoustic Lab</h1>
+      <p>Inspecione detecções acústicas à medida que o áudio avança, quadro a quadro.</p>
+    </header>
+    <section class="card source">
+      <div class="controls">
+        <label for="fileList">Áudio</label>
+        <select id="fileList" aria-label="Selecione um arquivo WAV"></select>
+        <label class="upload" for="upload">Adicionar WAV<input id="upload" type="file" accept=".wav,audio/wav" hidden></label>
+        <button id="start">Iniciar análise</button>
+        <button id="stop" class="secondary" disabled>Parar</button>
+      </div>
+      <audio id="player" preload="metadata" controls></audio>
+      <div class="row between"><span id="connection">Pronto</span><span id="time">00:00.000 / 00:00.000</span></div>
+      <div class="progress"><div id="progress"></div></div>
+    </section>
+    <section class="stats">
+      <article class="card current"><div class="caption">Classificação acústica</div><strong id="signal" class="signal">silence</strong><div class="caption" id="signalReason">Aguardando análise</div></article>
+      <article class="card"><div class="caption">Ringback</div><strong id="ring">Inativo</strong><div class="caption" id="cadence">Cadência não confirmada</div></article>
+      <article class="card"><div class="caption">Fala</div><strong id="speech">Inativa</strong><div class="caption" id="interrupt">Sem interrupção</div></article>
+      <article class="card"><div class="caption">Frequência / nível do ring</div><strong id="frequency">—</strong><div class="caption" id="level">— dBFS</div></article>
+    </section>
+    <section class="card">
+      <div class="row between"><h2>Linha do tempo acústica</h2><span class="caption">Atualização a cada 100 ms</span></div>
+      <canvas id="timeline" height="84" aria-label="Linha do tempo de classificações e ringback"></canvas>
+      <div class="legend"><span><i class="silent"></i>Silêncio</span><span><i class="tone"></i>Tom</span><span><i class="voice"></i>Voz provável</span><span><i class="other"></i>Outro</span><span><i class="ringcolor"></i>Ring</span></div>
+    </section>
+    <section class="card logcard">
+      <div class="row between"><h2>Eventos em tempo real</h2><span id="eventCount" class="caption">0 eventos</span></div>
+      <div class="tablewrap"><table><thead><tr><th>Tempo</th><th>Evento</th><th>Sinal</th><th>Motivo</th><th>Período</th></tr></thead><tbody id="events"></tbody></table></div>
+    </section>
+    <footer>Laboratório local · SSE + Swoole · PCM16LE mono 8 kHz / 20 ms. A reprodução no navegador e a análise no servidor usam relógios independentes; pode haver pequena diferença de sincronismo.</footer>
+  </main>
+</body>
+</html>
