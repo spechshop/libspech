@@ -2280,6 +2280,8 @@ class trunkController
                     return;
                 }
 
+                $channel->shareReceivedPcmForAcoustics($pcmData);
+
                 $frequencyPacket = null;
 
                 if ($channel->recordingEnabled || $hasPcmCallback) {

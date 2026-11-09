@@ -45,6 +45,8 @@ class MediaChannel
 
     private int $packetTimeMs = self::DEFAULT_PACKET_TIME_MS;
     private bool $receiveOnlyMode = false;
+    private ?EarlyMediaAcousticTap $earlyMediaAcousticTap = null;
+    private string|false|null $receivedPcmForAcoustics = null;
     private bool $nativeRtpReceive = false;
     public bool $debugEnabled = false;
     private array $settings = [];
@@ -120,6 +122,19 @@ class MediaChannel
     public function onReceive(callable $callback): void
     {
         $this->onReceiveCallable = $callback;
+    }
+
+    /** Independent opt-in observer; existing callbacks and members are untouched. */
+    public function setEarlyMediaAcousticTap(?EarlyMediaAcousticTap $tap): void
+    {
+        $this->earlyMediaAcousticTap?->close('tap_replaced');
+        $this->earlyMediaAcousticTap = $tap;
+    }
+
+    /** The receiveOnly trunk callback can lend its already decoded PCM synchronously. */
+    public function shareReceivedPcmForAcoustics(string $pcm): void
+    {
+        if ($this->earlyMediaAcousticTap) $this->receivedPcmForAcoustics = $pcm;
     }
 
     /** Keep RTP/member bookkeeping and callbacks, without forwarding received media. */
@@ -923,6 +938,13 @@ class MediaChannel
                     // the trunk callback owns decoding, recording, VAD and PCM.
                     // Nothing below this boundary is required by that callback.
                     if ($this->receiveOnlyMode) {
+                        if ($this->earlyMediaAcousticTap) {
+                            $member = $this->members[$idFrom] ?? [];
+                            $this->earlyMediaAcousticTap->receive($rtpc, $member, $sourceCodec,
+                                $this->resolveRxFrequencyForMember($pt, $member),
+                                (int)($member['channels'] ?? 1), $this->receivedPcmForAcoustics);
+                            $this->receivedPcmForAcoustics = null;
+                        }
                         continue;
                     }
 
@@ -999,6 +1021,11 @@ class MediaChannel
                                 cli::pcl("{$this->callId} MediaChannel transcode {$sourceCodec}->{$targetCodec}: {$e->getMessage()}", 'red');
                             }
                         }
+                    }
+                    if ($this->earlyMediaAcousticTap) {
+                        $this->earlyMediaAcousticTap->receive($rtpc, $sourceMember, $sourceCodec,
+                            $sourceFrequency, $sourceChannels, $pcmData ?: $this->receivedPcmForAcoustics);
+                        $this->receivedPcmForAcoustics = null;
                     }
                     if ($sourceCodec === 'GSM') {
                         unset($this->members[$idFrom]['gsmDecodedPcm']);
@@ -2099,6 +2126,9 @@ class MediaChannel
 
     public function close(): void
     {
+        $this->earlyMediaAcousticTap?->close('channel_closed');
+        $this->earlyMediaAcousticTap = null;
+        $this->receivedPcmForAcoustics = null;
         $this->active = false;
         // Wake the coroutine that owns recvfrom so it can close its socket.
         // This keeps the longer idle timeout without delaying port release.
