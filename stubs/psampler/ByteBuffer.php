@@ -9,6 +9,10 @@ final class ByteBuffer
 
     public function append(string $data): void {}
 
+    public function appendBuffer(object $source, int $offset = 0, ?int $length = NULL): void {}
+
+    public static function supportsNativeBuffer(object $source): bool {}
+
     public function length(): int {}
 
     public function has(int $bytes): bool {}
