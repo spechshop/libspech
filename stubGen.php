@@ -1,310 +1,302 @@
 <?php
 
-function safeExport($v): array|string
-{
-    return var_export($v, true)
-            |> (fn($x) => str_replace("\n)", "]", $x))
-            |> (fn($x) => str_replace('array (', '[', $x));
-}
+declare(strict_types=1);
 
-function writeStubFile($namespace, $className, $code): void
-{
-    $dir = __DIR__ . '/stubs/' . str_replace('\\', '/', $namespace);
-    @mkdir($dir, 0777, true);
-    file_put_contents("$dir/{$className}.php", $code);
-}
+// Usage: php stubGen.php bcg729 opus psampler
+//        php stubGen.php bcg729,opus,psampler
 
-
-function generateFunctionStubs(string $ext): void
+function stubType(?ReflectionType $type): string
 {
-    $parts = getExplode($ext);
-}
-
-/**
- * @param string $ext
- * @return string[]|void
- */
-function getExplode(string $ext)
-{
-    if (!extension_loaded($ext)) {
-        echo "❌ Extensão $ext não está carregada\n";
-        return;
+    if ($type === null) {
+        return '';
     }
-
-    $internalFuncs = get_extension_funcs($ext) ?: [];
-    $userFuncs = get_defined_functions()['user'];
-
-
-    foreach ($userFuncs as $fn) {
-
-        try {
-            $rfm = new ReflectionFunction($fn);
-
-
-            $internalFuncs[] = $fn;
-
-        } catch (ReflectionException) {
-            continue;
+    if ($type instanceof ReflectionNamedType) {
+        $name = $type->getName();
+        if (!$type->isBuiltin() && !in_array(strtolower($name), ['self', 'parent', 'static'], true)) {
+            $name = '\\' . ltrim($name, '\\');
         }
+        return $type->allowsNull() && !in_array(strtolower($name), ['mixed', 'null'], true)
+            ? '?' . $name : $name;
     }
-
-    $groupedByNamespace = [];
-    foreach ($internalFuncs as $function) {
-        $parts = explode('\\', $function);
-        $funcName = array_pop($parts);
-        $namespace = implode('\\', $parts);
-
-        $groupedByNamespace[$namespace][] = [$function, $funcName];
+    $parts = [];
+    foreach ($type->getTypes() as $part) {
+        $rendered = stubType($part);
+        $parts[] = $type instanceof ReflectionUnionType && $part instanceof ReflectionIntersectionType
+            ? '(' . $rendered . ')' : $rendered;
     }
+    return implode($type instanceof ReflectionIntersectionType ? '&' : '|', $parts);
+}
 
-    foreach ($groupedByNamespace as $namespace => $functionList) {
-        $code = "<?php\n\ndeclare(strict_types=1);\n\n";
-        if ($namespace) {
-            $code .= "namespace $namespace {\n\n";
-        }
+function stubValue(mixed $value): ?string
+{
+    return is_object($value) || is_resource($value) ? null : var_export($value, true);
+}
 
-        foreach ($functionList as [$fullName, $funcName]) {
-            try {
-                $rfm = new ReflectionFunction($fullName);
-            } catch (ReflectionException) {
-                continue;
-            }
-
-            $params = [];
-            foreach ($rfm->getParameters() as $p) {
-                $type = 'mixed';
-                $t = $p->getType();
-                if ($t instanceof ReflectionNamedType) {
-                    $type = $t->getName();
-                } elseif ($t instanceof ReflectionUnionType) {
-                    $type = implode('|', array_map(fn($t) => $t->getName(), $t->getTypes()));
+function stubParameters(ReflectionFunctionAbstract $function): string
+{
+    $parameters = [];
+    foreach ($function->getParameters() as $parameter) {
+        $type = stubType($parameter->getType());
+        $part = ($type === '' ? '' : $type . ' ')
+            . ($parameter->isPassedByReference() ? '&' : '')
+            . ($parameter->isVariadic() ? '...' : '')
+            . '$' . $parameter->getName();
+        if (!$parameter->isVariadic() && $parameter->isOptional()) {
+            $default = null;
+            if ($parameter->isDefaultValueAvailable()) {
+                try {
+                    $default = stubValue($parameter->getDefaultValue());
+                } catch (ReflectionException) {
+                    // Some internal parameters report an optional value but cannot expose it.
                 }
-
-                $s = ($type !== 'mixed' ? "$type " : '');
-                $params = getArr($p, $s, $params);
             }
-
-            $return = 'mixed';
-            $rType = $rfm->getReturnType();
-            if ($rType instanceof ReflectionNamedType) {
-                $return = $rType->getName();
-            }
-
-            $code .= ($rfm->getDocComment() ?: '') . "\n";
-            $code .= "    function $funcName(" . implode(', ', $params) . ")";
-            if ($return !== 'mixed') $code .= ": \\$return";
-            $code .= " {\n        ";
-            $code .= match ($return) {
-                'string' => 'return "";',
-                'int' => 'return 0;',
-                'float' => 'return 0.0;',
-                'bool' => 'return false;',
-                'array' => 'return [];',
-                'void' => 'return;',
-                default => "return class_exists(\\$return::class) ? \\$return::class : \stdClass::class;",
-            };
-            $code .= "\n    }\n\n";
+            $part .= $default === null
+                ? ' = \\__STUBGEN_DEFAULT_UNAVAILABLE__ /* valor padrão não exposto pela extensão */'
+                : ' = ' . $default;
         }
-
-        if ($namespace) {
-            $code .= "}\n";
-        }
-
-        $dir = $ext . ($namespace ? '/' . str_replace('\\', '/', $namespace) : '');
-        writeStubFile($dir, 'functions', $code);
+        $parameters[] = $part;
     }
-    return $parts;
+    return implode(', ', $parameters);
 }
 
-/**
- * @param ReflectionParameter $p
- * @param string $s
- * @param array $params
- * @return array
- */
-function getArr(ReflectionParameter $p, string $s, array $params): array
+function stubDocComment(Reflector $reflector, string $indent = ''): string
 {
-    if ($p->isPassedByReference()) $s .= '&';
-    $s .= '$' . $p->getName();
+    $comment = $reflector->getDocComment();
+    return $comment === false ? '' : $indent . str_replace("\n", "\n" . $indent, $comment) . "\n";
+}
 
-    if ($p->isOptional()) {
-        $default = $p->isDefaultValueAvailable() ? $p->getDefaultValue() : null;
-        $s .= ' = ' . safeExport($default);
+function stubHeader(string $namespace): string
+{
+    return "<?php\n\ndeclare(strict_types=1);\n\n"
+        . ($namespace === '' ? '' : "namespace $namespace;\n\n");
+}
+
+function stubFunctions(ReflectionExtension $extension): array
+{
+    $groups = [];
+    foreach ($extension->getFunctions() as $function) {
+        $name = $function->getName();
+        $position = strrpos($name, '\\');
+        $namespace = $position === false ? '' : substr($name, 0, $position);
+        $shortName = $position === false ? $name : substr($name, $position + 1);
+        $return = stubType($function->getReturnType());
+        $groups[$namespace][] = stubDocComment($function)
+            . 'function ' . ($function->returnsReference() ? '&' : '') . $shortName
+            . '(' . stubParameters($function) . ')'
+            . ($return === '' ? '' : ': ' . $return) . " {}\n";
     }
-
-    $params[] = $s;
-    return $params;
-}
-
-
-function generateExtensionConstants(string $ext): void
-{
-    extracted($ext);
-}
-
-/**
- * @param string $ext
- * @return void
- */
-function extracted(string $ext): void
-{
-    $all = get_defined_constants(true);
-    if (!isset($all[$ext])) {
-        echo "ℹ️ Nenhuma constante encontrada para extensão $ext\n";
-        return;
+    $files = [];
+    foreach ($groups as $namespace => $declarations) {
+        $path = ($namespace === '' ? '' : str_replace('\\', '/', $namespace) . '/') . 'functions.php';
+        $files[$path] = stubHeader($namespace) . implode("\n", $declarations);
     }
-
-    $constants = $all[$ext];
-    $code = "<?php\n\ndeclare(strict_types=1);\n\n";
-
-    foreach ($constants as $name => $value) {
-        // Skip arrays or non-scalar values (só por segurança)
-        if (is_array($value) || is_object($value)) continue;
-        $code .= "const $name = " . safeExport($value) . ";\n";
-    }
-
-    $dir = __DIR__ . "/stubs/$ext";
-    @mkdir($dir, 0777, true);
-    file_put_contents("$dir/constants.php", $code);
+    return $files;
 }
 
-function generateClassStubs(array $allowFilters): void
+function stubConstants(ReflectionExtension $extension): array
 {
-    $nsParts = getExplode1($allowFilters);
-}
-
-/**
- * @param array $allowFilters
- * @return string[]
- */
-function getExplode1(array $allowFilters): array
-{
-    foreach (get_declared_classes() as $className) {
-        if (str_starts_with($className, '__')) continue;
-
-        $nsParts = explode('\\', $className);
-        $classShort = array_pop($nsParts);
-        $namespace = implode('\\', $nsParts);
-
-        $found = false;
-        foreach ($allowFilters as $f) {
-            if (str_contains(strtolower($className), strtolower($f))) {
-                $found = true;
-                break;
-            }
-        }
-        if (!$found) continue;
-
-        try {
-            $rc = new ReflectionClass($className);
-        } catch (ReflectionException) {
+    $groups = [];
+    foreach ($extension->getConstants() as $name => $value) {
+        $exported = stubValue($value);
+        if ($exported === null) {
             continue;
         }
+        $position = strrpos($name, '\\');
+        $namespace = $position === false ? '' : substr($name, 0, $position);
+        $shortName = $position === false ? $name : substr($name, $position + 1);
+        $groups[$namespace][] = "const $shortName = $exported;";
+    }
+    $files = [];
+    foreach ($groups as $namespace => $declarations) {
+        $path = ($namespace === '' ? '' : str_replace('\\', '/', $namespace) . '/') . 'constants.php';
+        $files[$path] = stubHeader($namespace) . implode("\n", $declarations) . "\n";
+    }
+    return $files;
+}
 
+function stubClass(ReflectionClass $class): string
+{
+    $code = stubHeader($class->getNamespaceName()) . stubDocComment($class);
+    if ($class->isInterface()) {
+        $kind = 'interface';
+    } elseif ($class->isTrait()) {
+        $kind = 'trait';
+    } elseif ($class->isEnum()) {
+        $kind = 'enum';
+    } else {
+        $kind = ($class->isAbstract() ? 'abstract ' : '')
+            . ($class->isFinal() ? 'final ' : '')
+            . (method_exists($class, 'isReadOnly') && $class->isReadOnly() ? 'readonly ' : '')
+            . 'class';
+    }
+    $code .= $kind . ' ' . $class->getShortName();
+    if ($class->isEnum()) {
+        $backingType = (new ReflectionEnum($class->getName()))->getBackingType();
+        if ($backingType !== null) {
+            $code .= ': ' . stubType($backingType);
+        }
+    } elseif (!$class->isInterface() && !$class->isTrait()) {
+        $parent = $class->getParentClass();
+        if ($parent !== false) {
+            $code .= ' extends \\' . $parent->getName();
+        }
+    }
+    if (!$class->isTrait()) {
+        $interfaces = $class->getInterfaceNames();
+        if (!$class->isInterface()) {
+            $parent = $class->getParentClass();
+            if ($parent !== false) {
+                $interfaces = array_diff($interfaces, $parent->getInterfaceNames());
+            }
+        }
+        if ($interfaces !== []) {
+            $code .= ($class->isInterface() ? ' extends ' : ' implements ')
+                . implode(', ', array_map(static fn (string $name): string => '\\' . $name, $interfaces));
+        }
+    }
+    $code .= "\n{\n";
 
-        //$code = "<?php\n\nnamespace $namespace;\n\ndeclare(strict_types=1);\n\n";
-        if (!empty($namespace)) {
-            $code = "<?php\n\ndeclare(strict_types=1);\n\nnamespace $namespace;\n\n";
+    foreach ($class->getTraitNames() as $trait) {
+        $code .= "    use \\$trait;\n";
+    }
+    foreach ($class->getReflectionConstants() as $constant) {
+        if ($constant->getDeclaringClass()->getName() !== $class->getName()) {
+            continue;
+        }
+        if ($constant instanceof ReflectionEnumUnitCase) {
+            $value = $constant instanceof ReflectionEnumBackedCase
+                ? ' = ' . var_export($constant->getBackingValue(), true) : '';
+            $code .= "    case {$constant->getName()}$value;\n";
+            continue;
+        }
+        $value = stubValue($constant->getValue());
+        if ($value === null) {
+            continue;
+        }
+        $visibility = $constant->isPrivate() ? 'private' : ($constant->isProtected() ? 'protected' : 'public');
+        $type = method_exists($constant, 'getType') ? stubType($constant->getType()) : '';
+        $code .= stubDocComment($constant, '    ')
+            . '    ' . ($constant->isFinal() ? 'final ' : '') . $visibility . ' const '
+            . ($type === '' ? '' : $type . ' ') . $constant->getName() . " = $value;\n";
+    }
+    foreach ($class->getProperties() as $property) {
+        if ($property->getDeclaringClass()->getName() !== $class->getName()) {
+            continue;
+        }
+        $visibility = $property->isPrivate() ? 'private' : ($property->isProtected() ? 'protected' : 'public');
+        $type = stubType($property->getType());
+        // Internal classes can expose untyped readonly properties, which PHP source cannot declare.
+        if ($property->isReadOnly() && $type === '') {
+            $type = 'mixed';
+        }
+        $code .= stubDocComment($property, '    ') . '    ' . $visibility . ' '
+            . ($property->isStatic() ? 'static ' : '')
+            . ($property->isReadOnly() ? 'readonly ' : '')
+            . ($type === '' ? '' : $type . ' ') . '$' . $property->getName();
+        if (!$property->isReadOnly() && $property->hasDefaultValue()) {
+            $value = stubValue($property->getDefaultValue());
+            if ($value !== null) {
+                $code .= ' = ' . $value;
+            }
+        }
+        $code .= ";\n";
+    }
+    foreach ($class->getMethods() as $method) {
+        if ($method->getDeclaringClass()->getName() !== $class->getName()) {
+            continue;
+        }
+        if ($class->isEnum() && in_array($method->getName(), ['cases', 'from', 'tryFrom'], true)) {
+            continue;
+        }
+        $visibility = $method->isPrivate() ? 'private' : ($method->isProtected() ? 'protected' : 'public');
+        $return = stubType($method->getReturnType());
+        $code .= "\n" . stubDocComment($method, '    ')
+            . '    ' . ($method->isFinal() ? 'final ' : '')
+            . ($method->isAbstract() && !$class->isInterface() ? 'abstract ' : '')
+            . $visibility . ' ' . ($method->isStatic() ? 'static ' : '')
+            . 'function ' . ($method->returnsReference() ? '&' : '') . $method->getName()
+            . '(' . stubParameters($method) . ')'
+            . ($return === '' ? '' : ': ' . $return)
+            . ($class->isInterface() || $method->isAbstract() ? ";\n" : " {}\n");
+    }
+    return $code . "}\n";
+}
+
+function removeStubDirectory(string $directory): void
+{
+    if (!is_dir($directory)) {
+        return;
+    }
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+    foreach ($iterator as $entry) {
+        if ($entry->isDir() && !$entry->isLink()) {
+            rmdir($entry->getPathname());
         } else {
-            $code = "<?php\n\ndeclare(strict_types=1);\n\n";
+            unlink($entry->getPathname());
         }
-
-
-        $code .= ($rc->getDocComment() ?: '') . "\n";
-        $code .= "class $classShort {\n";
-
-        foreach ($rc->getReflectionConstants(ReflectionClassConstant::IS_PUBLIC) as $const) {
-            $constName = $const->getName();
-            $constValue = $const->getValue();
-            $code .= "    public const $constName = " . safeExport($constValue) . ";\n";
-        }
-
-
-        foreach ($rc->getMethods(ReflectionMethod::IS_PUBLIC) as $m) {
-            if ($m->getDeclaringClass()->getName() !== $className) continue;
-
-            $code .= "\n    " . ($m->getDocComment() ?: '') . "\n";
-
-            $static = $m->isStatic() ? 'static ' : '';
-            $code .= "    public {$static}function {$m->getName()}(";
-
-            $params = [];
-            foreach ($m->getParameters() as $p) {
-                $type = 'mixed';
-                $t = $p->getType();
-                if ($t instanceof ReflectionNamedType) $type = $t->getName();
-                elseif ($t instanceof ReflectionUnionType) {
-                    $type = implode('|', array_map(fn($t) => $t->getName(), $t->getTypes()));
-                }
-
-                $s = ($type !== 'mixed' ? "\\$type " : '');
-                $params = getArr($p, $s, $params);
-            }
-
-            $code .= implode(', ', $params) . ')';
-
-            $return = 'mixed';
-            $rType = $m->getReturnType();
-            if ($rType instanceof ReflectionNamedType && $rType->getName() !== 'void') {
-                $return = $rType->getName();
-                if ($return === 'bool') $return = 'mixed';
-
-                $code .= ": \\$return";
-            }
-
-            $code .= " {\n        ";
-            $code .= match ($return) {
-                'string' => 'return "";',
-                'int' => 'return 0;',
-                'float' => 'return 0.0;',
-                'bool' => 'return false;',
-                'array' => 'return [];',
-                'void' => 'return;',
-                default => "return class_exists(\\$return::class) ? \\$return::class : \stdClass::class;",
-            };
-            $code .= "\n    }\n";
-        }
-
-
-        $code .= "}\n";
-
-        writeStubFile($namespace, $classShort, $code);
     }
-    return $nsParts;
+    rmdir($directory);
 }
 
-// 🔧 Qual extensão você quer gerar stub
-generateFunctionStubs('bcg729');
-generateFunctionStubs('opus');
-generateFunctionStubs('swoole');
-generateFunctionStubs('psampler');
-
-generateExtensionConstants('bcg729');
-generateExtensionConstants('opusChannel');
-generateExtensionConstants('psampler');
-
-// 🔧 Filtrar classes permitidas
-generateClassStubs(['bcg729','gsm','Swoole', 'MultibyteStringObject', 'lpcm', 'sampler', 'bcg729Channel', 'opusChannel', 'psampler']);
-
-function listStubFolders($dir = __DIR__ . '/stubs'): void
+function generateExtensionStubs(string $name, string $root): void
 {
-    if (!is_dir($dir)) {
-        return;
+    if (!extension_loaded($name)) {
+        throw new RuntimeException("Extensão $name não está carregada no PHP atual.");
     }
-
-    $files = scandir($dir);
-    foreach ($files as $file) {
-        if ($file === '.' || $file === '..') {
-            continue;
-        }
-
-        $path = $dir . '/' . $file;
-        if (is_dir($path)) {
-            echo $path . "\n";
-
-        }
+    $extension = new ReflectionExtension($name);
+    $extensionName = $extension->getName();
+    if (!preg_match('/^[A-Za-z][A-Za-z0-9 _-]*$/D', $extensionName)) {
+        throw new RuntimeException("Nome de extensão inválido para diretório: $extensionName");
     }
+    $files = stubFunctions($extension) + stubConstants($extension);
+    foreach ($extension->getClassNames() as $className) {
+        $class = new ReflectionClass($className);
+        if (strcasecmp($className, $class->getName()) !== 0) {
+            continue; // An alias of an already declared class.
+        }
+        $path = ($class->getNamespaceName() === '' ? '' : str_replace('\\', '/', $class->getNamespaceName()) . '/')
+            . $class->getShortName() . '.php';
+        $files[$path] = stubClass($class);
+    }
+    $target = $root . '/' . $extensionName;
+    $staging = $root . '/.stubgen-' . bin2hex(random_bytes(8));
+    if (!mkdir($staging, 0777, true)) {
+        throw new RuntimeException("Não foi possível criar $staging");
+    }
+    try {
+        foreach ($files as $path => $content) {
+            $file = $staging . '/' . $path;
+            $directory = dirname($file);
+            if (!is_dir($directory) && !mkdir($directory, 0777, true)) {
+                throw new RuntimeException("Não foi possível criar $directory");
+            }
+            if (file_put_contents($file, $content) === false) {
+                throw new RuntimeException("Não foi possível escrever $file");
+            }
+        }
+        removeStubDirectory($target);
+        if (!rename($staging, $target)) {
+            throw new RuntimeException("Não foi possível mover os stubs para $target");
+        }
+    } finally {
+        removeStubDirectory($staging);
+    }
+    echo "$extensionName: " . count($files) . " arquivo(s) em $target\n";
 }
 
-// List generated stub folders
-listStubFolders();
+$arguments = array_slice($argv, 1);
+$extensions = $arguments === [] ? ['bcg729', 'swoole', 'opus', 'psampler'] : explode(',', implode(',', $arguments));
+$extensions = array_values(array_unique(array_filter(array_map('trim', $extensions), 'strlen')));
+$failed = false;
+foreach ($extensions as $extension) {
+    try {
+        generateExtensionStubs($extension, __DIR__ . '/stubs');
+    } catch (Throwable $error) {
+        fwrite(STDERR, $error->getMessage() . "\n");
+        $failed = true;
+    }
+}
+exit($failed ? 1 : 0);
