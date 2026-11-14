@@ -46,6 +46,8 @@ class MediaChannel
     private int $packetTimeMs = self::DEFAULT_PACKET_TIME_MS;
     private bool $receiveOnlyMode = false;
     private bool $receiveCallbackEnabled = true;
+    private int $lastReceivedAudioAt = 0;
+    private mixed $unknownEndpointCallable = null;
     private ?EarlyMediaAcousticTap $earlyMediaAcousticTap = null;
     private string|false|null $receivedPcmForAcoustics = null;
     private bool $nativeRtpReceive = false;
@@ -129,10 +131,22 @@ class MediaChannel
         $this->onReceiveCallable = $callback;
     }
 
+    /** Opt-in admission: bind a trusted endpoint synchronously, or its packet is dropped. */
+    public function onUnknownEndpoint(callable $callback): void
+    {
+        $this->unknownEndpointCallable = $callback;
+    }
+
     /** Controls subsequent callback invocations without removing the registered callable. */
     public function setReceiveCallbackEnabled(bool $enabled): void
     {
         $this->receiveCallbackEnabled = $enabled;
+    }
+
+    /** Last admitted audio arrival, including packets whose callback was disabled. */
+    public function getLastReceivedAudioAt(): int
+    {
+        return $this->lastReceivedAudioAt;
     }
 
     /** Independent opt-in observer; existing callbacks and members are untouched. */
@@ -841,6 +855,14 @@ class MediaChannel
                     if ($rtpc->padding) {
                         $rtpc->payloadRaw = substr($rtpc->payloadRaw, 0, -ord($rtpc->payloadRaw[-1]));
                     }
+                    $sourceMember = $this->members[$idFrom] ?? null;
+                    if ($sourceMember === null && $this->unknownEndpointCallable !== null) {
+                        // Do not create a provisional relay recipient, codec or
+                        // activity record before the session authorizes the peer.
+                        ($this->unknownEndpointCallable)($rtpc, $peer, $this);
+                        $sourceMember = $this->members[$idFrom] ?? null;
+                        if (!$this->active || $sourceMember === null) continue;
+                    }
                     $lastPacketTime = $currentTime;
                     $this->packetsProcessed++;
 
@@ -851,7 +873,6 @@ class MediaChannel
                     $ssrc = $ssrcOrigin;
 
 
-                    $sourceMember = $this->members[$idFrom] ?? null;
                     $codec = $this->resolveRxCodecNameForMember($pt, $sourceMember);
                     if ($codec === null) {
                         // PT sem rtpmap explícito e sem binding RTP/AVP conhecido.
@@ -968,6 +989,15 @@ class MediaChannel
                     }
 
 
+                    // Reuse the receive timestamp; activity must not depend on
+                    // the optional observer or add another clock read per packet.
+                    $this->lastReceivedAudioAt = (int)$currentTime;
+                    if ($this->unknownEndpointCallable !== null
+                        && ($sourceMember['ssrcReceived'] ?? null) !== $rtpc->ssrc) {
+                        // Remember identity from an admitted audio endpoint even
+                        // when the periodic observer is disabled. Write on change.
+                        $this->members[$idFrom]['ssrcReceived'] = $rtpc->ssrc;
+                    }
                     if ($this->receiveCallbackEnabled && $this->onReceiveCallable) {
                         // Run inline to avoid creating a coroutine for each packet.
                         ($this->onReceiveCallable)($rtpc, $peer, $this, $this->rtpChans[$ssrc]);
@@ -2247,6 +2277,7 @@ class MediaChannel
         // explicitly so MediaChannel -> callback -> RtpSession -> socket does
         // not retain closed kernel FDs until an eventual cyclic-GC pass.
         $this->onReceiveCallable = null;
+        $this->unknownEndpointCallable = null;
         $this->onDtmfCallable = null;
         $this->onVadChangeCallable = null;
         $this->onRecordingCallable = null;
