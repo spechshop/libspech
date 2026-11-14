@@ -1,0 +1,32 @@
+{
+  "id": 445186224,
+  "tag": "v1.1.8",
+  "immutable": true,
+  "draft": false,
+  "url": "https://github.com/spechshop/pcg729/releases/tag/v1.1.8",
+  "published_at": "2026-11-14T09:43:18Z",
+  "target_commitish": "0b0be527d05b5166bc014cde2dfe1c5358b34105",
+  "assets": [
+    {
+      "id": 747010180,
+      "name": "pcg729-linux-x86_64-zts-php8.5.12-psampler0.7.0-v1.1.8",
+      "size": 138608352,
+      "digest": "sha256:50d874e9b06959973ec2873019acf0b09c3a350a8e60adce7e6f7f05ea59cd7f",
+      "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.8/pcg729-linux-x86_64-zts-php8.5.12-psampler0.7.0-v1.1.8"
+    },
+    {
+      "id": 747010188,
+      "name": "runtime-manifest.json",
+      "size": 3976,
+      "digest": "sha256:e077ce9a67d4c8aa459ed6d0cf57037eb0f07ced9431adc1ae0868022d2d8765",
+      "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.8/runtime-manifest.json"
+    },
+    {
+      "id": 747010186,
+      "name": "SHA256SUMS",
+      "size": 121,
+      "digest": "sha256:4f3257adb04342b6156e233e8e71337d012ead8a01d6ac9e49efbd5eb7e6965e",
+      "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.8/SHA256SUMS"
+    }
+  ]
+}

@@ -24,10 +24,10 @@ jobs:
           git -c advice.detachedHead=false checkout FETCH_HEAD
       - name: Install pinned media runtime
         env:
-          RUNTIME: pcg729-linux-x86_64-zts-php8.5.10-psampler0.7.0-v1.1.7
+          RUNTIME: pcg729-linux-x86_64-zts-php8.5.12-psampler0.7.0-v1.1.8
         run: |
-          curl --fail --location --retry 3 -o /tmp/media-php "https://github.com/spechshop/pcg729/releases/download/v1.1.7/$RUNTIME"
-          echo '7fdef9c3115439db0e48256e6c8e416c0c0c6aa13a179cbd6dda0b0b7eae3643  /tmp/media-php' | sha256sum --check
+          curl --fail --location --retry 3 -o /tmp/media-php "https://github.com/spechshop/pcg729/releases/download/v1.1.8/$RUNTIME"
+          echo '50d874e9b06959973ec2873019acf0b09c3a350a8e60adce7e6f7f05ea59cd7f  /tmp/media-php' | sha256sum --check
           chmod +x /tmp/media-php
           /tmp/media-php -v
           /tmp/media-php -r 'foreach (["swoole", "psampler", "bcg729", "opus"] as $ext) { if (!extension_loaded($ext)) exit(1); } if (!class_exists("gsmChannel") || !function_exists("psampler_binary_slice")) exit(1);'

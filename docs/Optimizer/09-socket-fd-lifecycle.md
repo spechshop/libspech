@@ -1,4 +1,96 @@
-# Ciclo de vida de sockets — INVESTIGAÇÃO PENDENTE
+# Ciclo de vida de sockets — validação do runtime recompilado
+
+**VALIDAÇÃO LOCAL E DISTRIBUIÇÃO APROVADAS — CI COM RUNTIME CORRIGIDO PENDENTE.**
+
+Revalidação em 2026-11-14, exclusivamente em `/home/lotus/projetos/sipswoole/libspech/`, branch `Optimizer`, commit `0c79736a23f538061a8ea613b69936513523b99d`. A revalidação local foi seguida de publicação autorizada da release v1.1.8. Esta seção descreve o estado atual; o histórico abaixo preserva os resultados e limitações anteriores, sem os apresentar como resultados desta execução.
+
+## Estado Git e preservação
+
+Estado inicial: `git status --short` vazio; `git branch --show-current` = `Optimizer`; `git rev-parse HEAD` = commit acima. Remote fetch/push: `https://github.com/spechshop/libspech`. A consulta somente leitura `git ls-remote origin refs/heads/Optimizer` retornou exatamente o mesmo commit. Com árvore limpa e HEAD idêntico ao remoto, todos os arquivos versionados das correções anteriores permaneciam presentes e idênticos ao GitHub.
+
+Estado ao encerrar a etapa local: mesma branch e HEAD, com relatório/evidências ainda sem commit. Após autorização específica de publicação e CI: nova release imutável do pcg729 e atualização restrita do workflow da `Optimizer`, além do relatório e evidências. Código de produção e testes anteriores preservados byte a byte. Nenhuma alteração nos arquivos locais do pcg729, no PHP instalado, no SipSwoole externo ou na branch `spech`. Não se utilizou a cópia antiga da libspech. Os commits da atualização e os checks reais são registrados abaixo; nenhum merge foi autorizado ou realizado.
+
+## Runtime efetivamente utilizado
+
+- Executável: `/home/lotus/CLionProjects/pcg729/buildroot/bin/php`, chamado diretamente em todos os testes PHP desta etapa, sem cópia ou instalação.
+- SHA-256 conferido antes e depois dos ensaios: `50d874e9b06959973ec2873019acf0b09c3a350a8e60adce7e6f7f05ea59cd7f`.
+- Arquivo executável de 138.608.352 bytes; PHP **8.5.12 CLI ZTS**, build **Nov 14 2026 05:15:11**; Swoole **6.3.0RC1**, build **05:14:57**; psampler **0.7.0**.
+- Nenhum php.ini carregado. Swoole com epoll, OpenSSL **4.0.2**, DTLS e threads compilados. Extensões `swoole`, `psampler`, `bcg729`, `opus`, `openssl`, `sockets`, `pcntl` e `posix` carregadas; lista integral em `runtime.txt`.
+- `Swoole\Buffer`, `Socket::recvfromInto`, `gsmChannel` e `psampler_binary_slice` presentes. A suíte nativa exige também a integração `ByteBuffer::supportsNativeBuffer`; ausência é falha, não fallback silencioso.
+
+## Resultados locais desta etapa
+
+Evidências novas: [summary.json](evidence/fd-lifecycle/pcg729-buildroot-20261114/summary.json), [functional.json](evidence/fd-lifecycle/pcg729-buildroot-20261114/functional.json), [runtime.txt](evidence/fd-lifecycle/pcg729-buildroot-20261114/runtime.txt). Todos os comandos de certificação encerraram com status zero; nenhum SKIP foi contado como aprovação.
+
+| Verificação | Resultado | Evidência no diretório novo |
+|---|---:|---|
+| Suíte funcional completa existente | **17/17** | `functional.json`, stdout/stderr e status por comando |
+| Socket independente, sem MediaChannel | **2/2** | `socket-control.json` |
+| Lifecycle tradicional | **24/24** | `traditional.json` |
+| Lifecycle nativo obrigatório | **24/24** | `native.json` |
+| Sintaxe dos arquivos PHP cobertos pelo workflow | **48/48** | `syntax.json`, mesmo seletor `git ls-files` da CI |
+| Casos nativos adicionais isolados | **5/5** | `native-isolated.json`, scripts reproduzíveis |
+
+Os 17 comandos incluem quatro modos de `check.php` (DTMF, idle, invalid, reentrant), `ptime-frame.php`, `edges.php`, `flows.php`, `codec-matrix.php`, `acoustic-dtmf.php`, os cinco testes raiz (parser RTP nativo, conversor PCM, playback/resample, member ptime e trunk recording), controle de Socket e os dois modos lifecycle. Estes últimos três também foram executados separadamente para preservar snapshots completos. Não se somam essas repetições como casos novos.
+
+Não houve regressão observada em RTP/RTCP, continuidade DTMF, packetização/ptime, PCMA/PCMU/G729/GSM/Opus, conversão PCM, gravação ou acústica dentro das matrizes existentes. Isso não equivale a chamada SIP de produção nem a avaliação perceptual de áudio.
+
+### Evidência de FDs no reactor persistente
+
+Em cada modo: seis cenários (`unstarted`, `blocked`, `traffic`, `timeout`, `reentrant`, `active`) × 1/4/16/50 canais. Cada canal possui dois sockets. A identidade foi acompanhada por `socket:[inode]` em `/proc/self/fd`, não apenas pelo número de descritor.
+
+| Observação nos 24 cenários de cada modo | Tradicional | Nativo |
+|---|---:|---:|
+| Inodes próprios retidos aos 50 ms, objetos fechados ainda referenciados | **0** | **0** |
+| Inodes próprios restantes após descarte + passagem do reactor | **0** | **0** |
+| Receptoras pendentes após fechamento | **0** | **0** |
+| MediaChannels ainda vivas após descarte | **0** | **0** |
+| Sentinela ativa durante as séries e recebendo RTP ao final | sim | sim |
+| Falhas de certificação | nenhuma | nenhuma |
+
+Os snapshots registram os FDs imediatamente após `close`, após retomada das coroutines, com objetos ainda retidos e após sua destruição. O teste não força GC, não encerra o reactor entre cenários e preserva a sentinela. No caso de 50 canais, os 100 sockets fechados já não aparecem na observação de 50 ms, mesmo com os objetos retidos. Não há sockets restantes nos snapshots posteriores à saída do reactor. O limite de 50 ms é a janela observada, não uma medição individual da syscall `close(2)`.
+
+### Cobertura nativa adicional executada
+
+`native-isolated.php` e `run-native-isolated.py` estão no diretório de evidências. Um processo por caso; somente loopback e `stream_socket_pair` UNIX; certificado localhost efêmero gerado em diretório temporário e removido ao terminar. Não houve acesso TLS a serviços externos.
+
+1. **TLS sem leitura pendente:** handshake com verificação de certificado usando CA local, request/response exatos, fechamento de cliente/servidor/listener e liberação de todos os inodes com os objetos retidos.
+2. **TLS com leitura suspensa:** mesma troca TLS, fechamento com `recv` pendente, término da coroutine e liberação dos inodes.
+3. **Stream importado, destruição do wrapper primeiro:** stream continua válido e transmite dados; fechamento posterior pelo proprietário libera o FD.
+4. **Stream importado, `Socket::close()` primeiro:** invalida o stream PHP compartilhado e libera o FD, preservando o contrato de ownership existente.
+5. **Stream importado, `fclose()` primeiro:** descarte posterior do wrapper não fecha outro socket. Não se tenta I/O no wrapper depois do fechamento externo do stream.
+
+Em todos os cinco casos, o número de FD 5 foi efetivamente reutilizado por um socket UDP de controle; após destruir os objetos antigos e avançar o reactor, o controle mantém seu inode e transmite/recebe dados. Zero FDs próprios restantes. Isso cobre a possibilidade de double close tardio nos caminhos ensaiados.
+
+A primeira versão do harness TLS usou `recv(2)` supondo que o argumento fosse timeout; nessa API ele é o comprimento, truncando a leitura de `ping`. A tentativa falhou no assert de request, antes de certificar o lifecycle. Foi corrigido somente o novo harness para `recvAll(4, 2)`/`recv(65536, 2)`. O resultado inicial está preservado em `native-isolated-harness-first.json`; não é contado como aprovação nem como defeito do runtime.
+
+### Cobertura não executada nesta etapa
+
+Não foram executados: suíte PHPT completa do Swoole; matriz de versões TLS/ciphers, falhas de handshake, mTLS e DTLS; streams importados TLS e combinações com hooks; mapa completo de sockets de hooks; concorrência de threads; escrita UDP efetivamente bloqueada e escrita TLS suspensa; DTMF de saída suspenso no fechamento; exceções escapando de callbacks; Windows; soak prolongado/produção e nova medição de desempenho ou instrumentação de memória. TCP/UNIX/stream dos corpos upstream e benchmarks abaixo são resultados históricos, não novas execuções com este binário.
+
+Essas são limitações da cobertura geral nativa, separadas da aprovação local do problema reproduzido. Não há falha nova demonstrada na libspech que justifique refatoração ou reaplicação de correções.
+
+## Distribuição autorizada e GitHub Actions
+
+O usuário autorizou expressamente publicar o runtime homologado em nova release imutável e executar os checks reais da `Optimizer`, preservando assets antigos e sem merge na `spech`.
+
+- Release publicada: [pcg729 v1.1.8](https://github.com/spechshop/pcg729/releases/tag/v1.1.8), ID `445186224`, API confirma **immutable: true**, não draft.
+- Asset novo: `pcg729-linux-x86_64-zts-php8.5.12-psampler0.7.0-v1.1.8`, ID `747010180`, 138.608.352 bytes. [URL versionada e imutável](https://github.com/spechshop/pcg729/releases/download/v1.1.8/pcg729-linux-x86_64-zts-php8.5.12-psampler0.7.0-v1.1.8).
+- Digest retornado pela API e hash do download público: **50d874e9b06959973ec2873019acf0b09c3a350a8e60adce7e6f7f05ea59cd7f**, idênticos ao buildroot homologado. Verificação feita antes de executar o download.
+- `SHA256SUMS` e `runtime-manifest.json` publicados como novos assets. Release v1.1.7 e seus assets preservados.
+- Procedência documentada na release: base pcg729 `0b0be527d05b5166bc014cde2dfe1c5358b34105` mais integração local não commitada dos patches, cujos hashes foram registrados. Os cinco arquivos nativos compilados conferem com os hashes finais do manifesto FD. A tag não é apresentada como reprodução integral do build. Não houve commit dos arquivos locais do pcg729, rebuild ou substituição do PHP instalado.
+
+O **arquivo baixado pela URL definitiva** foi revalidado: **17/17 comandos**, contendo controle Socket **2/2**, lifecycle tradicional **24/24** e nativo **24/24**, mais sintaxe **48/48**. Zero falhas e nenhum SKIP. Resultados completos em [evidence/fd-lifecycle/pcg729-v1.1.8/](evidence/fd-lifecycle/pcg729-v1.1.8/), incluindo metadados da release, digest e stdout/stderr de cada comando.
+
+O workflow `.github/workflows/mediachannel.yml` altera somente o nome do runtime, a tag da URL de download e o SHA-256 fixado no `sha256sum --check`. Todos os comandos, critérios estritos de FDs, extensões e seleção de sintaxe permanecem iguais. O runner continua Ubuntu 24.04. Não foi acrescentado binário à árvore Git.
+
+Situação anterior preservada: [run 43574743887](https://github.com/spechshop/libspech/actions/runs/43574743887), commit `0c79736a23f538061a8ea613b69936513523b99d`, `completed / failure` usando v1.1.7 sem patch. Metadados históricos em `pcg729-buildroot-20261114/github.json`.
+
+Próxima verificação: push da atualização na `Optimizer` e execução real do workflow com v1.1.8. **Ainda não se declara aprovação da CI.** As limitações da cobertura nativa geral listadas acima permanecem separadas da certificação do defeito reproduzido. Não houve mudança de código de mídia ou flexibilização de testes.
+
+---
+
+# Histórico da investigação anterior (antes do runtime recompilado)
 
 Data: 2026-11-14. Base libspech: `81a590e`, branch `Optimizer`.
 

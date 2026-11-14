@@ -1,0 +1,126 @@
+{
+  "queried_at": "2026-11-14T09:38:18.690Z",
+  "releases": [
+    {
+      "tag": "v1.1.7",
+      "immutable": true,
+      "url": "https://github.com/spechshop/pcg729/releases/tag/v1.1.7",
+      "assets": [
+        {
+          "name": "pcg729-linux-x86_64-zts-php8.5.10-psampler0.7.0-v1.1.7",
+          "size": 137825672,
+          "digest": "sha256:7fdef9c3115439db0e48256e6c8e416c0c0c6aa13a179cbd6dda0b0b7eae3643",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.7/pcg729-linux-x86_64-zts-php8.5.10-psampler0.7.0-v1.1.7"
+        },
+        {
+          "name": "SHA256SUMS",
+          "size": 121,
+          "digest": "sha256:90daa06d1478c4b0c2b6770b71d4c495b9f1ae5943d34b5bdb28a6e07fa08d1e",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.7/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "v1.1.6",
+      "immutable": true,
+      "url": "https://github.com/spechshop/pcg729/releases/tag/v1.1.6",
+      "assets": [
+        {
+          "name": "pcg729-linux-x86_64-zts-php8.5.10-psampler0.7.0-v1.1.6",
+          "size": 137824624,
+          "digest": "sha256:476a242394576930d8f9fc1a8df1b94e8e6e36b42d56d519ae3535f7f6b0b056",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.6/pcg729-linux-x86_64-zts-php8.5.10-psampler0.7.0-v1.1.6"
+        },
+        {
+          "name": "SHA256SUMS",
+          "size": 121,
+          "digest": "sha256:29787f64892d294a7026dcb96ab6bad8de52f73fdcb6972c220e4f0a30d2bc2d",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.6/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "v1.1.5",
+      "immutable": true,
+      "url": "https://github.com/spechshop/pcg729/releases/tag/v1.1.5",
+      "assets": [
+        {
+          "name": "pcg729-linux-x86_64-zts",
+          "size": 110055216,
+          "digest": "sha256:c07dd281ea02a10c2f8b975c4118eb26d9127fc94b40b92fb91945c2f60a494b",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.5/pcg729-linux-x86_64-zts"
+        },
+        {
+          "name": "SHA256SUMS",
+          "size": 90,
+          "digest": "sha256:7c71c2449c2794bcc95c07b568667d8ac4d9bd31d1788de72068cee67042d4c8",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.5/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "v1.1.4",
+      "immutable": true,
+      "url": "https://github.com/spechshop/pcg729/releases/tag/v1.1.4",
+      "assets": [
+        {
+          "name": "pcg729-linux-x86_64-zts",
+          "size": 137769360,
+          "digest": "sha256:09d08e11460a10721544a8a3e90a0d856ec7614ae877183527da3c88f81b10df",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.4/pcg729-linux-x86_64-zts"
+        },
+        {
+          "name": "SHA256SUMS",
+          "size": 90,
+          "digest": "sha256:eb6ab011713ac591a938f7d7fbe089f7f06a175b5b8ea6b46e43d88e0557c3a7",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.4/SHA256SUMS"
+        }
+      ]
+    },
+    {
+      "tag": "v1.1.3",
+      "immutable": true,
+      "url": "https://github.com/spechshop/pcg729/releases/tag/v1.1.3",
+      "assets": [
+        {
+          "name": "pcg729-linux-x86_64-zts",
+          "size": 137718256,
+          "digest": "sha256:66469b635039072078b3fbe623c1de2f41c969a6ed83c356fdb6548a55b85b14",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.3/pcg729-linux-x86_64-zts"
+        },
+        {
+          "name": "SHA256SUMS",
+          "size": 90,
+          "digest": "sha256:f6565d32fc7d5e94479c38d7444a4b970560f54e8226c7c128d360e2ff23feda",
+          "url": "https://github.com/spechshop/pcg729/releases/download/v1.1.3/SHA256SUMS"
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "id": 43574743887,
+      "head_sha": "0c79736a23f538061a8ea613b69936513523b99d",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/spechshop/libspech/actions/runs/43574743887",
+      "updated_at": "2026-11-14T08:13:33Z"
+    },
+    {
+      "id": 43574686096,
+      "head_sha": "2cab360ff094ade17759584da491a9dae5369822",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/spechshop/libspech/actions/runs/43574686096",
+      "updated_at": "2026-11-14T08:12:45Z"
+    },
+    {
+      "id": 43571337389,
+      "head_sha": "81a590e2d2c9c6c138c32e80d8f73dbe1452afd6",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/spechshop/libspech/actions/runs/43571337389",
+      "updated_at": "2026-11-14T07:29:54Z"
+    }
+  ]
+}

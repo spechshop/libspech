@@ -1,0 +1,144 @@
+{
+  "date": "2026-11-14T05:38:41.817931-04:00",
+  "root": "/home/lotus/projetos/sipswoole/libspech",
+  "branch": "Optimizer",
+  "head": "0c79736a23f538061a8ea613b69936513523b99d",
+  "remote": "origin\thttps://github.com/spechshop/libspech (fetch)\norigin\thttps://github.com/spechshop/libspech (push)\n",
+  "runtime": "/home/lotus/CLionProjects/pcg729/buildroot/bin/php",
+  "sha256": "50d874e9b06959973ec2873019acf0b09c3a350a8e60adce7e6f7f05ea59cd7f",
+  "functional": {
+    "passed": 17,
+    "total": 17
+  },
+  "syntax": {
+    "passed": 48,
+    "total": 48
+  },
+  "socket_control": {
+    "passed": 2,
+    "total": 2
+  },
+  "traditional": {
+    "passed": 24,
+    "total": 24,
+    "held_fds_after_50ms": 0,
+    "remaining_fds_after_destruction": 0,
+    "readers_alive": 0,
+    "guard_all_alive": true,
+    "after_reactor": {
+      "0": "pipe:[7032454]",
+      "1": "pipe:[7055620]",
+      "2": "pipe:[7055621]",
+      "3": "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "5": "/home/lotus/projetos/sipswoole/libspech/plugins/Utils/Coroutine"
+    }
+  },
+  "native": {
+    "passed": 24,
+    "total": 24,
+    "held_fds_after_50ms": 0,
+    "remaining_fds_after_destruction": 0,
+    "readers_alive": 0,
+    "guard_all_alive": true,
+    "after_reactor": {
+      "0": "pipe:[7032454]",
+      "1": "pipe:[7058074]",
+      "2": "pipe:[7058075]",
+      "3": "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "5": "/home/lotus/projetos/sipswoole/libspech/plugins/Utils/Coroutine"
+    }
+  },
+  "native_isolated": [
+    {
+      "case": "tls-idle",
+      "status": 0,
+      "result": {
+        "mode": "tls-idle",
+        "php": "8.5.12",
+        "swoole": "6.3.0RC1",
+        "owned": {
+          "5": "socket:[7059358]",
+          "6": "socket:[7059360]",
+          "7": "socket:[7059361]"
+        },
+        "held": [],
+        "handshake": true,
+        "reader_alive": false,
+        "reused_fd": 5,
+        "remaining": [],
+        "passed": true
+      }
+    },
+    {
+      "case": "tls-blocked",
+      "status": 0,
+      "result": {
+        "mode": "tls-blocked",
+        "php": "8.5.12",
+        "swoole": "6.3.0RC1",
+        "owned": {
+          "5": "socket:[7062277]",
+          "6": "socket:[7062279]",
+          "7": "socket:[7062280]"
+        },
+        "held": [],
+        "handshake": true,
+        "reader_alive": false,
+        "reused_fd": 5,
+        "remaining": [],
+        "passed": true
+      }
+    },
+    {
+      "case": "import-destruct",
+      "status": 0,
+      "result": {
+        "mode": "import-destruct",
+        "php": "8.5.12",
+        "swoole": "6.3.0RC1",
+        "owned": {
+          "5": "socket:[7062298]",
+          "6": "socket:[7062299]"
+        },
+        "held": [],
+        "reused_fd": 5,
+        "remaining": [],
+        "passed": true
+      }
+    },
+    {
+      "case": "import-close",
+      "status": 0,
+      "result": {
+        "mode": "import-close",
+        "php": "8.5.12",
+        "swoole": "6.3.0RC1",
+        "owned": {
+          "5": "socket:[7056954]",
+          "6": "socket:[7056955]"
+        },
+        "held": [],
+        "reused_fd": 5,
+        "remaining": [],
+        "passed": true
+      }
+    },
+    {
+      "case": "import-stream-first",
+      "status": 0,
+      "result": {
+        "mode": "import-stream-first",
+        "php": "8.5.12",
+        "swoole": "6.3.0RC1",
+        "owned": {
+          "5": "socket:[7058250]",
+          "6": "socket:[7058251]"
+        },
+        "held": [],
+        "reused_fd": 5,
+        "remaining": [],
+        "passed": true
+      }
+    }
+  ]
+}

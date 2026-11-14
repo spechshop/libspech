@@ -1,0 +1,290 @@
+[
+  {
+    "file": "plugins/Packet/controller/renderMessages.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Packet/controller/renderMessages.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/Coroutine/bash.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/Coroutine/bash.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/audio/AudioCache.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/audio/AudioCache.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/audio/AudioFilePlayback.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/audio/AudioFilePlayback.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/audio/EarlyGreetingDetector.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/audio/EarlyGreetingDetector.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/audio/EarlyMediaAcousticMonitor.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/audio/EarlyMediaAcousticMonitor.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/audio/EarlyMediaVoicePolicy.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/audio/EarlyMediaVoicePolicy.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/cache/cache.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/cache/cache.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/cache/rpcClient.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/cache/rpcClient.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/cli/cli.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/cli/cli.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/libspech/functionsTrunkController.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/libspech/functionsTrunkController.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/libspech/sound.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/libspech/sound.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/libspech/trunkController.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/libspech/trunkController.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/network/SocketMutable.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/network/SocketMutable.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/network/network.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/network/network.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/sip/AcousticRtpContinuity.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/sip/AcousticRtpContinuity.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/sip/AdaptiveBuffer.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/sip/AdaptiveBuffer.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/sip/DtmfEvent.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/sip/DtmfEvent.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/sip/EarlyMediaAcousticTap.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/sip/EarlyMediaAcousticTap.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/sip/MediaChannel.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/sip/MediaChannel.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/sip/PcmStreamConverter.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/sip/PcmStreamConverter.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/sip/rtpChannel.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/sip/rtpChannel.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/sip/rtpc.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/sip/rtpc.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/Utils/sip/sip.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/Utils/sip/sip.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "plugins/autoloader.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in plugins/autoloader.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "test_audio_file_playback_resample.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in test_audio_file_playback_resample.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "test_media_channel_member_ptime.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in test_media_channel_member_ptime.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "test_pcm_stream_converter.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in test_pcm_stream_converter.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "test_rtpc_cost.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in test_rtpc_cost.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "test_rtpc_native.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in test_rtpc_native.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "test_trunk_recording.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in test_trunk_recording.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/001_opus_channel_resample_8khz_to_48khz.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/001_opus_channel_resample_8khz_to_48khz.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/002_resampler_8khz_to_48khz.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/002_resampler_8khz_to_48khz.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/003_bcg729_channel_resampler_8khz_to_48khz.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/003_bcg729_channel_resampler_8khz_to_48khz.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/acoustic-dtmf-cost.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/acoustic-dtmf-cost.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/acoustic-dtmf-voice.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/acoustic-dtmf-voice.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/acoustic-dtmf.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/acoustic-dtmf.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/acoustic-parity.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/acoustic-parity.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/bench.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/bench.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/check.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/check.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/codec-matrix.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/codec-matrix.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/dtmf-cost.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/dtmf-cost.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/edges.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/edges.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/fd-lifecycle.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/fd-lifecycle.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/flows.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/flows.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/idle.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/idle.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/ptime-frame.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/ptime-frame.php\n",
+    "stderr": ""
+  },
+  {
+    "file": "tests/mediachannel/socket-fd-control.php",
+    "status": 0,
+    "stdout": "No syntax errors detected in tests/mediachannel/socket-fd-control.php\n",
+    "stderr": ""
+  }
+]
