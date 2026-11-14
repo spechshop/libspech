@@ -121,3 +121,7 @@ Métricas do processo completo e ociosidade (mediana [mínimo, máximo], dez exe
 O workflow existente `.github/workflows/mediachannel.yml`, job **PHP and media regression**, executa os três novos comandos via `tests/mediachannel/run.py`; o mesmo runner continua executando as regressões anteriores. Não foi criado workflow redundante, não houve alteração de proteção de branches e o runtime continua fixado por SHA256. O teste estrito deve falhar no runtime atual, em vez de ocultar a retenção.
 
 O resultado real após push será registrado em `github-actions.json` e abaixo. Não há link de execução aprovada a apresentar enquanto a CI usar o runtime sem correção nativa. Falta distribuir/aprovar um runtime corrigido, validar os riscos nativos e os cenários pendentes e obter o check verde com os testes estritos. Estado: **INVESTIGAÇÃO PENDENTE**.
+
+Resultado real consultado: [run 43574686096](https://github.com/spechshop/libspech/actions/runs/43574686096), commit `2cab360ff094ade17759584da491a9dae5369822`, **failure** em **PHP and media regression**. Os 14 comandos anteriores passaram; os três novos comandos de FD reprovaram no runtime publicado, conforme reprodução local. Log integral comprimido em `github-actions.log.gz`; metadados em `github-actions.json`. O commit de registro posterior altera somente relatório/evidências. Não existe aprovação dos novos checks para entregar.
+
+Os arquivos `*.log.gz` preservam logs individuais e de build sem depender das regras de exclusão de `*.log` do repositório.
