@@ -1,0 +1,32 @@
+{
+  "run_id": 43582003633,
+  "commit": "471db25c93e1f78604a6b07c6a2420d402b3556e",
+  "download_sha256_check": "/tmp/media-php: OK",
+  "functional": "17/17",
+  "syntax": "48/48",
+  "fd": {
+    "socket-control": "2/2",
+    "traditional": "24/24",
+    "native": "24/24"
+  },
+  "log_sha256": "e8aadbb6bf31394e95d04cfa4fe56e3f91a4d988e96e3788eee8c918a3a6fb6a",
+  "passes": [
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/check.php /home/runner/work/libspech/libspech dtmf",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/check.php /home/runner/work/libspech/libspech idle",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/check.php /home/runner/work/libspech/libspech invalid",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/check.php /home/runner/work/libspech/libspech reentrant",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/ptime-frame.php /home/runner/work/libspech/libspech",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/edges.php /home/runner/work/libspech/libspech",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/flows.php /home/runner/work/libspech/libspech",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/codec-matrix.php /home/runner/work/libspech/libspech",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/acoustic-dtmf.php /home/runner/work/libspech/libspech",
+    "PASS /home/runner/work/libspech/libspech/test_rtpc_native.php",
+    "PASS /home/runner/work/libspech/libspech/test_pcm_stream_converter.php",
+    "PASS /home/runner/work/libspech/libspech/test_audio_file_playback_resample.php",
+    "PASS /home/runner/work/libspech/libspech/test_media_channel_member_ptime.php",
+    "PASS /home/runner/work/libspech/libspech/test_trunk_recording.php",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/socket-fd-control.php",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/fd-lifecycle.php /home/runner/work/libspech/libspech traditional",
+    "PASS /home/runner/work/libspech/libspech/tests/mediachannel/fd-lifecycle.php /home/runner/work/libspech/libspech native"
+  ]
+}

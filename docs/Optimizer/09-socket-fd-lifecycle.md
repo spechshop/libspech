@@ -1,6 +1,6 @@
 # Ciclo de vida de sockets — validação do runtime recompilado
 
-**VALIDAÇÃO LOCAL E DISTRIBUIÇÃO APROVADAS — CI COM RUNTIME CORRIGIDO PENDENTE.**
+**HOMOLOGAÇÃO DO CICLO DE VIDA DE FDs APROVADA — RUNTIME DISTRIBUÍDO E CI APROVADA.**
 
 Revalidação em 2026-11-14, exclusivamente em `/home/lotus/projetos/sipswoole/libspech/`, branch `Optimizer`, commit `0c79736a23f538061a8ea613b69936513523b99d`. A revalidação local foi seguida de publicação autorizada da release v1.1.8. Esta seção descreve o estado atual; o histórico abaixo preserva os resultados e limitações anteriores, sem os apresentar como resultados desta execução.
 
@@ -86,7 +86,17 @@ O workflow `.github/workflows/mediachannel.yml` altera somente o nome do runtime
 
 Situação anterior preservada: [run 43574743887](https://github.com/spechshop/libspech/actions/runs/43574743887), commit `0c79736a23f538061a8ea613b69936513523b99d`, `completed / failure` usando v1.1.7 sem patch. Metadados históricos em `pcg729-buildroot-20261114/github.json`.
 
-Próxima verificação: push da atualização na `Optimizer` e execução real do workflow com v1.1.8. **Ainda não se declara aprovação da CI.** As limitações da cobertura nativa geral listadas acima permanecem separadas da certificação do defeito reproduzido. Não houve mudança de código de mídia ou flexibilização de testes.
+### Aprovação real no GitHub
+
+Atualização enviada exclusivamente à `Optimizer`: commit [`471db25c93e1f78604a6b07c6a2420d402b3556e`](https://github.com/spechshop/libspech/commit/471db25c93e1f78604a6b07c6a2420d402b3556e). Workflow [MediaChannel — run 43582003633](https://github.com/spechshop/libspech/actions/runs/43582003633), job **PHP and media regression**, **completed / success** em 2026-11-14, 09:45 UTC.
+
+Todos os steps passaram: checkout, instalação do runtime v1.1.8 com `/tmp/media-php: OK` no SHA-256, sintaxe e regressão funcional com lifecycle estrito. O log real confirma **17/17 comandos**, **48/48 arquivos PHP**, controle independente **2/2**, lifecycle tradicional **24/24** e nativo **24/24**, sem falhas ou SKIP. Os JSONs emitidos pelo runner foram extraídos do log e seus critérios de FDs conferidos: zero inodes retidos nos cenários dos dois modos.
+
+Evidências: `pcg729-v1.1.8/github-actions.json`, `github-actions-summary.json` e log integral `github-actions.log.gz`. O registro de aprovação é um commit posterior apenas de documentação/evidências, sem mudança de workflow ou implementação; o HEAD final também é acompanhado antes da entrega.
+
+Estado de entrega: branch `Optimizer`, commits enviados, sem merge na `spech`. O estado local anterior continha somente o relatório e evidências autorizados da homologação local. Os arquivos locais preexistentes do pcg729 foram preservados; seu status e diff foram comparados antes/depois da publicação. Não há alteração em código de mídia ou nos testes anteriores.
+
+Recomendação: concluir o problema reproduzido de retenção de FDs na `Optimizer` com este runtime. Distribuição imutável e CI estrita foram efetivamente aprovadas. As limitações da cobertura nativa geral listadas acima permanecem documentadas; esta aprovação não certifica toda combinação de Swoole, plataforma ou carga de produção.
 
 ---
 
