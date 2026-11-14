@@ -1,0 +1,224 @@
+COMMAND ['/home/lotus/CLionProjects/pcg729/buildroot/bin/php', '-v']
+PHP 8.5.12 (cli) (built: Nov 14 2026 05:15:11) (ZTS)
+Copyright (c) The PHP Group
+Zend Engine v4.5.12, Copyright (c) Zend Technologies
+    with Zend OPcache v8.5.12, Copyright (c), by Zend Technologies
+
+EXIT 0
+
+COMMAND ['/home/lotus/CLionProjects/pcg729/buildroot/bin/php', '--ini']
+Configuration File (php.ini) Path: "/usr/local/etc/php"
+Loaded Configuration File:         (none)
+Scan for additional .ini files in: "/usr/local/etc/php/conf.d"
+Additional .ini files parsed:      (none)
+
+EXIT 0
+
+COMMAND ['/home/lotus/CLionProjects/pcg729/buildroot/bin/php', '-m']
+[PHP Modules]
+bcg729
+bcmath
+bz2
+Core
+ctype
+curl
+date
+dom
+exif
+fileinfo
+filter
+gd
+hash
+iconv
+intl
+json
+lexbor
+libxml
+mbstring
+mysqli
+mysqlnd
+openssl
+opus
+pcntl
+pcre
+PDO
+pdo_mysql
+pgsql
+Phar
+posix
+psampler
+random
+readline
+redis
+Reflection
+session
+soap
+sockets
+sodium
+SPL
+sqlite3
+standard
+swoole
+tokenizer
+uri
+uv
+xmlwriter
+yaml
+Zend OPcache
+zip
+zlib
+
+[Zend Modules]
+Zend OPcache
+
+
+EXIT 0
+
+COMMAND ['/home/lotus/CLionProjects/pcg729/buildroot/bin/php', '--ri', 'swoole']
+
+swoole
+
+Swoole => enabled
+Author => Swoole Team <team@swoole.com>
+Version => 6.3.0RC1
+Built => Nov 14 2026 05:14:57
+host byte order => little endian
+coroutine => enabled with boost asm context
+epoll => enabled
+eventfd => enabled
+thread => enabled
+signalfd => enabled
+cpu_affinity => enabled
+spinlock => enabled
+rwlock => enabled
+sockets => enabled
+openssl => OpenSSL 4.0.2 25 Aug 2026
+dtls => enabled
+http2 => enabled
+json => enabled
+curl-native => enabled
+curl-version => 8.22.0
+c-ares => 1.34.8
+zlib => 1.3.2
+brotli => E16785408/D16785408
+mutex_timedlock => enabled
+pthread_barrier => enabled
+futex => enabled
+mysqlnd => enabled
+postgresql(libpq) version => 18.6
+coroutine_pgsql => enabled
+coroutine_sqlite => enabled
+
+Directive => Local Value => Master Value
+swoole.enable_library => On => On
+swoole.enable_fiber_mock => Off => Off
+swoole.enable_preemptive_scheduler => Off => Off
+swoole.display_errors => On => On
+swoole.use_shortname => On => On
+swoole.socket_buffer_size => 8388608 => 8388608
+swoole.blocking_detection => Off => Off
+swoole.blocking_threshold => 100000 => 100000
+swoole.profile => Off => Off
+swoole.leak_detection => Off => Off
+
+EXIT 0
+
+COMMAND ['/home/lotus/CLionProjects/pcg729/buildroot/bin/php', '--ri', 'psampler']
+
+psampler
+
+psampler support => enabled
+Version => 0.7.0
+Description => Reamostragem, manipulacao PCM e evidencias acusticas/ring PCM16
+Author => psampler
+PCM native API => v1; startup registry, PCM16LE borrowed access
+Binary native API => v1; synchronous borrowed spans, optional providers
+Swoole Buffer bridge => enabled (Swoole read ABI v1)
+
+Classe => Metodos / API
+Resampler => __construct(?int srcRate, ?int dstRate), reset(): void, sample(string pcm, ?int srcRate, ?int dstRate): string, process(string pcm): string, returnEmpty(): string|false
+LPCM => __construct(int channels, int bitDepth, bool isBigEndian=false), encodeMono(array): string, decodeMono(string): array, encodeStereo(array, array): string, decodeStereo(string): array
+ByteBuffer => __construct(int initialCapacity=4096), append(string): void, appendBuffer(object source, int offset=0, ?int length=null): void, supportsNativeBuffer(object source): bool, length(): int, has(int): bool, pop(int): string, peek(int): string, discard(int): void, clear(): void, capacity(): int
+PcmBuffer => __construct(int sampleRate, int channels), append(string pcm): void, size(): int, capacity(): int, sampleRate(): int, channels(): int, clear(): void, flush(): PcmBuffer, reset(int sampleRate, int channels): void, toString(): string, toMono(): PcmBuffer, toStereo(): PcmBuffer, resample(int sampleRate): PcmBuffer, canInvoke(string operation): bool, invoke(string operation, mixed ...args): mixed
+AcousticStreamAnalyzer => __construct(int sampleRate=8000, int frameDurationMs=20), on(string event, callable callback): AcousticStreamAnalyzer, push(string pcm): void, state(): array, reset(): void
+PCMAnalyzer => __construct(int sampleRate=8000, int frameDurationMs=20), analyze(string pcm): array
+
+Funcao global => Assinatura
+psampler_binary_slice => psampler_binary_slice(object source, int offset=0, ?int length=null): string
+interleavePcmStereo => interleavePcmStereo(string leftPcm, string rightPcm): string|false - intercala dois canais PCM 16-bit (L/R) em stream estereo
+monoToStereo => monoToStereo(string pcmData): string - duplica cada amostra PCM 16-bit mono nos canais L/R
+stereoToMono => stereoToMono(string pcmData): string - PCM16LE average, truncation toward zero
+
+Parametro de DSP => Valor
+Filtro => sinc janelado por Kaiser (polyphase)
+FILTER_LENGTH => 64
+KAISER_BETA => 8.6
+Fases polyphase => 256
+Cache FIR => LRU process-wide; 16 pares de taxas; ZTS-safe
+MAX_BUFFER_SIZE => 8192 amostras
+Pos-processamento => remocao de DC offset (passa-alta 1 polo) + soft clipping [-32768, 32767]
+
+EXIT 0
+
+COMMAND ['/home/lotus/CLionProjects/pcg729/buildroot/bin/php', '-r', 'echo json_encode(["binary"=>PHP_BINARY,"extensions"=>get_loaded_extensions(),"Buffer"=>class_exists("Swoole\\\\Buffer"),"recvfromInto"=>method_exists("Swoole\\\\Coroutine\\\\Socket","recvfromInto"),"gsmChannel"=>class_exists("gsmChannel"),"psampler_binary_slice"=>function_exists("psampler_binary_slice")],JSON_PRETTY_PRINT);']
+{
+    "binary": "\/home\/lotus\/CLionProjects\/pcg729\/buildroot\/bin\/php",
+    "extensions": [
+        "Core",
+        "date",
+        "lexbor",
+        "openssl",
+        "pcre",
+        "sqlite3",
+        "zlib",
+        "bcg729",
+        "bcmath",
+        "bz2",
+        "ctype",
+        "curl",
+        "uri",
+        "json",
+        "mbstring",
+        "SPL",
+        "fileinfo",
+        "filter",
+        "gd",
+        "hash",
+        "iconv",
+        "intl",
+        "session",
+        "standard",
+        "libxml",
+        "mysqlnd",
+        "mysqli",
+        "Zend OPcache",
+        "opus",
+        "pcntl",
+        "PDO",
+        "pdo_mysql",
+        "pgsql",
+        "Phar",
+        "posix",
+        "sockets",
+        "random",
+        "readline",
+        "redis",
+        "Reflection",
+        "exif",
+        "soap",
+        "swoole",
+        "sodium",
+        "psampler",
+        "tokenizer",
+        "dom",
+        "uv",
+        "xmlwriter",
+        "yaml",
+        "zip"
+    ],
+    "Buffer": true,
+    "recvfromInto": true,
+    "gsmChannel": true,
+    "psampler_binary_slice": true
+}
+EXIT 0

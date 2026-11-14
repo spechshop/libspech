@@ -1,0 +1,7 @@
+
+Fatal error: Uncaught RuntimeException: event time[0,["timestamp_jump"]] in /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/acoustic-dtmf.php:9
+Stack trace:
+#0 /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/acoustic-dtmf.php(23): check(false, 'event time[0,["...')
+#1 /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/acoustic-dtmf.php(29): timeline(Array, 0, Array, 'event time')
+#2 {main}
+  thrown in /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/acoustic-dtmf.php on line 9

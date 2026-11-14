@@ -1,0 +1,17 @@
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/check.php /home/lotus/projetos/sipswoole/libspech dtmf
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/check.php /home/lotus/projetos/sipswoole/libspech idle
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/check.php /home/lotus/projetos/sipswoole/libspech invalid
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/check.php /home/lotus/projetos/sipswoole/libspech reentrant
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/ptime-frame.php /home/lotus/projetos/sipswoole/libspech
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/edges.php /home/lotus/projetos/sipswoole/libspech
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/flows.php /home/lotus/projetos/sipswoole/libspech
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/codec-matrix.php /home/lotus/projetos/sipswoole/libspech
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/acoustic-dtmf.php /home/lotus/projetos/sipswoole/libspech
+PASS /home/lotus/projetos/sipswoole/libspech/test_rtpc_native.php
+PASS /home/lotus/projetos/sipswoole/libspech/test_pcm_stream_converter.php
+PASS /home/lotus/projetos/sipswoole/libspech/test_audio_file_playback_resample.php
+PASS /home/lotus/projetos/sipswoole/libspech/test_media_channel_member_ptime.php
+PASS /home/lotus/projetos/sipswoole/libspech/test_trunk_recording.php
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/socket-fd-control.php
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php /home/lotus/projetos/sipswoole/libspech traditional
+PASS /home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php /home/lotus/projetos/sipswoole/libspech native

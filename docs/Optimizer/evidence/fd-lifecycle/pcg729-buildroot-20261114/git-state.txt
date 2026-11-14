@@ -1,0 +1,29 @@
+INITIAL (observed before tests)
+git status --short: empty
+branch: Optimizer
+HEAD: 0c79736a23f538061a8ea613b69936513523b99d
+origin fetch/push: https://github.com/spechshop/libspech
+ls-remote origin refs/heads/Optimizer: 0c79736a23f538061a8ea613b69936513523b99d
+
+FINAL
+On branch Optimizer
+Your branch is up to date with 'origin/Optimizer'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   docs/Optimizer/09-socket-fd-lifecycle.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	docs/Optimizer/evidence/fd-lifecycle/pcg729-buildroot-20261114/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+
+Optimizer
+0c79736a23f538061a8ea613b69936513523b99d
+origin	https://github.com/spechshop/libspech (fetch)
+origin	https://github.com/spechshop/libspech (push)
+
+Only tracked diff: ['docs/Optimizer/09-socket-fd-lifecycle.md']
+Missing tracked paths: []

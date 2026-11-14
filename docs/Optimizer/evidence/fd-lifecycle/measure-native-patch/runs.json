@@ -1,0 +1,122 @@
+[
+  {
+    "mode": "traditional",
+    "repeat": 0,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/traditional-0.json"
+    ],
+    "status": 0
+  },
+  {
+    "mode": "traditional",
+    "repeat": 1,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/traditional-1.json"
+    ],
+    "status": 0
+  },
+  {
+    "mode": "traditional",
+    "repeat": 2,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/traditional-2.json"
+    ],
+    "status": 0
+  },
+  {
+    "mode": "traditional",
+    "repeat": 3,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/traditional-3.json"
+    ],
+    "status": 0
+  },
+  {
+    "mode": "traditional",
+    "repeat": 4,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/traditional-4.json"
+    ],
+    "status": 0
+  },
+  {
+    "mode": "native",
+    "repeat": 0,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/native-0.json"
+    ],
+    "status": 0
+  },
+  {
+    "mode": "native",
+    "repeat": 1,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/native-1.json"
+    ],
+    "status": 0
+  },
+  {
+    "mode": "native",
+    "repeat": 2,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/native-2.json"
+    ],
+    "status": 0
+  },
+  {
+    "mode": "native",
+    "repeat": 3,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/native-3.json"
+    ],
+    "status": 0
+  },
+  {
+    "mode": "native",
+    "repeat": 4,
+    "command": [
+      "/tmp/libspech-fd-native/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-native-patch/native-4.json"
+    ],
+    "status": 0
+  }
+]

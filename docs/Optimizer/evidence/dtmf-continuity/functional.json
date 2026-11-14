@@ -1,0 +1,141 @@
+[
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/check.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "dtmf"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "{\"mode\":\"dtmf\",\"source\":\"\\/home\\/lotus\\/projetos\\/sipswoole\\/libspech\\/plugins\\/Utils\\/sip\\/MediaChannel.php\",\"single\":1,\"triple\":1,\"wrap\":1,\"duplicate\":1,\"reorder\":1,\"partial_reordered\":true,\"pass\":true}\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/check.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "idle"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "\u001b[1;31mTIMEOUT: no packets received for 0.0021369457244873 seconds, exceed: 0\u001b[0m\n{\"mode\":\"idle\",\"source\":\"\\/home\\/lotus\\/projetos\\/sipswoole\\/libspech\\/plugins\\/Utils\\/sip\\/MediaChannel.php\",\"timeout_callbacks\":1,\"pass\":true}\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/check.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "invalid"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "{\"mode\":\"invalid\",\"source\":\"\\/home\\/lotus\\/projetos\\/sipswoole\\/libspech\\/plugins\\/Utils\\/sip\\/MediaChannel.php\",\"callbacks\":0,\"members\":0,\"pass\":true}\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/check.php",
+      "/home/lotus/projetos/sipswoole/libspech",
+      "reentrant"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "{\"mode\":\"reentrant\",\"source\":\"\\/home\\/lotus\\/projetos\\/sipswoole\\/libspech\\/plugins\\/Utils\\/sip\\/MediaChannel.php\",\"pass\":true}\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/ptime-frame.php",
+      "/home/lotus/projetos/sipswoole/libspech"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "{\"codec\":\"PCMA\",\"lengths\":[160,160],\"ok\":true}\n{\"codec\":\"PCMU\",\"lengths\":[160,160],\"ok\":true}\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/edges.php",
+      "/home/lotus/projetos/sipswoole/libspech"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "\u001b[1;31mTIMEOUT: no packets received for 1.0005230903625 seconds, exceed: 1\u001b[0m\nedges: PASS\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/flows.php",
+      "/home/lotus/projetos/sipswoole/libspech"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "{\"rtcp_reorder_relay\":true,\"rebind\":true,\"public_removal\":true,\"closed\":true,\"metrics\":{\"total_packets\":4,\"lost_packets\":1,\"avg_energy\":0,\"voice_time\":0,\"silence_time\":0,\"rtcp_packets\":1,\"dtmf_events\":0,\"bytes_received\":688,\"jitter\":46.9292368888855,\"first_arrival\":1794641271.247909,\"last_arrival\":1794641271.248016,\"max_seq_gap\":1,\"codecs\":{\"PCMA\":4},\"jitter_ms\":5.866154611110687}}\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/codec-matrix.php",
+      "/home/lotus/projetos/sipswoole/libspech"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "{\"codec\":\"PCMA\",\"to\":\"PCMA\",\"received_bytes\":172,\"pass\":true,\"tap\":{\"audio_ms\":20,\"qualified_voice_ms\":0,\"processing_ns\":8117,\"pending_bytes\":0,\"continuity_epoch\":0,\"closed\":false,\"minimum_voice_ms\":1000,\"maximum_qualified_voice_ms\":0,\"speech_episodes\":0,\"frame_counts\":{\"voice_like\":0,\"music_like\":0,\"other_audio\":0,\"narrowband_tone\":0,\"silence\":1,\"noise\":0},\"rtp_discontinuities\":0,\"discontinuity_reasons\":[],\"decision_emitted\":false,\"stop_reason\":null,\"failure_reason\":null,\"shared_pcm_packets\":0,\"analysis_decode_packets\":1,\"lost_packets\":0,\"duplicate_packets\":0,\"late_packets\":0}}\n{\"timer_teardown\":true,\"codec\":\"PCMA\"}\n{\"codec\":\"PCMU\",\"to\":\"PCMA\",\"received_bytes\":172,\"pass\":true,\"tap\":{\"audio_ms\":20,\"qualified_voice_ms\":0,\"processing_ns\":21846,\"pending_bytes\":0,\"continuity_epoch\":0,\"closed\":false,\"minimum_voice_ms\":1000,\"maximum_qualified_voice_ms\":0,\"speech_episodes\":0,\"frame_counts\":{\"voice_like\":0,\"music_like\":0,\"other_audio\":0,\"narrowband_tone\":0,\"silence\":1,\"noise\":0},\"rtp_discontinuities\":0,\"discontinuity_reasons\":[],\"decision_emitted\":false,\"stop_reason\":null,\"failure_reason\":null,\"shared_pcm_packets\":1,\"analysis_decode_packets\":0,\"lost_packets\":0,\"duplicate_packets\":0,\"late_packets\":0}}\n{\"timer_teardown\":true,\"codec\":\"PCMU\"}\n{\"codec\":\"G729\",\"to\":\"PCMA\",\"received_bytes\":172,\"pass\":true,\"tap\":{\"audio_ms\":20,\"qualified_voice_ms\":0,\"processing_ns\":30755,\"pending_bytes\":0,\"continuity_epoch\":0,\"closed\":false,\"minimum_voice_ms\":1000,\"maximum_qualified_voice_ms\":0,\"speech_episodes\":0,\"frame_counts\":{\"voice_like\":0,\"music_like\":0,\"other_audio\":0,\"narrowband_tone\":0,\"silence\":1,\"noise\":0},\"rtp_discontinuities\":0,\"discontinuity_reasons\":[],\"decision_emitted\":false,\"stop_reason\":null,\"failure_reason\":null,\"shared_pcm_packets\":1,\"analysis_decode_packets\":0,\"lost_packets\":0,\"duplicate_packets\":0,\"late_packets\":0}}\n{\"timer_teardown\":true,\"codec\":\"G729\"}\n{\"codec\":\"GSM\",\"to\":\"PCMA\",\"received_bytes\":172,\"pass\":true,\"tap\":{\"audio_ms\":0,\"qualified_voice_ms\":0,\"processing_ns\":0,\"pending_bytes\":0,\"continuity_epoch\":1,\"closed\":false,\"minimum_voice_ms\":1000,\"maximum_qualified_voice_ms\":0,\"speech_episodes\":0,\"frame_counts\":{\"voice_like\":0,\"music_like\":0,\"other_audio\":0,\"narrowband_tone\":0,\"silence\":0,\"noise\":0},\"rtp_discontinuities\":1,\"discontinuity_reasons\":{\"invalid_or_unsupported_packet\":1},\"decision_emitted\":false,\"stop_reason\":null,\"failure_reason\":null,\"shared_pcm_packets\":0,\"analysis_decode_packets\":0,\"lost_packets\":0,\"duplicate_packets\":0,\"late_packets\":0}}\n{\"timer_teardown\":true,\"codec\":\"GSM\"}\n{\"codec\":\"OPUS\",\"to\":\"PCMA\",\"received_bytes\":172,\"pass\":true,\"tap\":{\"audio_ms\":0,\"qualified_voice_ms\":0,\"processing_ns\":4886,\"pending_bytes\":310,\"continuity_epoch\":0,\"closed\":false,\"minimum_voice_ms\":1000,\"maximum_qualified_voice_ms\":0,\"speech_episodes\":0,\"frame_counts\":{\"voice_like\":0,\"music_like\":0,\"other_audio\":0,\"narrowband_tone\":0,\"silence\":0,\"noise\":0},\"rtp_discontinuities\":0,\"discontinuity_reasons\":[],\"decision_emitted\":false,\"stop_reason\":null,\"failure_reason\":null,\"shared_pcm_packets\":1,\"analysis_decode_packets\":0,\"lost_packets\":0,\"duplicate_packets\":0,\"late_packets\":0}}\n{\"timer_teardown\":true,\"codec\":\"OPUS\"}\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/acoustic-dtmf.php",
+      "/home/lotus/projetos/sipswoole/libspech"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "PASS acoustic DTMF continuity, monitor evidence, negative controls and socket matrix\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/test_rtpc_native.php"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "773 parser cases; snapshots, references, cloning, serialization and build OK\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/test_pcm_stream_converter.php"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "PASS 48000/1 -> 48000/2\nPASS 48000/2 -> 48000/1\nPASS 48000/2 -> 8000/1\nPASS 44100/2 -> 8000/1\nPASS 32000/2 -> 8000/1\nPASS 48000/2 -> 8000/2\nPASS 8000/2 -> 48000/2\nPASS 24000/2 -> 16000/2\nPASS 16000/2 -> 24000/2\nPASS 16000/1 -> 8000/1\nPASS 8000/1 -> 16000/1\nPASS 8000/1 -> 32000/1\nPASS 8000/1 -> 44100/1\nPASS 8000/1 -> 48000/1\nPASS 44100/1 -> 48000/1\nPASS 48000/1 -> 44100/1\nPASS stereo channel separation 48000 -> 8000\nPASS stereo channel separation 8000 -> 48000\nPASS stereo channel separation 24000 -> 16000\nPASS stereo channel separation 16000 -> 24000\nPASS interleaved 20ms streams remain isolated\nPASS 3000 stereo RTP packets preserve accumulated duration\nPASS empty, identity, and incomplete frame behavior\nPASS 60s 48000/2 -> 8000/1\nPASS 60s 44100/2 -> 8000/1\nPASS 60s 8000/1 -> 48000/1\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/test_audio_file_playback_resample.php"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "PASS doResample native one-shot stereo rates/channels/identity\nPASS playback frames/duration/continuity 48000/2 -> 8000/2\nPASS playback frames/duration/continuity 8000/2 -> 48000/2\nPASS playback frames/duration/continuity 24000/2 -> 16000/2\nPASS playback frames/duration/continuity 16000/1 -> 24000/2\nPASS pause/resume preserves pending PCM packet\nPASS simultaneous playback sessions remain isolated\nPASS ptime change preserves converter history and buffered samples\nPASS async ptime change preserves queued lookahead PCM\nPASS loop keeps complete frames and converter history\nPASS interruption discards lookahead without tail output\nPASS coroutine producer yields bounded complete RTP frames\nPASS final partial source block is padded only at stream end\nPASS 3000 playback RTP frames keep output buffer bounded\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/test_media_channel_member_ptime.php"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "PASS: ptime individual, accumulator PCM, RTP, sil\u00eancio, DTMF e legado de 20 ms validados.\n",
+    "stderr": ""
+  },
+  {
+    "args": [
+      "/home/lotus/projetos/sipswoole/libspech/test_trunk_recording.php"
+    ],
+    "status": 0,
+    "passed": true,
+    "stdout": "PASS isolated trunk recording: mono, stereo, SSRC changes, formats, WAV headers and reset\n",
+    "stderr": ""
+  }
+]

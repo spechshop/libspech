@@ -1,0 +1,278 @@
+{
+  "measure-before": [
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 16.58,
+      "close_wall_us_per_channel": 16.3504,
+      "elapsed_ms": 83.808869,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4689136
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 46.12,
+      "close_wall_us_per_channel": 45.76642,
+      "elapsed_ms": 95.174044,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4689136
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 46.84,
+      "close_wall_us_per_channel": 46.4642,
+      "elapsed_ms": 90.367629,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4689136
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 50.72,
+      "close_wall_us_per_channel": 50.377539999999996,
+      "elapsed_ms": 97.959731,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4689136
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 46.1,
+      "close_wall_us_per_channel": 45.72684,
+      "elapsed_ms": 99.724895,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4689136
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 32.0,
+      "close_wall_us_per_channel": 31.656260000000003,
+      "elapsed_ms": 95.995238,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4759056
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 32.3,
+      "close_wall_us_per_channel": 31.875839999999997,
+      "elapsed_ms": 96.506847,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4759056
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 11.68,
+      "close_wall_us_per_channel": 11.5592,
+      "elapsed_ms": 75.032633,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4759056
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 34.5,
+      "close_wall_us_per_channel": 34.13042,
+      "elapsed_ms": 97.31974,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4759056
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 38.18,
+      "close_wall_us_per_channel": 37.74454,
+      "elapsed_ms": 97.350421,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4759056
+    }
+  ],
+  "measure-source-before": [
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 52.24,
+      "close_wall_us_per_channel": 51.90782,
+      "elapsed_ms": 92.337018,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4790032
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 50.84,
+      "close_wall_us_per_channel": 50.47572,
+      "elapsed_ms": 100.883843,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4790032
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 49.84,
+      "close_wall_us_per_channel": 49.470119999999994,
+      "elapsed_ms": 98.65785,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4790032
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 18.14,
+      "close_wall_us_per_channel": 17.94182,
+      "elapsed_ms": 91.754043,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4790032
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 17.12,
+      "close_wall_us_per_channel": 16.9561,
+      "elapsed_ms": 85.727822,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4790032
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 18.66,
+      "close_wall_us_per_channel": 18.43112,
+      "elapsed_ms": 88.412005,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4859952
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 13.84,
+      "close_wall_us_per_channel": 13.62814,
+      "elapsed_ms": 95.980135,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4859952
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 39.0,
+      "close_wall_us_per_channel": 38.55838,
+      "elapsed_ms": 97.066478,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4859952
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 34.04,
+      "close_wall_us_per_channel": 33.66016,
+      "elapsed_ms": 97.262967,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4859952
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 40.38,
+      "close_wall_us_per_channel": 40.073319999999995,
+      "elapsed_ms": 97.743857,
+      "held": 100,
+      "remaining": 0,
+      "memory_bytes": 4859952
+    }
+  ],
+  "measure-native-patch": [
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 54.32,
+      "close_wall_us_per_channel": 53.95694,
+      "elapsed_ms": 89.029535,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4644680
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 49.6,
+      "close_wall_us_per_channel": 49.21225999999999,
+      "elapsed_ms": 88.643137,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4644680
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 60.54,
+      "close_wall_us_per_channel": 60.15906,
+      "elapsed_ms": 89.396537,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4644680
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 33.58,
+      "close_wall_us_per_channel": 33.37252,
+      "elapsed_ms": 85.402881,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4644680
+    },
+    {
+      "mode": "native",
+      "close_cpu_us_per_channel": 54.6,
+      "close_wall_us_per_channel": 54.2449,
+      "elapsed_ms": 91.092248,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4644680
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 47.72,
+      "close_wall_us_per_channel": 47.30714,
+      "elapsed_ms": 88.379677,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4714600
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 45.86,
+      "close_wall_us_per_channel": 45.49822,
+      "elapsed_ms": 87.515278,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4714600
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 40.92,
+      "close_wall_us_per_channel": 40.48946,
+      "elapsed_ms": 87.930481,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4714600
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 43.84,
+      "close_wall_us_per_channel": 43.44888,
+      "elapsed_ms": 89.412868,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4714600
+    },
+    {
+      "mode": "traditional",
+      "close_cpu_us_per_channel": 42.7,
+      "close_wall_us_per_channel": 42.33998,
+      "elapsed_ms": 87.657703,
+      "held": 0,
+      "remaining": 0,
+      "memory_bytes": 4714600
+    }
+  ]
+}

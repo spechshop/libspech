@@ -1,0 +1,158 @@
+{
+    "passed": true,
+    "fixture_sha256": "95c19b42c9da8340aee9cd8247adeb12ebb30f5c3bc78c52ce4a17e08d043845",
+    "results": [
+        {
+            "metrics": {
+                "audio_ms": 1060,
+                "qualified_voice_ms": 1000,
+                "pending_bytes": 0,
+                "continuity_epoch": 0,
+                "closed": true,
+                "minimum_voice_ms": 1000,
+                "maximum_qualified_voice_ms": 1000,
+                "speech_episodes": 1,
+                "frame_counts": {
+                    "voice_like": 52,
+                    "music_like": 0,
+                    "other_audio": 1,
+                    "narrowband_tone": 0,
+                    "silence": 0,
+                    "noise": 0
+                },
+                "rtp_discontinuities": 0,
+                "discontinuity_reasons": [],
+                "decision_emitted": true,
+                "stop_reason": "decision",
+                "failure_reason": null,
+                "shared_pcm_packets": 0,
+                "analysis_decode_packets": 53,
+                "lost_packets": 0,
+                "duplicate_packets": 0,
+                "late_packets": 0
+            },
+            "decision": {
+                "classification": "early_voice_activity",
+                "mailbox_proven": false,
+                "minimum_voice_ms": 1000,
+                "qualified_voice_ms": 1000,
+                "audio_ms": 1060,
+                "continuity_epoch": 0,
+                "ring_seen": false
+            },
+            "events": [
+                [
+                    "monitor.started",
+                    0,
+                    0
+                ],
+                [
+                    "rtp.first_valid",
+                    0,
+                    0
+                ],
+                [
+                    "signal.changed",
+                    80,
+                    0
+                ],
+                [
+                    "speech.started",
+                    80,
+                    0
+                ],
+                [
+                    "voice.minimum_reached",
+                    1060,
+                    0
+                ],
+                [
+                    "acoustic.confirmed",
+                    1060,
+                    0
+                ],
+                [
+                    "analysis.stopped",
+                    1060,
+                    0
+                ]
+            ]
+        },
+        {
+            "metrics": {
+                "audio_ms": 1060,
+                "qualified_voice_ms": 1000,
+                "pending_bytes": 0,
+                "continuity_epoch": 0,
+                "closed": true,
+                "minimum_voice_ms": 1000,
+                "maximum_qualified_voice_ms": 1000,
+                "speech_episodes": 1,
+                "frame_counts": {
+                    "voice_like": 52,
+                    "music_like": 0,
+                    "other_audio": 1,
+                    "narrowband_tone": 0,
+                    "silence": 0,
+                    "noise": 0
+                },
+                "rtp_discontinuities": 0,
+                "discontinuity_reasons": [],
+                "decision_emitted": true,
+                "stop_reason": "decision",
+                "failure_reason": null,
+                "shared_pcm_packets": 0,
+                "analysis_decode_packets": 53,
+                "lost_packets": 0,
+                "duplicate_packets": 0,
+                "late_packets": 0
+            },
+            "decision": {
+                "classification": "early_voice_activity",
+                "mailbox_proven": false,
+                "minimum_voice_ms": 1000,
+                "qualified_voice_ms": 1000,
+                "audio_ms": 1060,
+                "continuity_epoch": 0,
+                "ring_seen": false
+            },
+            "events": [
+                [
+                    "monitor.started",
+                    0,
+                    0
+                ],
+                [
+                    "rtp.first_valid",
+                    0,
+                    0
+                ],
+                [
+                    "signal.changed",
+                    80,
+                    0
+                ],
+                [
+                    "speech.started",
+                    80,
+                    0
+                ],
+                [
+                    "voice.minimum_reached",
+                    1060,
+                    0
+                ],
+                [
+                    "acoustic.confirmed",
+                    1060,
+                    0
+                ],
+                [
+                    "analysis.stopped",
+                    1060,
+                    0
+                ]
+            ]
+        }
+    ]
+}

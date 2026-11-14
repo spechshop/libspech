@@ -1,0 +1,32 @@
+[
+  {
+    "case": "tls-idle",
+    "status": 255,
+    "stdout": "\nFatal error: Uncaught RuntimeException: TLS request in /home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/pcg729-buildroot-20261114/native-isolated.php:5\nStack trace:\n#0 /home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/pcg729-buildroot-20261114/native-isolated.php(22): check(false, 'TLS request')\n#1 [internal function]: {closure:{closure:/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/pcg729-buildroot-20261114/native-isolated.php:12}:19}()\n#2 {main}\n  thrown in /home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/pcg729-buildroot-20261114/native-isolated.php on line 5\n",
+    "stderr": ""
+  },
+  {
+    "case": "tls-blocked",
+    "status": 255,
+    "stdout": "\nFatal error: Uncaught RuntimeException: TLS request in /home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/pcg729-buildroot-20261114/native-isolated.php:5\nStack trace:\n#0 /home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/pcg729-buildroot-20261114/native-isolated.php(22): check(false, 'TLS request')\n#1 [internal function]: {closure:{closure:/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/pcg729-buildroot-20261114/native-isolated.php:12}:19}()\n#2 {main}\n  thrown in /home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/pcg729-buildroot-20261114/native-isolated.php on line 5\n",
+    "stderr": ""
+  },
+  {
+    "case": "import-destruct",
+    "status": 0,
+    "stdout": "{\n    \"mode\": \"import-destruct\",\n    \"php\": \"8.5.12\",\n    \"swoole\": \"6.3.0RC1\",\n    \"owned\": {\n        \"5\": \"socket:[7059289]\",\n        \"6\": \"socket:[7059290]\"\n    },\n    \"held\": [],\n    \"remaining\": [],\n    \"passed\": true\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "import-close",
+    "status": 0,
+    "stdout": "{\n    \"mode\": \"import-close\",\n    \"php\": \"8.5.12\",\n    \"swoole\": \"6.3.0RC1\",\n    \"owned\": {\n        \"5\": \"socket:[7056933]\",\n        \"6\": \"socket:[7056934]\"\n    },\n    \"held\": [],\n    \"remaining\": [],\n    \"passed\": true\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "import-stream-first",
+    "status": 0,
+    "stdout": "{\n    \"mode\": \"import-stream-first\",\n    \"php\": \"8.5.12\",\n    \"swoole\": \"6.3.0RC1\",\n    \"owned\": {\n        \"5\": \"socket:[7058195]\",\n        \"6\": \"socket:[7058196]\"\n    },\n    \"held\": [],\n    \"remaining\": [],\n    \"passed\": true\n}\n",
+    "stderr": ""
+  }
+]

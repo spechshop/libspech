@@ -1,0 +1,349 @@
+{
+  "before": {
+    "aligned": {
+      "metrics": {
+        "audio_ms": 2000,
+        "qualified_voice_ms": 0,
+        "pending_bytes": 0,
+        "continuity_epoch": 0,
+        "closed": false,
+        "minimum_voice_ms": 1000,
+        "maximum_qualified_voice_ms": 0,
+        "speech_episodes": 0,
+        "frame_counts": {
+          "voice_like": 0,
+          "music_like": 0,
+          "other_audio": 0,
+          "narrowband_tone": 100,
+          "silence": 0,
+          "noise": 0
+        },
+        "rtp_discontinuities": 0,
+        "discontinuity_reasons": [],
+        "decision_emitted": false,
+        "stop_reason": null,
+        "failure_reason": null
+      },
+      "events": [
+        {
+          "event": "monitor.started",
+          "audio_ms": 0,
+          "continuity_epoch": 0,
+          "minimum_voice_ms": 1000
+        },
+        {
+          "event": "signal.changed",
+          "audio_ms": 60,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "signal.changed",
+            "at_ms": 60,
+            "detected_at_ms": 60,
+            "signal": "narrowband_tone",
+            "reason": "classification_changed"
+          }
+        },
+        {
+          "event": "ring.started",
+          "audio_ms": 760,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "ring.started",
+            "at_ms": 760,
+            "detected_at_ms": 760,
+            "signal": "narrowband_tone",
+            "reason": "qualified_tone"
+          }
+        }
+      ]
+    },
+    "fragmented": {
+      "metrics": {
+        "audio_ms": 2000,
+        "qualified_voice_ms": 0,
+        "pending_bytes": 0,
+        "continuity_epoch": 0,
+        "closed": false,
+        "minimum_voice_ms": 1000,
+        "maximum_qualified_voice_ms": 0,
+        "speech_episodes": 0,
+        "frame_counts": {
+          "voice_like": 0,
+          "music_like": 0,
+          "other_audio": 0,
+          "narrowband_tone": 100,
+          "silence": 0,
+          "noise": 0
+        },
+        "rtp_discontinuities": 0,
+        "discontinuity_reasons": [],
+        "decision_emitted": false,
+        "stop_reason": null,
+        "failure_reason": null
+      },
+      "events": [
+        {
+          "event": "monitor.started",
+          "audio_ms": 0,
+          "continuity_epoch": 0,
+          "minimum_voice_ms": 1000
+        },
+        {
+          "event": "signal.changed",
+          "audio_ms": 60,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "signal.changed",
+            "at_ms": 60,
+            "detected_at_ms": 60,
+            "signal": "narrowband_tone",
+            "reason": "classification_changed"
+          }
+        },
+        {
+          "event": "ring.started",
+          "audio_ms": 760,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "ring.started",
+            "at_ms": 760,
+            "detected_at_ms": 760,
+            "signal": "narrowband_tone",
+            "reason": "qualified_tone"
+          }
+        }
+      ]
+    },
+    "multi": {
+      "metrics": {
+        "audio_ms": 2000,
+        "qualified_voice_ms": 0,
+        "pending_bytes": 0,
+        "continuity_epoch": 0,
+        "closed": false,
+        "minimum_voice_ms": 1000,
+        "maximum_qualified_voice_ms": 0,
+        "speech_episodes": 0,
+        "frame_counts": {
+          "voice_like": 0,
+          "music_like": 0,
+          "other_audio": 0,
+          "narrowband_tone": 100,
+          "silence": 0,
+          "noise": 0
+        },
+        "rtp_discontinuities": 0,
+        "discontinuity_reasons": [],
+        "decision_emitted": false,
+        "stop_reason": null,
+        "failure_reason": null
+      },
+      "events": [
+        {
+          "event": "monitor.started",
+          "audio_ms": 0,
+          "continuity_epoch": 0,
+          "minimum_voice_ms": 1000
+        },
+        {
+          "event": "signal.changed",
+          "audio_ms": 60,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "signal.changed",
+            "at_ms": 60,
+            "detected_at_ms": 60,
+            "signal": "narrowband_tone",
+            "reason": "classification_changed"
+          }
+        },
+        {
+          "event": "ring.started",
+          "audio_ms": 760,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "ring.started",
+            "at_ms": 760,
+            "detected_at_ms": 760,
+            "signal": "narrowband_tone",
+            "reason": "qualified_tone"
+          }
+        }
+      ]
+    }
+  },
+  "after": {
+    "aligned": {
+      "metrics": {
+        "audio_ms": 2000,
+        "qualified_voice_ms": 0,
+        "pending_bytes": 0,
+        "continuity_epoch": 0,
+        "closed": false,
+        "minimum_voice_ms": 1000,
+        "maximum_qualified_voice_ms": 0,
+        "speech_episodes": 0,
+        "frame_counts": {
+          "voice_like": 0,
+          "music_like": 0,
+          "other_audio": 0,
+          "narrowband_tone": 100,
+          "silence": 0,
+          "noise": 0
+        },
+        "rtp_discontinuities": 0,
+        "discontinuity_reasons": [],
+        "decision_emitted": false,
+        "stop_reason": null,
+        "failure_reason": null
+      },
+      "events": [
+        {
+          "event": "monitor.started",
+          "audio_ms": 0,
+          "continuity_epoch": 0,
+          "minimum_voice_ms": 1000
+        },
+        {
+          "event": "signal.changed",
+          "audio_ms": 60,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "signal.changed",
+            "at_ms": 60,
+            "detected_at_ms": 60,
+            "signal": "narrowband_tone",
+            "reason": "classification_changed"
+          }
+        },
+        {
+          "event": "ring.started",
+          "audio_ms": 760,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "ring.started",
+            "at_ms": 760,
+            "detected_at_ms": 760,
+            "signal": "narrowband_tone",
+            "reason": "qualified_tone"
+          }
+        }
+      ]
+    },
+    "fragmented": {
+      "metrics": {
+        "audio_ms": 2000,
+        "qualified_voice_ms": 0,
+        "pending_bytes": 0,
+        "continuity_epoch": 0,
+        "closed": false,
+        "minimum_voice_ms": 1000,
+        "maximum_qualified_voice_ms": 0,
+        "speech_episodes": 0,
+        "frame_counts": {
+          "voice_like": 0,
+          "music_like": 0,
+          "other_audio": 0,
+          "narrowband_tone": 100,
+          "silence": 0,
+          "noise": 0
+        },
+        "rtp_discontinuities": 0,
+        "discontinuity_reasons": [],
+        "decision_emitted": false,
+        "stop_reason": null,
+        "failure_reason": null
+      },
+      "events": [
+        {
+          "event": "monitor.started",
+          "audio_ms": 0,
+          "continuity_epoch": 0,
+          "minimum_voice_ms": 1000
+        },
+        {
+          "event": "signal.changed",
+          "audio_ms": 60,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "signal.changed",
+            "at_ms": 60,
+            "detected_at_ms": 60,
+            "signal": "narrowband_tone",
+            "reason": "classification_changed"
+          }
+        },
+        {
+          "event": "ring.started",
+          "audio_ms": 760,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "ring.started",
+            "at_ms": 760,
+            "detected_at_ms": 760,
+            "signal": "narrowband_tone",
+            "reason": "qualified_tone"
+          }
+        }
+      ]
+    },
+    "multi": {
+      "metrics": {
+        "audio_ms": 2000,
+        "qualified_voice_ms": 0,
+        "pending_bytes": 0,
+        "continuity_epoch": 0,
+        "closed": false,
+        "minimum_voice_ms": 1000,
+        "maximum_qualified_voice_ms": 0,
+        "speech_episodes": 0,
+        "frame_counts": {
+          "voice_like": 0,
+          "music_like": 0,
+          "other_audio": 0,
+          "narrowband_tone": 100,
+          "silence": 0,
+          "noise": 0
+        },
+        "rtp_discontinuities": 0,
+        "discontinuity_reasons": [],
+        "decision_emitted": false,
+        "stop_reason": null,
+        "failure_reason": null
+      },
+      "events": [
+        {
+          "event": "monitor.started",
+          "audio_ms": 0,
+          "continuity_epoch": 0,
+          "minimum_voice_ms": 1000
+        },
+        {
+          "event": "signal.changed",
+          "audio_ms": 60,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "signal.changed",
+            "at_ms": 60,
+            "detected_at_ms": 60,
+            "signal": "narrowband_tone",
+            "reason": "classification_changed"
+          }
+        },
+        {
+          "event": "ring.started",
+          "audio_ms": 760,
+          "continuity_epoch": 0,
+          "native": {
+            "type": "ring.started",
+            "at_ms": 760,
+            "detected_at_ms": 760,
+            "signal": "narrowband_tone",
+            "reason": "qualified_tone"
+          }
+        }
+      ]
+    }
+  },
+  "equal": true
+}

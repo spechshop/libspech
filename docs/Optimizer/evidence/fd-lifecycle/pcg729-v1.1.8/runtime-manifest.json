@@ -1,0 +1,85 @@
+{
+  "release": "v1.1.8",
+  "binary": "pcg729-linux-x86_64-zts-php8.5.12-psampler0.7.0-v1.1.8",
+  "size": 138608352,
+  "sha256": "50d874e9b06959973ec2873019acf0b09c3a350a8e60adce7e6f7f05ea59cd7f",
+  "pcg729_base_commit": "0b0be527d05b5166bc014cde2dfe1c5358b34105",
+  "provenance": "Existing buildroot binary, not rebuilt. Build includes uncommitted pcg729 patch integration; tag alone does not reproduce these bytes. Native patches remain owned by pcg729. No source commits included in this publication.",
+  "source_hashes": {
+    "src/SPC/builder/extension/swoole.php": "c5fc0f0c7722b86fc38e3585140dba9e74d2fc0ae939e9f03afc309cd103b9fb",
+    "src/SPC/store/SwooleBufferPatcher.php": "7f5525325914d42ee4207083fcb39bac662458dc724c76ba4e25a8f4ca3d4c84",
+    "src/globals/patch/swoole_socket_fd_lifecycle_v630rc1.patch": "73a378574bf80ab4632a43f7015d1f8d0877e93bddded81622673c7f7bc094b2",
+    "src/globals/patch/swoole_socket_fd_lifecycle_v630rc1.json": "b3cfc2457672bc347726909b9067166c5e83a1cc135b73b768a5cbf2c400d96c",
+    "source/php-src/ext/swoole/ext-src/swoole_socket_coro.cc": "d82d7a08f17109bbc4e6cd60f7b4794ba6a40ce75ac69396f8908b327ac102bf",
+    "source/php-src/ext/swoole/include/swoole_coroutine_socket.h": "f17d311c2b115b8c1f63d4f1d50a6caf92d7153a0972b664bf4636936744e634",
+    "source/php-src/ext/swoole/include/swoole_socket.h": "ec3577308d46aa498f1d290e7f5bea19ae25f6ef48866b688c1a582a21ac7af4",
+    "source/php-src/ext/swoole/src/coroutine/socket.cc": "4fe9cfa775a1efb96abbc443b8c5024ed56e6239ce08b51242c2e9f0999d0d79",
+    "source/php-src/ext/swoole/src/network/socket.cc": "91aae4418a40646f38e5aa8e547f4880a4454f963595b8540b3dbcf3a06b2d8c"
+  },
+  "fd_patch_manifest": {
+    "upstream": "swoole/swoole-src v6.3.0-rc1 (6.3.0RC1)",
+    "platforms": [
+      "Linux"
+    ],
+    "upstream_pr": "https://github.com/swoole/swoole-src/pull/6274",
+    "upstream_commit": "861a0dffbf5f97671b2d8772078e07d4db120cde",
+    "patch": "swoole_socket_fd_lifecycle_v630rc1.patch",
+    "patch_sha256": "73a378574bf80ab4632a43f7015d1f8d0877e93bddded81622673c7f7bc094b2",
+    "files": {
+      "ext-src/swoole_socket_coro.cc": {
+        "before": [
+          "73687f4de06c560633570a3bf0aa5da4b5d3ec46f61eab5365e068d8d7f780af"
+        ],
+        "after": [
+          "d82d7a08f17109bbc4e6cd60f7b4794ba6a40ce75ac69396f8908b327ac102bf"
+        ]
+      },
+      "include/swoole_coroutine_socket.h": {
+        "before": [
+          "999056ee5889dccc59323238376feedcf66427f7f27f2292980aa3a95bb4e7c3"
+        ],
+        "after": [
+          "f17d311c2b115b8c1f63d4f1d50a6caf92d7153a0972b664bf4636936744e634"
+        ]
+      },
+      "include/swoole_socket.h": {
+        "before": [
+          "b89ac2ed1790b77e8ed69d7bf1f1616b4002111c16ab6265db09713b8ea6f1ea"
+        ],
+        "after": [
+          "ec3577308d46aa498f1d290e7f5bea19ae25f6ef48866b688c1a582a21ac7af4"
+        ]
+      },
+      "src/coroutine/socket.cc": {
+        "before": [
+          "85b1d809c72451858caad161bf4904e7806d4aedf11b9171340f6f114718edac"
+        ],
+        "after": [
+          "4fe9cfa775a1efb96abbc443b8c5024ed56e6239ce08b51242c2e9f0999d0d79"
+        ]
+      },
+      "src/network/socket.cc": {
+        "before": [
+          "e6919bae549f08932e6922c118b830d1f9fe6e5318efb874a7909ccd2a3814bd"
+        ],
+        "after": [
+          "91aae4418a40646f38e5aa8e547f4880a4454f963595b8540b3dbcf3a06b2d8c"
+        ]
+      }
+    },
+    "unchanged": {
+      "src/coroutine/hook.cc": "16f01983bba935c1bd8507c09f02e9ebfa8bc78d55c455083a2a7ad21f7443e4"
+    },
+    "experimental_patch_sha256": "cf99f5e2cb651b790697a31d67980a3ef39779724535b4783dcee3abb2f63456",
+    "source_archive_sha256": "5d1d57adf16494f6cbb0211665d8fb7c7e4726c0b81d35e200812df326051e8e"
+  },
+  "validation": {
+    "libspech_commit": "0c79736a23f538061a8ea613b69936513523b99d",
+    "functional": "17/17",
+    "socket_control": "2/2",
+    "traditional": "24/24",
+    "native": "24/24",
+    "syntax": "48/48",
+    "tls_and_imported_streams": "5/5"
+  }
+}

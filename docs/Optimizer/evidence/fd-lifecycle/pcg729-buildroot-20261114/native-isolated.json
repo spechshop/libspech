@@ -1,0 +1,32 @@
+[
+  {
+    "case": "tls-idle",
+    "status": 0,
+    "stdout": "{\n    \"mode\": \"tls-idle\",\n    \"php\": \"8.5.12\",\n    \"swoole\": \"6.3.0RC1\",\n    \"owned\": {\n        \"5\": \"socket:[7059358]\",\n        \"6\": \"socket:[7059360]\",\n        \"7\": \"socket:[7059361]\"\n    },\n    \"held\": [],\n    \"handshake\": true,\n    \"reader_alive\": false,\n    \"reused_fd\": 5,\n    \"remaining\": [],\n    \"passed\": true\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "tls-blocked",
+    "status": 0,
+    "stdout": "{\n    \"mode\": \"tls-blocked\",\n    \"php\": \"8.5.12\",\n    \"swoole\": \"6.3.0RC1\",\n    \"owned\": {\n        \"5\": \"socket:[7062277]\",\n        \"6\": \"socket:[7062279]\",\n        \"7\": \"socket:[7062280]\"\n    },\n    \"held\": [],\n    \"handshake\": true,\n    \"reader_alive\": false,\n    \"reused_fd\": 5,\n    \"remaining\": [],\n    \"passed\": true\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "import-destruct",
+    "status": 0,
+    "stdout": "{\n    \"mode\": \"import-destruct\",\n    \"php\": \"8.5.12\",\n    \"swoole\": \"6.3.0RC1\",\n    \"owned\": {\n        \"5\": \"socket:[7062298]\",\n        \"6\": \"socket:[7062299]\"\n    },\n    \"held\": [],\n    \"reused_fd\": 5,\n    \"remaining\": [],\n    \"passed\": true\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "import-close",
+    "status": 0,
+    "stdout": "{\n    \"mode\": \"import-close\",\n    \"php\": \"8.5.12\",\n    \"swoole\": \"6.3.0RC1\",\n    \"owned\": {\n        \"5\": \"socket:[7056954]\",\n        \"6\": \"socket:[7056955]\"\n    },\n    \"held\": [],\n    \"reused_fd\": 5,\n    \"remaining\": [],\n    \"passed\": true\n}\n",
+    "stderr": ""
+  },
+  {
+    "case": "import-stream-first",
+    "status": 0,
+    "stdout": "{\n    \"mode\": \"import-stream-first\",\n    \"php\": \"8.5.12\",\n    \"swoole\": \"6.3.0RC1\",\n    \"owned\": {\n        \"5\": \"socket:[7058250]\",\n        \"6\": \"socket:[7058251]\"\n    },\n    \"held\": [],\n    \"reused_fd\": 5,\n    \"remaining\": [],\n    \"passed\": true\n}\n",
+    "stderr": ""
+  }
+]

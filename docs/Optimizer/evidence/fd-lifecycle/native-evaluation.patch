@@ -1,0 +1,96 @@
+--- a/ext-src/swoole_socket_coro.cc
++++ b/ext-src/swoole_socket_coro.cc
+@@ -1999,7 +1999,13 @@
+         ZVAL_UNDEF(&sock->zstream);
+         sock->socket->move_fd();
+     } else {
+-        sock->socket->close();
++        // when coroutines are bound, close() only cancels them, so finish closing once they have left
++        if (!sock->socket->close() && !sock->socket->is_closed() && !sock->socket->has_bound()) {
++            sock->socket->close();
++        }
++        if (sock->socket->is_closed()) {
++            sock->socket->close_fd();
++        }
+     }
+     RETURN_TRUE;
+ }
+--- a/include/swoole_coroutine_socket.h
++++ b/include/swoole_coroutine_socket.h
+@@ -64,6 +64,7 @@
+     bool shutdown(int how = SHUT_RDWR);
+     virtual bool cancel(EventType event);
+     bool close();
++    void close_fd();
+ 
+     bool is_connected() const {
+         return connected && !is_closed();
+--- a/include/swoole_socket.h
++++ b/include/swoole_socket.h
+@@ -490,6 +490,7 @@
+     int wait_event(int timeout_ms, int _events) const;
+     bool wait_for(const std::function<ReturnCode()> &fn, int event, int timeout_msec = -1);
+     int what_event_want(int default_event) const;
++    void close_fd();
+     void free();
+ 
+     static inline bool is_dgram(SocketType type) {
+--- a/src/coroutine/socket.cc
++++ b/src/coroutine/socket.cc
+@@ -1606,6 +1606,13 @@
+     }
+ }
+ 
++void Socket::close_fd() {
++    if (socket->ssl) ssl_close();
++    if (socket->fd == SW_BAD_SOCKET) return;
++    if (swoole_event_is_available() && !socket->removed) swoole_event_del(socket);
++    socket->close_fd();
++}
++
+ /**
+  * Warn:
+  * the destructor should only be called in following two cases:
+@@ -1631,6 +1638,7 @@
+     if (socket->ssl) {
+         ssl_close();
+     }
++    if (is_closed() || socket->close_wait) close_fd();
+     socket->free();
+ }
+ 
+--- a/src/network/socket.cc
++++ b/src/network/socket.cc
+@@ -454,24 +454,16 @@
+     return rv ? bytes : -1;
+ }
+ 
++void Socket::close_fd() {
++    if (fd == SW_BAD_SOCKET) return;
++    if (is_local() && bound && get_name() == SW_OK && *get_addr()) ::unlink(get_addr());
++    if (::close(fd) != 0) swoole_sys_warning("close(%d) failed", fd);
++    fd = SW_BAD_SOCKET;
++}
++
+ static void socket_free_defer(void *ptr) {
+     auto *sock = static_cast<Socket *>(ptr);
+-    if (sock->is_local() && sock->bound) {
+-        ::unlink(sock->get_addr());
+-    }
+-    if (sock->fd != SW_BAD_SOCKET &&
+-#ifdef _WIN32
+-#ifdef SW_USE_IOCP
+-        Iocp::close(sock->fd) != 0
+-#else
+-        closesocket(sock->fd) != 0
+-#endif
+-#else
+-        close(sock->fd) != 0
+-#endif
+-    ) {
+-        swoole_sys_warning("close(%d) failed", sock->fd);
+-    }
++    sock->close_fd();
+     delete sock;
+ }
+ 

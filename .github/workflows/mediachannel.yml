@@ -1,0 +1,56 @@
+name: MediaChannel
+on:
+  push:
+    branches: [Optimizer]
+  pull_request:
+    branches: [spech, Optimizer]
+permissions:
+  contents: read
+jobs:
+  regression:
+    name: PHP and media regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Repository policy permits local actions only. Use standard runner tools.
+      - name: Checkout requested commit
+        env:
+          REPOSITORY: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          git init .
+          git remote add origin "https://github.com/$REPOSITORY.git"
+          git fetch --depth=1 origin "$COMMIT"
+          git -c advice.detachedHead=false checkout FETCH_HEAD
+      - name: Install pinned media runtime
+        env:
+          RUNTIME: pcg729-linux-x86_64-zts-php8.5.12-psampler0.7.0-v1.1.8
+        run: |
+          curl --fail --location --retry 3 -o /tmp/media-php "https://github.com/spechshop/pcg729/releases/download/v1.1.8/$RUNTIME"
+          echo '50d874e9b06959973ec2873019acf0b09c3a350a8e60adce7e6f7f05ea59cd7f  /tmp/media-php' | sha256sum --check
+          chmod +x /tmp/media-php
+          /tmp/media-php -v
+          /tmp/media-php -r 'foreach (["swoole", "psampler", "bcg729", "opus"] as $ext) { if (!extension_loaded($ext)) exit(1); } if (!class_exists("gsmChannel") || !function_exists("psampler_binary_slice")) exit(1);'
+          touch .env
+      - name: PHP syntax
+        run: |
+          git ls-files -z 'plugins/*.php' 'tests/*.php' 'test_*.php' | xargs -0 -n1 /tmp/media-php -l > /tmp/lint.txt
+      - name: Functional regression and strict socket FD lifecycle
+        run: python3 tests/mediachannel/run.py /tmp/media-php . /tmp/functional.json
+      - name: Preserve results in run log and summary
+        if: always()
+        run: |
+          if [ -f /tmp/functional.json ]; then cat /tmp/functional.json; fi
+          if [ -f /tmp/lint.txt ]; then cat /tmp/lint.txt; fi
+          python3 - <<'PYCODE'
+          import json, os, pathlib
+          path = pathlib.Path('/tmp/functional.json')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              if path.exists():
+                  rows = json.loads(path.read_text())
+                  summary.write('| Test | Result |\n|---|---|\n')
+                  for row in rows:
+                      summary.write('| ' + ' '.join(row['args']) + ' | ' + ('PASS' if row['passed'] else 'FAIL') + ' |\n')
+              else:
+                  summary.write('Functional tests did not run. Inspect preceding failed step.\n')
+          PYCODE

@@ -1,0 +1,14 @@
+[
+  {
+    "binary": "/home/lotus/CLionProjects/pcg729/buildroot/bin/php",
+    "status": 0,
+    "stdout": "{\"php\":\"8.5.12\",\"swoole\":\"6.3.0RC1\",\"psampler\":\"0.7.0\",\"buffer\":true,\"recvfromInto\":true}",
+    "stderr": ""
+  },
+  {
+    "binary": "/tmp/optimizer-runtime/pcg729-linux-x86_64-zts-php8.5.10-psampler0.7.0-v1.1.7",
+    "status": 0,
+    "stdout": "{\"php\":\"8.5.10\",\"swoole\":\"6.3.0RC1\",\"psampler\":\"0.7.0\",\"buffer\":true,\"recvfromInto\":true}",
+    "stderr": ""
+  }
+]

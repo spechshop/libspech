@@ -1,0 +1,63 @@
+{
+  "id": 43582003633,
+  "head_sha": "471db25c93e1f78604a6b07c6a2420d402b3556e",
+  "status": "completed",
+  "conclusion": "success",
+  "url": "https://github.com/spechshop/libspech/actions/runs/43582003633",
+  "created_at": "2026-11-14T09:44:53Z",
+  "updated_at": "2026-11-14T09:45:14Z",
+  "jobs": [
+    {
+      "id": 132408524054,
+      "name": "PHP and media regression",
+      "status": "completed",
+      "conclusion": "success",
+      "run_id": 43582003633,
+      "logs_url": null,
+      "steps": [
+        {
+          "name": "Set up job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 1
+        },
+        {
+          "name": "Checkout requested commit",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 2
+        },
+        {
+          "name": "Install pinned media runtime",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 3
+        },
+        {
+          "name": "PHP syntax",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 4
+        },
+        {
+          "name": "Functional regression and strict socket FD lifecycle",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 5
+        },
+        {
+          "name": "Preserve results in run log and summary",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 6
+        },
+        {
+          "name": "Complete job",
+          "status": "completed",
+          "conclusion": "success",
+          "number": 7
+        }
+      ]
+    }
+  ]
+}

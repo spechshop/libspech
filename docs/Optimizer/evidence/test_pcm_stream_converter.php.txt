@@ -1,0 +1,26 @@
+PASS 48000/1 -> 48000/2
+PASS 48000/2 -> 48000/1
+PASS 48000/2 -> 8000/1
+PASS 44100/2 -> 8000/1
+PASS 32000/2 -> 8000/1
+PASS 48000/2 -> 8000/2
+PASS 8000/2 -> 48000/2
+PASS 24000/2 -> 16000/2
+PASS 16000/2 -> 24000/2
+PASS 16000/1 -> 8000/1
+PASS 8000/1 -> 16000/1
+PASS 8000/1 -> 32000/1
+PASS 8000/1 -> 44100/1
+PASS 8000/1 -> 48000/1
+PASS 44100/1 -> 48000/1
+PASS 48000/1 -> 44100/1
+PASS stereo channel separation 48000 -> 8000
+PASS stereo channel separation 8000 -> 48000
+PASS stereo channel separation 24000 -> 16000
+PASS stereo channel separation 16000 -> 24000
+PASS interleaved 20ms streams remain isolated
+PASS 3000 stereo RTP packets preserve accumulated duration
+PASS empty, identity, and incomplete frame behavior
+PASS 60s 48000/2 -> 8000/1
+PASS 60s 44100/2 -> 8000/1
+PASS 60s 8000/1 -> 48000/1
