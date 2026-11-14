@@ -5,7 +5,7 @@ if (!file_exists($envFile)) {
     if (file_exists('.env.example')) {
         copy('.env.example', $envFile);
     } else {
-        throw new Exception("Arquivo .env não encontrado e .env.example também não existe.");
+        file_put_contents($envFile, '');
     }
 }
 if (file_exists($envFile)) {
