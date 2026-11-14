@@ -65,4 +65,4 @@ A matriz determinística usa silêncio nos codecs para conferir preservação ex
 
 ## GitHub Actions
 
-Pendente de push e consulta do resultado real. O registro será atualizado após execução remota do check existente.
+Push do commit funcional `b2e7eb544477b54e0b74c48f54cd2eeb4ffee099` exclusivamente em `Optimizer`. Execução real [43571280212](https://github.com/spechshop/libspech/actions/runs/43571280212): **success**, check **PHP and media regression**, job **132376036599**, concluído em 2026-11-14. Consulta pela API e log confirma PASS no teste `acoustic-dtmf.php` e nos outros 13 comandos, além de sintaxe. Metadados completos em `evidence/dtmf-continuity/github-checks.json`. O commit seguinte apenas registra este resultado e passa novamente pelo mesmo workflow; consultar o check da ponta da branch para esse segundo resultado.
