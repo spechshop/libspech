@@ -40,23 +40,26 @@ final class EarlyMediaAcousticTap
 
     private function analyze(rtpc $packet, string $codec, int $rate, int $channels, string|false|null $sharedPcm): void
     {
+        $event = $codec === 'TELEPHONE-EVENT';
         // Parser failures, unsupported comfort noise and malformed frames fail open.
         if ($packet->version !== 2 || $packet->padding !== 0 || $packet->payloadRaw === ''
-            || !in_array($codec, ['PCMA', 'PCMU', 'G729', 'OPUS'], true)
+            || ($event && strlen($packet->payloadRaw) < 4)
+            || (!$event && (!in_array($codec, ['PCMA', 'PCMU', 'G729', 'OPUS'], true)
             || !in_array($channels, [1, 2], true) || !in_array($rate, [8000, 48000], true)
             || ($codec !== 'OPUS' && ($rate !== 8000 || $channels !== 1))
-            || ($codec === 'G729' && strlen($packet->payloadRaw) % 10 !== 0)) {
+            || ($codec === 'G729' && strlen($packet->payloadRaw) % 10 !== 0)))) {
             $this->monitor->discontinuity('invalid_or_unsupported_packet');
             $this->resetConversion();
             return;
         }
-        $stateful = $codec === 'G729' || $codec === 'OPUS';
-        $path = is_string($sharedPcm) && $sharedPcm !== '' ? 'shared' : 'tap';
-        $continuity = $this->continuity->inspect($packet, "$codec/$rate/$channels/{$packet->payloadType}", hrtime(true));
+        $stateful = $codec === 'G729' || $codec === 'OPUS'
+            || ($event && in_array(explode('/', $this->packetContext['format'] ?? '')[0], ['G729', 'OPUS'], true));
+        $path = $event ? ($this->decodePath ?? 'tap') : (is_string($sharedPcm) && $sharedPcm !== '' ? 'shared' : 'tap');
+        $continuity = $this->continuity->inspect($packet, "$codec/$rate/$channels/{$packet->payloadType}", hrtime(true), $event ? $rate : 0);
         if (!$continuity['accept']) {
             // Relay may already have consumed a duplicate in its stateful decoder.
             // Its unobservable state cannot safely support an acoustic decision.
-            if ($stateful && ($path === 'shared' || $this->decodePath === 'shared')) {
+            if (!$event && $stateful && ($path === 'shared' || $this->decodePath === 'shared')) {
                 $this->monitor->discontinuity($continuity['reset']);
                 $this->monitor->fail('shared_decoder_' . $continuity['reset']);
             }
@@ -73,6 +76,7 @@ final class EarlyMediaAcousticTap
             $this->monitor->discontinuity($continuity['reset'] ?? 'decoder_path_changed');
             $this->resetConversion();
         }
+        if ($event) return; // Transport observation only: never decode or push DTMF PCM.
         $this->decodePath = $path;
         $this->packetContext = ['ssrc' => $packet->ssrc, 'rtp_sequence' => $packet->sequence,
             'rtp_timestamp' => $packet->timestamp, 'format' => "$codec/$rate/$channels",

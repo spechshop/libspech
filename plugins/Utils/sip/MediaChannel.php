@@ -925,6 +925,8 @@ class MediaChannel
 
 
                     if ($sourceCodec === 'TELEPHONE-EVENT') {
+                        $this->earlyMediaAcousticTap?->receive($rtpc, $sourceMember ?? [], $sourceCodec,
+                            $this->resolveRxFrequencyForMember($pt, $sourceMember), 1);
                         if ($this->audioMetricsEnabled) {
                             $this->audioMetrics['dtmf_events']++;
                         }

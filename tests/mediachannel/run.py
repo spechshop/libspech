@@ -4,7 +4,7 @@ php, root, destination = sys.argv[1:]
 root = pathlib.Path(root).resolve()
 suite = pathlib.Path(__file__).resolve().parent
 commands = [[str(suite / 'check.php'), str(root), mode] for mode in ['dtmf', 'idle', 'invalid', 'reentrant']]
-commands += [[str(suite / name), str(root)] for name in ['ptime-frame.php', 'edges.php', 'flows.php', 'codec-matrix.php']]
+commands += [[str(suite / name), str(root)] for name in ['ptime-frame.php', 'edges.php', 'flows.php', 'codec-matrix.php', 'acoustic-dtmf.php']]
 commands += [[str(root / name)] for name in ['test_rtpc_native.php', 'test_pcm_stream_converter.php', 'test_audio_file_playback_resample.php', 'test_media_channel_member_ptime.php', 'test_trunk_recording.php']]
 rows = []
 for args in commands:
