@@ -1,0 +1,23 @@
+[
+  {
+    "test": "swoole_socket_coro/close_listener",
+    "bootstrap": "Assert only; no remote object server initialization",
+    "status": 0,
+    "stdout": "DONE\n",
+    "stderr": ""
+  },
+  {
+    "test": "swoole_socket_coro/close_unix_socket",
+    "bootstrap": "Assert only; no remote object server initialization",
+    "status": 0,
+    "stdout": "DONE\n--CLEAN--\n",
+    "stderr": ""
+  },
+  {
+    "test": "swoole_runtime/stream_socket_server_close",
+    "bootstrap": "Assert only; no remote object server initialization",
+    "status": 0,
+    "stdout": "DONE\n",
+    "stderr": ""
+  }
+]

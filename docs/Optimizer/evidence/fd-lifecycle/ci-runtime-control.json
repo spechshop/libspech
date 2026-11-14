@@ -1,0 +1,41 @@
+{
+    "php": "8.5.10",
+    "swoole": "6.3.0RC1",
+    "rows": [
+        {
+            "blocked": false,
+            "before": [],
+            "owned": {
+                "5": "socket:[6237039]"
+            },
+            "closed": true,
+            "held": {
+                "5": "socket:[6237039]"
+            },
+            "destroyedBeforeYield": {
+                "5": "socket:[6237039]"
+            },
+            "released": [],
+            "object_alive": false,
+            "reader_alive": false
+        },
+        {
+            "blocked": true,
+            "before": [],
+            "owned": {
+                "5": "socket:[6237045]"
+            },
+            "closed": true,
+            "held": {
+                "5": "socket:[6237045]"
+            },
+            "destroyedBeforeYield": {
+                "5": "socket:[6237045]"
+            },
+            "released": [],
+            "object_alive": false,
+            "reader_alive": false
+        }
+    ],
+    "after_reactor": []
+}

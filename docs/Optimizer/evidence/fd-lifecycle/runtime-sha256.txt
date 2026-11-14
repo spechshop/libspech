@@ -1,0 +1,4 @@
+7fdef9c3115439db0e48256e6c8e416c0c0c6aa13a179cbd6dda0b0b7eae3643  /tmp/libspech-media-php
+f8ff13f34761b859201c6146179233927416452559bf30c5c2f180750b1bd509  /usr/local/bin/php
+18f0763f823d9e1b83ac3c78e9164dc0636772ceff173057550697a0314c6f99  /home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php
+e1d5b196dfeca879258cf254ba4204886823146ff88b938af6cd879b2b687585  /tmp/libspech-fd-native/php-src/sapi/cli/php

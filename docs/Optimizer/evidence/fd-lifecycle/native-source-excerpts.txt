@@ -1,0 +1,187 @@
+
+src/coroutine/socket.cc
+1559: bool Socket::cancel(const EventType event) {
+1560:     if (!has_bound(event)) {
+1561:         return false;
+1562:     }
+1563:     if (event == SW_EVENT_READ) {
+1564:         set_err(ECANCELED);
+1565:         read_co->resume();
+1566:         return true;
+1567:     } else if (event == SW_EVENT_WRITE) {
+1568:         set_err(ECANCELED);
+1569:         write_co->resume();
+1570:         return true;
+1571:     } else {
+1572:         set_err(EINVAL);
+1573:         return false;
+1574:     }
+1575: }
+1576: 
+1577: /**
+1578:  * @return bool
+1579:  * If true is returned, the related resources of this socket can be released
+1580:  * If false is returned, it means that other coroutines are still referencing this socket,
+1581:  * and need to wait for the coroutine bound to readable or writable event to execute close,
+1582:  * and release when all references are 0
+1583:  */
+1584: bool Socket::close() {
+1585:     if (is_closed()) {
+1586:         set_err(EBADF);
+1587:         return false;
+1588:     }
+1589:     if (connected) {
+1590:         shutdown();
+1591:     }
+1592:     if (sw_unlikely(has_bound())) {
+1593:         socket->close_wait = 1;
+1594:         cancel(SW_EVENT_WRITE);
+1595:         cancel(SW_EVENT_READ);
+1596:         set_err(SW_ERROR_CO_SOCKET_CLOSE_WAIT);
+1597:         return false;
+1598:     } else {
+1599:         sock_fd = SW_BAD_SOCKET;
+1600:         if (dtor_ != nullptr) {
+1601:             auto dtor = dtor_;
+1602:             dtor_ = nullptr;
+1603:             dtor(this);
+1604:         }
+1605:         return true;
+1606:     }
+1607: }
+1608: 
+1609: /**
+1610:  * Warn:
+1611:  * the destructor should only be called in following two cases:
+1612:  * 1. construct failed
+1613:  * 2. called close() and it returns true
+1614:  * 3. called close() and it returns false, but it will not be accessed anywhere else
+1615:  */
+1616: Socket::~Socket() {
+1617: #ifdef SW_DEBUG
+1618:     if (SwooleG.running) {
+1619:         SW_ASSERT(!has_bound() && socket->removed);
+1620:     }
+1621: #endif
+1622:     if (dtor_ != nullptr) {
+1623:         dtor_(this);
+1624:     }
+1625:     delete read_buffer;
+1626:     delete write_buffer;
+1627:     if (socket == nullptr) {
+1628:         return;
+1629:     }
+1630:     /* {{{ release socket resources */
+1631:     if (socket->ssl) {
+1632:         ssl_close();
+1633:     }
+1634:     socket->free();
+1635: }
+1636: 
+1637: bool Socket::TimerController::start() {
+1638:     if (timeout != 0 && !*timer_pp) {
+1639:         enabled = true;
+1640:         if (timeout > 0) {
+1641:             *timer_pp = swoole_timer_add(timeout, false, callback, socket_);
+1642:             return *timer_pp != nullptr;
+1643:         }
+
+src/network/socket.cc
+457: static void socket_free_defer(void *ptr) {
+458:     auto *sock = static_cast<Socket *>(ptr);
+459:     if (sock->is_local() && sock->bound) {
+460:         ::unlink(sock->get_addr());
+461:     }
+462:     if (sock->fd != SW_BAD_SOCKET &&
+463: #ifdef _WIN32
+464: #ifdef SW_USE_IOCP
+465:         Iocp::close(sock->fd) != 0
+466: #else
+467:         closesocket(sock->fd) != 0
+468: #endif
+469: #else
+470:         close(sock->fd) != 0
+471: #endif
+472:     ) {
+473:         swoole_sys_warning("close(%d) failed", sock->fd);
+474:     }
+475:     delete sock;
+476: }
+477: 
+478: void Socket::free() {
+479:     if (recv_timer) {
+480:         swoole_timer_del(recv_timer);
+481:     }
+482:     if (send_timer) {
+483:         swoole_timer_del(send_timer);
+484:     }
+485: 
+486:     delete in_buffer;
+487:     delete out_buffer;
+488: 
+489:     if (swoole_event_is_available()) {
+490:         if (fd != -1 && !removed) {
+491:             swoole_event_del(this);
+492:         }
+493:         swoole_event_defer(socket_free_defer, this);
+494:     } else {
+495:         socket_free_defer(this);
+496:     }
+497: }
+498: 
+499: int Socket::get_name() {
+500:     info.len = sizeof(info.addr);
+
+ext-src/swoole_socket_coro.cc
+155: 
+156: /**
+157:  * cannot execute close in the destructor, it may be shutting down,
+158:  * executing close will try to resume other coroutines.
+159:  */
+160: static void socket_coro_free_object(zend_object *object) {
+161:     auto *sock = socket_coro_fetch_object(object);
+162:     if (!sock->reference && sock->socket) {
+163:         if (!Z_ISUNDEF(sock->zstream)) {
+164:             sock->socket->move_fd();
+165:             zval_ptr_dtor(&sock->zstream);
+166:         }
+167:         delete sock->socket;
+168:     }
+169:     zend_object_std_dtor(&sock->std);
+170: }
+171: 
+172: static zend_object *socket_coro_create_object(zend_class_entry *ce) {
+
+ext-src/swoole_socket_coro.cc
+1979: static PHP_METHOD(swoole_socket_coro, close) {
+1980:     swoole_get_socket_coro(sock, ZEND_THIS);
+1981:     if (sock->reference) {
+1982:         php_swoole_error(E_WARNING, "cannot close the referenced resource");
+1983:         RETURN_FALSE;
+1984:     }
+1985:     if (sock->socket->protocol.private_data_1) {
+1986:         sw_callable_free(sock->socket->protocol.private_data_1);
+1987:         sock->socket->protocol.private_data_1 = nullptr;
+1988:     }
+1989:     if (!Z_ISUNDEF(sock->zstream)) {
+1990:         php_stream *stream = nullptr;
+1991:         php_stream_from_zval_no_verify(stream, &sock->zstream);
+1992:         if (stream != nullptr) {
+1993:             /* close & destroy stream, incl. removing it from the rsrc list;
+1994:              * resource stored in php_sock->zstream will become invalid */
+1995:             php_stream_free(stream,
+1996:                             PHP_STREAM_FREE_KEEP_RSRC | PHP_STREAM_FREE_CLOSE |
+1997:                                 (stream->is_persistent ? PHP_STREAM_FREE_CLOSE_PERSISTENT : 0));
+1998:         }
+1999:         ZVAL_UNDEF(&sock->zstream);
+2000:         sock->socket->move_fd();
+2001:     } else {
+2002:         sock->socket->close();
+2003:     }
+2004:     RETURN_TRUE;
+2005: }
+2006: 
+2007: static PHP_METHOD(swoole_socket_coro, getsockname) {
+2008:     swoole_get_socket_coro(sock, ZEND_THIS);
+2009: 
+2010:     if (!sock->socket->getsockname()) {

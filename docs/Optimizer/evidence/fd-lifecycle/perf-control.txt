@@ -1,0 +1,14 @@
+# started on Sat Nov 14 04:05:06 2026
+
+
+ Performance counter stats for 'php tests/mediachannel/socket-fd-control.php':
+
+             33.48 msec task-clock                                                            
+               205      context-switches                                                      
+
+       0.143326532 seconds time elapsed
+
+       0.025814000 seconds user
+       0.009928000 seconds sys
+
+

@@ -27,6 +27,11 @@ final class MemberPtimeCaptureSocket extends SocketMutable
         return false;
     }
 
+    public function destroy(): void
+    {
+        // Capture-only fixture: no native socket was constructed.
+    }
+
     public function isClosed(): bool
     {
         return false;

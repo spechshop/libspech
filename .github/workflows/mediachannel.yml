@@ -35,7 +35,7 @@ jobs:
       - name: PHP syntax
         run: |
           git ls-files -z 'plugins/*.php' 'tests/*.php' 'test_*.php' | xargs -0 -n1 /tmp/media-php -l > /tmp/lint.txt
-      - name: Functional regression
+      - name: Functional regression and strict socket FD lifecycle
         run: python3 tests/mediachannel/run.py /tmp/media-php . /tmp/functional.json
       - name: Preserve results in run log and summary
         if: always()

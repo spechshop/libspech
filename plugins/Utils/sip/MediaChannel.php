@@ -2152,14 +2152,17 @@ class MediaChannel
         // Wake the coroutine that owns recvfrom so it can close its socket.
         // This keeps the longer idle timeout without delaying port release.
         $this->socket->cancel(SWOOLE_EVENT_READ);
+        // cancel() resumes a suspended receiver synchronously. If no receiver
+        // exists (close before start, or close from its callback), close here.
+        if (!$this->socket->isClosed()) {
+            $this->socket->destroy();
+        }
         foreach ($this->members as $member) {
             $member['relayWake']->close();
         }
         // Teardown discards DSP history and residual PCM; it must never emit a FIR tail.
         $this->relayPcmStreams = [];
         $this->injectionPcmStreams = [];
-        // Do not close the RTP socket from the control coroutine. The receive
-        // coroutine owns recvfrom() and performs destroy() after cancellation.
 
         // RtpSession installs closures that capture itself. Clear them
         // explicitly so MediaChannel -> callback -> RtpSession -> socket does

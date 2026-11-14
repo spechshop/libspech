@@ -15,3 +15,4 @@ Branch de revisão: [Optimizer](https://github.com/spechshop/libspech/tree/Optim
 As quatro reproduções passam após as correções, e a regressão automatizada está aprovada no GitHub. O comparativo não comprova ganho global de CPU. Repacketização10ms aumenta trabalho por entrada, com duas saídas corretas em vez de uma incorreta. Alocações individuais e latência exclusiva do processamento RTP não foram isoladas; essas limitações permanecem explícitas em05.
 
 - [Correção de continuidade acústica durante DTMF](08-dtmf-acoustic-continuity.md)
+- [Ciclo de vida e retenção de descritores de sockets — investigação pendente](09-socket-fd-lifecycle.md)

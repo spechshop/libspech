@@ -6,6 +6,8 @@ suite = pathlib.Path(__file__).resolve().parent
 commands = [[str(suite / 'check.php'), str(root), mode] for mode in ['dtmf', 'idle', 'invalid', 'reentrant']]
 commands += [[str(suite / name), str(root)] for name in ['ptime-frame.php', 'edges.php', 'flows.php', 'codec-matrix.php', 'acoustic-dtmf.php']]
 commands += [[str(root / name)] for name in ['test_rtpc_native.php', 'test_pcm_stream_converter.php', 'test_audio_file_playback_resample.php', 'test_media_channel_member_ptime.php', 'test_trunk_recording.php']]
+commands += [[str(suite / 'socket-fd-control.php')]]
+commands += [[str(suite / 'fd-lifecycle.php'), str(root), mode] for mode in ['traditional', 'native']]
 rows = []
 for args in commands:
     result = subprocess.run([php, *args], cwd=root, capture_output=True, text=True, timeout=60)

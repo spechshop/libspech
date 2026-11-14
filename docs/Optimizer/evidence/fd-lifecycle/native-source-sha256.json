@@ -1,0 +1,6 @@
+{
+  "src/coroutine/socket.cc": "85b1d809c72451858caad161bf4904e7806d4aedf11b9171340f6f114718edac",
+  "src/network/socket.cc": "e6919bae549f08932e6922c118b830d1f9fe6e5318efb874a7909ccd2a3814bd",
+  "ext-src/swoole_socket_coro.cc": "73687f4de06c560633570a3bf0aa5da4b5d3ec46f61eab5365e068d8d7f780af",
+  "include/swoole_version.h": "330a890cae13319c428917eb6fe57b080a370db9c7c703780908fbcc22913987"
+}

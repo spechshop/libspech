@@ -1,0 +1,122 @@
+[
+  {
+    "mode": "traditional",
+    "repeat": 0,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/traditional-0.json"
+    ],
+    "status": 1
+  },
+  {
+    "mode": "traditional",
+    "repeat": 1,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/traditional-1.json"
+    ],
+    "status": 1
+  },
+  {
+    "mode": "traditional",
+    "repeat": 2,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/traditional-2.json"
+    ],
+    "status": 1
+  },
+  {
+    "mode": "traditional",
+    "repeat": 3,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/traditional-3.json"
+    ],
+    "status": 1
+  },
+  {
+    "mode": "traditional",
+    "repeat": 4,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "traditional",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/traditional-4.json"
+    ],
+    "status": 1
+  },
+  {
+    "mode": "native",
+    "repeat": 0,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/native-0.json"
+    ],
+    "status": 1
+  },
+  {
+    "mode": "native",
+    "repeat": 1,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/native-1.json"
+    ],
+    "status": 1
+  },
+  {
+    "mode": "native",
+    "repeat": 2,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/native-2.json"
+    ],
+    "status": 1
+  },
+  {
+    "mode": "native",
+    "repeat": 3,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/native-3.json"
+    ],
+    "status": 1
+  },
+  {
+    "mode": "native",
+    "repeat": 4,
+    "command": [
+      "/home/lotus/CLionProjects/pcg729/source/php-src/sapi/cli/php",
+      "/home/lotus/projetos/sipswoole/libspech/tests/mediachannel/fd-lifecycle.php",
+      "/tmp/libspech-fd-native/baseline",
+      "native",
+      "/home/lotus/projetos/sipswoole/libspech/docs/Optimizer/evidence/fd-lifecycle/measure-source-before/native-4.json"
+    ],
+    "status": 1
+  }
+]
