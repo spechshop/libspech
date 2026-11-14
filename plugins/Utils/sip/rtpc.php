@@ -6,6 +6,9 @@ use libspech\Cli\cli;
 
 class rtpc
 {
+    // Successful structural parse, distinct from an empty/partial legacy result.
+    private bool $complete = false;
+
     private string $format = 'CCnNN';
 
     public string $rawPacket = '';
@@ -70,6 +73,7 @@ class rtpc
         }
 
         $this->payloadRaw = substr($packet, $payloadOffset);
+        $this->complete = true;
     }
 
     /**
@@ -110,10 +114,25 @@ class rtpc
             : \psampler_binary_slice($source, 0, $payloadOffset);
         $packet->payloadRaw = \psampler_binary_slice($source, $payloadOffset, $packetLength - $payloadOffset);
         $packet->originalPayload = $packet->payloadRaw;
+        $packet->complete = true;
         // Keep a real public typed property: direct writes and references retain
         // Zend's usual type checks. Only its first read needs interception.
         unset($packet->rawPacket);
         return $packet;
+    }
+
+    /** Admission check; parsing and the public payload remain backward compatible. */
+    public function isValidRtpPacket(): bool
+    {
+        if (!$this->complete || $this->version !== 2) {
+            return false;
+        }
+        if (!$this->padding) {
+            return true;
+        }
+        $length = strlen($this->payloadRaw);
+        return $length > 0 && ord($this->payloadRaw[$length - 1]) > 0
+            && ord($this->payloadRaw[$length - 1]) <= $length;
     }
 
     public function &__get(string $name): mixed

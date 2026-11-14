@@ -1,0 +1,37 @@
+name: MediaChannel
+on:
+  push:
+    branches: [Optimizer]
+  pull_request:
+    branches: [spech, Optimizer]
+permissions:
+  contents: read
+jobs:
+  regression:
+    name: PHP and media regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned media runtime
+        env:
+          RUNTIME: pcg729-linux-x86_64-zts-php8.5.10-psampler0.7.0-v1.1.7
+        run: |
+          curl --fail --location --retry 3 -o /tmp/media-php "https://github.com/spechshop/pcg729/releases/download/v1.1.7/$RUNTIME"
+          echo '7fdef9c3115439db0e48256e6c8e416c0c0c6aa13a179cbd6dda0b0b7eae3643  /tmp/media-php' | sha256sum --check
+          chmod +x /tmp/media-php
+          /tmp/media-php -v
+          /tmp/media-php -r 'foreach (["swoole", "psampler", "bcg729", "opus"] as $ext) { if (!extension_loaded($ext)) exit(1); } if (!class_exists("gsmChannel") || !function_exists("psampler_binary_slice")) exit(1);'
+          touch .env
+      - name: PHP syntax
+        run: |
+          git ls-files -z 'plugins/*.php' 'tests/*.php' 'test_*.php' | xargs -0 -n1 /tmp/media-php -l > /tmp/lint.txt
+      - name: Functional regression
+        run: python3 tests/mediachannel/run.py /tmp/media-php . /tmp/functional.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mediachannel-results
+          path: |
+            /tmp/functional.json
+            /tmp/lint.txt

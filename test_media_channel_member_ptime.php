@@ -21,6 +21,12 @@ final class MemberPtimeCaptureSocket extends SocketMutable
     {
     }
 
+    // This capture socket never opens a native descriptor or starts a read.
+    public function cancel(int $event = SWOOLE_EVENT_READ): bool
+    {
+        return false;
+    }
+
     public function isClosed(): bool
     {
         return false;
@@ -513,10 +519,10 @@ Swoole\Coroutine\run(static function (): void {
         'address' => '127.0.0.1', 'port' => $destinationPort, 'codec' => 'PCMA',
         'pt' => 8, 'frequency' => 8000, 'ptime' => 20, 'channels' => 1, 'config' => [],
     ]);
-    $receivedGsmPcmBytes = 0;
-    $media->onReceive(static function ($packet, array $peer, MediaChannel $channel) use (&$receivedGsmPcmBytes): void {
-        $memberId = $peer['address'] . ':' . $peer['port'];
-        $receivedGsmPcmBytes = strlen((string)($channel->members[$memberId]['gsmDecodedPcm'] ?? ''));
+    $receivedGsmPayload = '';
+    $media->onReceive(static function ($packet, array $peer, MediaChannel $channel) use (&$receivedGsmPayload): void {
+        // onReceive precedes relay decoding; it exposes the original RTP payload.
+        $receivedGsmPayload = $packet->payloadRaw;
     });
     $media->start();
     Swoole\Coroutine::sleep(0.01);
@@ -543,7 +549,7 @@ Swoole\Coroutine\run(static function (): void {
     memberPtimeAssertSame(true, is_string($relayed), 'RTP real recebe pacote após GSM inválido');
     memberPtimeAssertSame(8, ord($relayed[1]) & 0x7f, 'RTP real usa PT TX PCMA do destino');
     memberPtimeAssertSame(160, strlen(substr($relayed, 12)), 'RTP real GSM->PCMA preserva 20 ms');
-    memberPtimeAssertSame(320, $receivedGsmPcmBytes, 'callback do fluxo RTP reutiliza o único decode GSM');
+    memberPtimeAssertSame($validPayload, $receivedGsmPayload, 'callback recebe payload GSM antes do decode de relay');
 
     $media->close();
     Swoole\Coroutine::sleep(0.25);

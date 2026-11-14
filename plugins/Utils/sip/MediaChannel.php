@@ -691,8 +691,15 @@ class MediaChannel
                         return;
                     }
                     $peer = ['address' => '0.0.0.0', 'port' => 0];
+                    // Sleep until existing maintenance is due; close() cancels the read.
+                    $now = microtime(true);
+                    $receiveTimeout = max(0.001, $this->connectTimeout - ($now - $lastPacketTime));
+                    if (!$this->receiveOnlyMode && $this->members !== [] && $this->settings['sendSilenceProbeToMembers']) {
+                        $receiveTimeout = min($receiveTimeout, max(0.001,
+                            $this->silenceProbeInterval - ($now - max($lastPacketTime, $this->lastSilenceProbeAt))));
+                    }
                     if ($nativeBuffer !== null) {
-                        $bytes = $this->socket->recvfromInto($nativeBuffer, $peer, 0.2);
+                        $bytes = $this->socket->recvfromInto($nativeBuffer, $peer, $receiveTimeout);
                         $packetLength = $bytes === false ? 0 : $bytes;
                         $packet = $packetLength > 0;
                         // recvfrom's falsey string "0" also follows the idle path.
@@ -700,7 +707,7 @@ class MediaChannel
                             $packet = false;
                         }
                     } else {
-                        $packet = $this->socket->recvfrom($peer, -1);
+                        $packet = $this->socket->recvfrom($peer, $receiveTimeout);
                         $packetLength = $packet === false ? 0 : strlen($packet);
                     }
                     $currentTime = microtime(true);
@@ -708,7 +715,7 @@ class MediaChannel
 
                     if (!$packet) {
                         $now = $currentTime;
-                        $elapsed = round($now - $lastPacketTime, 3);
+                        $elapsed = $now - $lastPacketTime;
 
 
                         $errCode = (int)($this->socket->errCode ?? 0);
@@ -732,9 +739,7 @@ class MediaChannel
                         }
 
                         // Enquanto ainda não passou o timeout final, tenta acordar os members.
-                        $elapsedInSeconds = round($now - $lastPacketTime, 3);
-
-                        if ($elapsedInSeconds <= $this->connectTimeout) {
+                        if ($elapsed < $this->connectTimeout) {
 
 
                             // disabled
@@ -778,7 +783,6 @@ class MediaChannel
                         return;
                     } else {
                         if ($peer['port'] === 5060) continue;
-                        $lastPacketTime = microtime(true);
                     }
 
 
@@ -794,17 +798,24 @@ class MediaChannel
                         }
                         continue;
                     }
-                    $this->packetsProcessed++;
 
 
                     $rtpc = $nativeBuffer === null
                         ? new rtpc($packet)
                         : rtpc::fromNativeBuffer($nativeBuffer, $packetLength);
 
-                    if ($this->audioMetricsEnabled && ($packetLength < 12 || $rtpc->version !== 2)) {
+                    if (!$rtpc->isValidRtpPacket()) {
                         continue;
                     }
 
+
+                    // The parser keeps its permissive public payload contract. Strip
+                    // validated RTP padding only at the media admission boundary.
+                    if ($rtpc->padding) {
+                        $rtpc->payloadRaw = substr($rtpc->payloadRaw, 0, -ord($rtpc->payloadRaw[-1]));
+                    }
+                    $lastPacketTime = $currentTime;
+                    $this->packetsProcessed++;
 
                     $pt = $rtpc->getCodec();
 
@@ -959,18 +970,24 @@ class MediaChannel
 
 
                     $pcmData = false;
+                    $isG711 = $sourceCodec === 'PCMA' || $sourceCodec === 'PCMU';
 
                     foreach (array_keys($this->members) as $targetId) {
                         if ($targetId === $idFrom) continue;
                         if ($this->dtmfInUse) continue;
 
-                        // Encoded relay is safe only when both negotiated
-                        // formats and packet durations match. Otherwise the
-                        // existing PCM queue must repacketize for the target.
+                        $targetChannel = $this->members[$targetId]['rtpChannel'];
+                        // G.711 has one byte per sample/channel: trust the actual
+                        // payload duration, not the source's configured ptime.
+                        $sameDuration = $isG711
+                            ? strlen($rtpc->payloadRaw) === $targetChannel->samplesPerPacket * $sourceChannels
+                            : $this->rtpChans[$ssrc]->packetTimeMs === $targetChannel->packetTimeMs;
                         if ($sourceCodec === $this->members[$targetId]['codec']
                             && $sourceFrequency === (int)$this->members[$targetId]['frequency']
                             && $sourceChannels === (int)($this->members[$targetId]['channels'] ?? 1)
-                            && $this->rtpChans[$ssrc]->packetTimeMs === $this->members[$targetId]['rtpChannel']->packetTimeMs) {
+                            && $sameDuration
+                            && $this->members[$targetId]['relayPcmBuffer']->length() === 0
+                            && !isset($this->relayPacerRunning[$targetId])) {
                             $packet = $this->members[$targetId]['rtpChannel']->buildAudioPacket($rtpc->payloadRaw);
                             if ($this->socket->sendto((string)$this->members[$targetId]['address'], (int)$this->members[$targetId]['port'], $packet)) {
                                 $this->relayMetrics[$targetId]['packets_sent']++;
@@ -2140,8 +2157,7 @@ class MediaChannel
         $this->relayPcmStreams = [];
         $this->injectionPcmStreams = [];
         // Do not close the RTP socket from the control coroutine. The receive
-        // coroutine owns recvfrom() and performs destroy() when its 200 ms
-        // timeout observes active=false.
+        // coroutine owns recvfrom() and performs destroy() after cancellation.
 
         // RtpSession installs closures that capture itself. Clear them
         // explicitly so MediaChannel -> callback -> RtpSession -> socket does
@@ -2392,15 +2408,6 @@ class MediaChannel
                 if ($cached['processed'] && $isEnd) {
                     // RFC: últimos 3 pacotes são idênticos com flag E set
                     $closure(); // Fazer forward do pacote mesmo sendo duplicado
-                    // Disparar callback de DTMF
-                    $callback = $this->onDtmfCallable;
-                    if (is_callable($callback)) {
-                        if (($rtpc->sequence - $cached['sequence']) == 1) {
-                            go($callback, $event, $peer, $event, $this);
-                        }
-
-
-                    }
                     return;
                 }
 
@@ -2489,6 +2496,11 @@ class MediaChannel
             }
             $this->dtmfFiredGuard[$ssrc] = ['event' => $event, 'time' => $nowMs];
 
+
+            $callback = $this->onDtmfCallable;
+            if (is_callable($callback)) {
+                go($callback, $event, $peer, $event, $this);
+            }
 
             // Limpar cache antigo (> 5 segundos)
             $currentTime = microtime(true);
