@@ -1,0 +1,5 @@
+{
+  "binary": "/home/lotus/CLionProjects/pcg729/buildroot/bin/php",
+  "sha256": "18f0763f823d9e1b83ac3c78e9164dc0636772ceff173057550697a0314c6f99",
+  "version": "PHP 8.5.12 (cli) (built: Nov 13 2026 20:44:43) (ZTS)\nCopyright (c) The PHP Group\nZend Engine v4.5.12, Copyright (c) Zend Technologies\n    with Zend OPcache v8.5.12, Copyright (c), by Zend Technologies\n"
+}

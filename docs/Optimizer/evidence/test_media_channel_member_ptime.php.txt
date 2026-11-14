@@ -1,0 +1,7 @@
+
+Fatal error: Uncaught Swoole\Error: must call constructor first in /home/lotus/PhpstormProjects/libspech/plugins/Utils/sip/MediaChannel.php:2150
+Stack trace:
+#0 /home/lotus/PhpstormProjects/libspech/plugins/Utils/sip/MediaChannel.php(2150): Swoole\Coroutine\Socket->cancel(512)
+#1 /home/lotus/PhpstormProjects/libspech/test_media_channel_member_ptime.php(485): libspech\Rtp\MediaChannel->close()
+#2 {main}
+  thrown in /home/lotus/PhpstormProjects/libspech/plugins/Utils/sip/MediaChannel.php on line 2150

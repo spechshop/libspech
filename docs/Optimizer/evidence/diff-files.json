@@ -1,0 +1,453 @@
+{
+  "base": "0ccb9a3",
+  "note": "Snapshot excludes this generated manifest itself and subsequent documentation-only edits.",
+  "totals": {
+    "ci": {
+      "added": 56,
+      "removed": 0,
+      "files": 1
+    },
+    "reports_and_evidence": {
+      "added": 2173,
+      "removed": 0,
+      "files": 54
+    },
+    "production": {
+      "added": 55,
+      "removed": 24,
+      "files": 2
+    },
+    "tests": {
+      "added": 435,
+      "removed": 5,
+      "files": 7
+    },
+    "benchmarks": {
+      "added": 228,
+      "removed": 0,
+      "files": 6
+    }
+  },
+  "files": [
+    {
+      "file": ".github/workflows/mediachannel.yml",
+      "added": 56,
+      "removed": 0,
+      "category": "ci"
+    },
+    {
+      "file": "docs/Optimizer/01-diagnostico.md",
+      "added": 16,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/02-plano-de-correcao.md",
+      "added": 10,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/03-revisao-de-codigo.md",
+      "added": 14,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/04-testes-funcionais.md",
+      "added": 35,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/05-desempenho.md",
+      "added": 75,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/06-github-checks.md",
+      "added": 14,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/07-conclusao.md",
+      "added": 11,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/README.md",
+      "added": 15,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/acoustic-parity.json",
+      "added": 349,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/after.json",
+      "added": 131,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/before.json",
+      "added": 131,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/bench-summary.json",
+      "added": 198,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/bench.jsonl",
+      "added": 70,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/capabilities.json",
+      "added": 14,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/dtmf-cost.json",
+      "added": 92,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/environment.txt",
+      "added": 46,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/github-policy.json",
+      "added": 1,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/github-startup-failure.json",
+      "added": 7,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/github-success.json",
+      "added": 1,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/lint.txt",
+      "added": 34,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/dtmf-after-0.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/dtmf-after-1.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/dtmf-after-2.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/dtmf-before-0.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/dtmf-before-1.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/dtmf-before-2.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/idle-after-0.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/idle-after-1.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/idle-after-2.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/idle-before-0.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/idle-before-1.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/idle-before-2.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/ptime40-after-0.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/ptime40-after-1.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/ptime40-after-2.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/ptime40-before-0.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/ptime40-before-1.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/ptime40-before-2.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/runs.json",
+      "added": 518,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/same-after-0.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/same-after-1.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/same-after-2.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/same-before-0.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/same-before-1.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/perf/same-before-2.csv",
+      "added": 8,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/ptime-fixture-corrected.txt",
+      "added": 1,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/release-runtime.json",
+      "added": 131,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/runtime.json",
+      "added": 5,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/source-hashes.json",
+      "added": 13,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/test_audio_file_playback_resample.php.txt",
+      "added": 14,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/test_media_channel_member_ptime.php.txt",
+      "added": 7,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/test_pcm_stream_converter.php.txt",
+      "added": 26,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/test_rtpc_native.php.txt",
+      "added": 1,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "docs/Optimizer/evidence/test_trunk_recording.php.txt",
+      "added": 1,
+      "removed": 0,
+      "category": "reports_and_evidence"
+    },
+    {
+      "file": "plugins/Utils/sip/MediaChannel.php",
+      "added": 36,
+      "removed": 24,
+      "category": "production"
+    },
+    {
+      "file": "plugins/Utils/sip/rtpc.php",
+      "added": 19,
+      "removed": 0,
+      "category": "production"
+    },
+    {
+      "file": "test_media_channel_member_ptime.php",
+      "added": 11,
+      "removed": 5,
+      "category": "tests"
+    },
+    {
+      "file": "tests/mediachannel/acoustic-parity.php",
+      "added": 30,
+      "removed": 0,
+      "category": "benchmarks"
+    },
+    {
+      "file": "tests/mediachannel/bench.php",
+      "added": 101,
+      "removed": 0,
+      "category": "benchmarks"
+    },
+    {
+      "file": "tests/mediachannel/check.php",
+      "added": 98,
+      "removed": 0,
+      "category": "tests"
+    },
+    {
+      "file": "tests/mediachannel/codec-matrix.php",
+      "added": 57,
+      "removed": 0,
+      "category": "tests"
+    },
+    {
+      "file": "tests/mediachannel/counters.py",
+      "added": 17,
+      "removed": 0,
+      "category": "benchmarks"
+    },
+    {
+      "file": "tests/mediachannel/dtmf-cost.php",
+      "added": 32,
+      "removed": 0,
+      "category": "benchmarks"
+    },
+    {
+      "file": "tests/mediachannel/edges.php",
+      "added": 157,
+      "removed": 0,
+      "category": "tests"
+    },
+    {
+      "file": "tests/mediachannel/flows.php",
+      "added": 57,
+      "removed": 0,
+      "category": "tests"
+    },
+    {
+      "file": "tests/mediachannel/idle.php",
+      "added": 23,
+      "removed": 0,
+      "category": "benchmarks"
+    },
+    {
+      "file": "tests/mediachannel/measure.py",
+      "added": 25,
+      "removed": 0,
+      "category": "benchmarks"
+    },
+    {
+      "file": "tests/mediachannel/ptime-frame.php",
+      "added": 39,
+      "removed": 0,
+      "category": "tests"
+    },
+    {
+      "file": "tests/mediachannel/run.py",
+      "added": 16,
+      "removed": 0,
+      "category": "tests"
+    }
+  ]
+}

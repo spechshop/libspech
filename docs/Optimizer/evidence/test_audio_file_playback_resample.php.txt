@@ -1,0 +1,14 @@
+PASS doResample native one-shot stereo rates/channels/identity
+PASS playback frames/duration/continuity 48000/2 -> 8000/2
+PASS playback frames/duration/continuity 8000/2 -> 48000/2
+PASS playback frames/duration/continuity 24000/2 -> 16000/2
+PASS playback frames/duration/continuity 16000/1 -> 24000/2
+PASS pause/resume preserves pending PCM packet
+PASS simultaneous playback sessions remain isolated
+PASS ptime change preserves converter history and buffered samples
+PASS async ptime change preserves queued lookahead PCM
+PASS loop keeps complete frames and converter history
+PASS interruption discards lookahead without tail output
+PASS coroutine producer yields bounded complete RTP frames
+PASS final partial source block is padded only at stream end
+PASS 3000 playback RTP frames keep output buffer bounded

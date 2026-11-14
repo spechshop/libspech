@@ -1,0 +1,1 @@
+PASS: ptime individual, accumulator PCM, RTP, silêncio, DTMF e legado de 20 ms validados.
