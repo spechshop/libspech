@@ -828,7 +828,12 @@ class MediaChannel
 
 
                     $idFrom = "{$peer['address']}:{$peer['port']}";
-                    if ($this->retiredMemberEndpoints !== [] && isset($this->retiredMemberEndpoints[$idFrom])) {
+                    if ($this->retiredMemberEndpoints !== [] && isset($this->retiredMemberEndpoints[$idFrom])
+                        && $this->unknownEndpointCallable === null) {
+                        // Without an explicit admission callback retired transports
+                        // remain blocked. With one, parse RTP and delegate to that
+                        // callback; the endpoint must still be explicitly rebound
+                        // before the packet can enter the media or relay pipeline.
                         continue;
                     }
                     if ($this->isRtcpPacket($nativeBuffer === null
