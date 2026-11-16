@@ -98,6 +98,8 @@ function nativeReceiveCase(?bool $requested, bool $receiveOnly): array
     $port = $rx->getsockname()['port'];
     $retired->sendto('127.0.0.1', $port, $packets[0]);
     foreach (['', '0', 'bad', pack('CCn', 0x80, 200, 0),
+        substr(pack('CCnNN', 0x80, 201, 0, 0, 0), 0, 11),
+        pack('CCnNN', 0x80, 200, 0, 0, 0),
         pack('CCnNN', 0x40, 8, 1, 2, 3) . 'invalid version',
         pack('CCnNN', 0x80, 127, 1, 2, 3) . 'unknown PT', ...$packets] as $bytes) {
         nativeReceiveCheck($tx->sendto('127.0.0.1', $port, $bytes) === strlen($bytes), 'send');
@@ -105,7 +107,7 @@ function nativeReceiveCase(?bool $requested, bool $receiveOnly): array
     nativeReceiveCheck($done->pop(2) === true, 'packet callbacks after recoverable errors');
     Coroutine::sleep(.005);
     $metrics = $media->getAudioMetrics();
-    nativeReceiveCheck($metrics['total_packets'] === 3 && $metrics['rtcp_packets'] === 1, 'RTP/RTCP filters');
+    nativeReceiveCheck($metrics['total_packets'] === 3 && $metrics['rtcp_packets'] === 3, 'RTP/RTCP filters');
     nativeReceiveCheck($metrics['bytes_received'] === array_sum(array_map('strlen', $packets)), 'wire lengths');
     $outgoing = [];
     $peer = null;

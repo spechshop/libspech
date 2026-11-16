@@ -79,8 +79,9 @@ class rtpc
     /**
      * $packetLength is the producer's valid byte count (recvfromInto's result).
      * All reads finish synchronously, before the receive storage can be reused.
+     * $header may reuse the first 12 bytes from the same, unchanged source.
      */
-    public static function fromNativeBuffer(object $source, int $packetLength): self
+    public static function fromNativeBuffer(object $source, int $packetLength, ?string $header = null): self
     {
         if ($packetLength < 0) {
             throw new \ValueError('Packet length must be greater than or equal to 0');
@@ -91,7 +92,7 @@ class rtpc
             return $packet;
         }
 
-        $header = \psampler_binary_slice($source, 0, 12);
+        $header ??= \psampler_binary_slice($source, 0, 12);
         $packet->parseFixedHeader($header);
         $payloadOffset = 12 + ($packet->cc * 4);
         if ($packet->extension === 1) {

@@ -18,11 +18,14 @@ function nativePacketCheck(bool $condition, string $label): void
     }
 }
 
-function nativePacket(string $bytes): rtpc
+function nativePacket(string $bytes, bool $prefetchHeader = false): rtpc
 {
     $source = new ByteBuffer(max(1, strlen($bytes)));
     $source->append($bytes);
-    $packet = rtpc::fromNativeBuffer($source, strlen($bytes));
+    $header = $prefetchHeader && strlen($bytes) > 0
+        ? \psampler_binary_slice($source, 0, min(12, strlen($bytes)))
+        : null;
+    $packet = rtpc::fromNativeBuffer($source, strlen($bytes), $header);
     $source->clear();
     $source->append('storage has been reused');
     return $packet;
@@ -48,13 +51,18 @@ for ($first = 0; $first <= 255; ++$first) {
 foreach ($packets as $index => $bytes) {
     $traditional = new rtpc($bytes);
     $native = nativePacket($bytes);
+    $prefetched = nativePacket($bytes, true);
     foreach ($fields as $field) {
         nativePacketCheck($native->{$field} === $traditional->{$field}, "packet $index: $field");
+        nativePacketCheck($prefetched->{$field} === $traditional->{$field}, "packet $index: prefetched $field");
     }
     nativePacketCheck($native->getCodec() === $traditional->getCodec(), "packet $index: codec");
+    nativePacketCheck($prefetched->getCodec() === $traditional->getCodec(), "packet $index: prefetched codec");
     nativePacketCheck(isset($native->rawPacket), "packet $index: isset");
     nativePacketCheck($native->rawPacket === $traditional->rawPacket, "packet $index: raw snapshot");
+    nativePacketCheck($prefetched->rawPacket === $traditional->rawPacket, "packet $index: prefetched raw snapshot");
     nativePacketCheck(serialize($native) === serialize($traditional), "packet $index: serialization layout");
+    nativePacketCheck(serialize($prefetched) === serialize($traditional), "packet $index: prefetched serialization layout");
 }
 
 $native = nativePacket($base . $payload);

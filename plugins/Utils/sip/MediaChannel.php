@@ -836,9 +836,12 @@ class MediaChannel
                         // before the packet can enter the media or relay pipeline.
                         continue;
                     }
-                    if ($this->isRtcpPacket($nativeBuffer === null
-                        ? $packet
-                        : \psampler_binary_slice($nativeBuffer, 0, min(4, $packetLength)))) {
+                    // Read the native header once: RTCP classification and RTP parsing
+                    // share it. Short datagrams keep their previous RTCP policy.
+                    $nativeHeader = $nativeBuffer === null
+                        ? null
+                        : \psampler_binary_slice($nativeBuffer, 0, min(12, $packetLength));
+                    if ($this->isRtcpPacket($nativeHeader ?? $packet)) {
                         if ($this->audioMetricsEnabled) {
                             $this->audioMetrics['rtcp_packets']++;
                         }
@@ -848,7 +851,7 @@ class MediaChannel
 
                     $rtpc = $nativeBuffer === null
                         ? new rtpc($packet)
-                        : rtpc::fromNativeBuffer($nativeBuffer, $packetLength);
+                        : rtpc::fromNativeBuffer($nativeBuffer, $packetLength, $nativeHeader);
 
                     if (!$rtpc->isValidRtpPacket()) {
                         continue;
